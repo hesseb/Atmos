@@ -60,6 +60,21 @@ public class PlayerInputHandler : MonoBehaviour
 		{
 			solarSystemManager.FastForward(toDaytime: false);
 		}
+
+		if (playerActions.PlayerControls.StopTime.WasPressedThisFrame())
+		{
+			solarSystemManager.ToggleTime();
+		}
+
+		if (playerActions.PlayerControls.IncreaseTimeSpeed.WasPressedThisFrame() )
+		{
+			solarSystemManager.IncreaseTimeSpeed();
+		}
+
+		if ( playerActions.PlayerControls.DecreaseTimeSpeed.WasPressedThisFrame() )
+		{
+			solarSystemManager.DecreaseTimeSpeed();
+		}
 	}
 
 	void CameraControls()

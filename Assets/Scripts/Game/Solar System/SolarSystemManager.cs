@@ -15,6 +15,7 @@ namespace SolarSystem
 		public float dayDurationMinutes;
 		public float monthDurationMinutes;
 		public float yearDurationMinutes;
+		public float DurationMultiplier = 1;
 
 		[Header("References")]
 		public Sun sun;
@@ -47,15 +48,15 @@ namespace SolarSystem
 
 			if (animate && Application.isPlaying && GameController.IsState(GameState.Playing))
 			{
-				float daySpeed = 1 / (dayDurationMinutes * 60);
+				float daySpeed = 1 / ((dayDurationMinutes * DurationMultiplier) * 60);
 				if (fastForwarding)
 				{
 					HandleFastforwarding(out daySpeed);
 				}
 
 				dayT += daySpeed * Time.deltaTime;
-				monthT += 1 / (monthDurationMinutes * 60) * Time.deltaTime;
-				yearT += 1 / (yearDurationMinutes * 60) * Time.deltaTime;
+				monthT += 1 / ((monthDurationMinutes * DurationMultiplier) * 60) * Time.deltaTime;
+				yearT += 1 / ((yearDurationMinutes * DurationMultiplier) * 60) * Time.deltaTime;
 
 				dayT %= 1;
 				monthT %= 1;
@@ -75,6 +76,33 @@ namespace SolarSystem
 			fastForwarding = true;
 			fastForwardApproachingTargetTime = false;
 			oldPlayerT = CalculatePlayerDayT();
+		}
+
+		public void ToggleTime()
+		{
+			if ( DurationMultiplier == 99999999 )
+			{
+				DurationMultiplier = 1;
+			}
+			else
+			{
+				DurationMultiplier = 99999999;
+			}
+		}
+
+		public void IncreaseTimeSpeed()
+		{
+			DurationMultiplier *= 2;
+		}
+
+		public void DecreaseTimeSpeed()
+		{
+			DurationMultiplier /= 2;
+
+			if (DurationMultiplier == 0)
+			{
+				DurationMultiplier = 0.001f;
+			}
 		}
 
 		public void SetTimes(float dayT, float monthT, float yearT)

@@ -145,6 +145,33 @@ public partial class @PlayerAction: IInputActionCollection2, IDisposable
                     ""processors"": """",
                     ""interactions"": """",
                     ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""Stop Time"",
+                    ""type"": ""Button"",
+                    ""id"": ""40cdabbf-d62d-465a-b138-ba11dce4aeb8"",
+                    ""expectedControlType"": ""Button"",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""Increase Time Speed"",
+                    ""type"": ""Button"",
+                    ""id"": ""40cdabbf-d610-464a-b138-ba11dce4aeb8"",
+                    ""expectedControlType"": ""Button"",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""Decrease Time Speed"",
+                    ""type"": ""Button"",
+                    ""id"": ""03cdce08-932d-48e4-a351-5caf1e5200aa"",
+                    ""expectedControlType"": ""Button"",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
                 }
             ],
             ""bindings"": [
@@ -326,7 +353,7 @@ public partial class @PlayerAction: IInputActionCollection2, IDisposable
                 },
                 {
                     ""name"": """",
-                    ""id"": ""8184bb45-b570-413e-9f77-98329c52e50c"",
+                    ""id"": ""49fd71da-2081-4f98-81b7-18f9bd65f2d3"",
                     ""path"": ""<Keyboard>/backspace"",
                     ""interactions"": """",
                     ""processors"": """",
@@ -337,12 +364,45 @@ public partial class @PlayerAction: IInputActionCollection2, IDisposable
                 },
                 {
                     ""name"": """",
-                    ""id"": ""5b770e63-e97c-42ee-8269-0c85029d7b43"",
+                    ""id"": ""0a3907f8-2c73-450f-bcf2-98779323454e"",
                     ""path"": ""<Keyboard>/enter"",
                     ""interactions"": """",
                     ""processors"": """",
                     ""groups"": ""Keyboard"",
                     ""action"": ""Make Nighttime"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""823845bb-3fb1-470a-88de-058d0edb20b4"",
+                    ""path"": ""<Keyboard>/0"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": ""Keyboard"",
+                    ""action"": ""Stop Time"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""8184bb45-b570-413e-9f77-98329c52e50c"",
+                    ""path"": ""<Keyboard>/8"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": ""Keyboard"",
+                    ""action"": ""Increase Time Speed"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""5b770e63-e97c-42ee-8269-0c85029d7b43"",
+                    ""path"": ""<Keyboard>/9"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": ""Keyboard"",
+                    ""action"": ""Decrease Time Speed"",
                     ""isComposite"": false,
                     ""isPartOfComposite"": false
                 }
@@ -689,6 +749,9 @@ public partial class @PlayerAction: IInputActionCollection2, IDisposable
         m_PlayerControls_Boost = m_PlayerControls.FindAction("Boost", throwIfNotFound: true);
         m_PlayerControls_MakeDaytime = m_PlayerControls.FindAction("Make Daytime", throwIfNotFound: true);
         m_PlayerControls_MakeNighttime = m_PlayerControls.FindAction("Make Nighttime", throwIfNotFound: true);
+        m_PlayerControls_StopTime = m_PlayerControls.FindAction("Stop Time", throwIfNotFound: true);
+        m_PlayerControls_IncreaseTimeSpeed = m_PlayerControls.FindAction("Increase Time Speed", throwIfNotFound: true);
+        m_PlayerControls_DecreaseTimeSpeed = m_PlayerControls.FindAction("Decrease Time Speed", throwIfNotFound: true);
         // Camera Controls
         m_CameraControls = asset.FindActionMap("Camera Controls", throwIfNotFound: true);
         m_CameraControls_ForwardCameraView = m_CameraControls.FindAction("Forward Camera View", throwIfNotFound: true);
@@ -791,6 +854,9 @@ public partial class @PlayerAction: IInputActionCollection2, IDisposable
     private readonly InputAction m_PlayerControls_Boost;
     private readonly InputAction m_PlayerControls_MakeDaytime;
     private readonly InputAction m_PlayerControls_MakeNighttime;
+    private readonly InputAction m_PlayerControls_StopTime;
+    private readonly InputAction m_PlayerControls_IncreaseTimeSpeed;
+    private readonly InputAction m_PlayerControls_DecreaseTimeSpeed;
     /// <summary>
     /// Provides access to input actions defined in input action map "Player Controls".
     /// </summary>
@@ -826,6 +892,18 @@ public partial class @PlayerAction: IInputActionCollection2, IDisposable
         /// Provides access to the underlying input action "PlayerControls/MakeNighttime".
         /// </summary>
         public InputAction @MakeNighttime => m_Wrapper.m_PlayerControls_MakeNighttime;
+        /// <summary>
+        /// Provides access to the underlying input action "PlayerControls/StopTime".
+        /// </summary>
+        public InputAction @StopTime => m_Wrapper.m_PlayerControls_StopTime;
+        /// <summary>
+        /// Provides access to the underlying input action "PlayerControls/IncreaseTimeSpeed".
+        /// </summary>
+        public InputAction @IncreaseTimeSpeed => m_Wrapper.m_PlayerControls_IncreaseTimeSpeed;
+        /// <summary>
+        /// Provides access to the underlying input action "PlayerControls/DecreaseTimeSpeed".
+        /// </summary>
+        public InputAction @DecreaseTimeSpeed => m_Wrapper.m_PlayerControls_DecreaseTimeSpeed;
         /// <summary>
         /// Provides access to the underlying input action map instance.
         /// </summary>
@@ -870,6 +948,15 @@ public partial class @PlayerAction: IInputActionCollection2, IDisposable
             @MakeNighttime.started += instance.OnMakeNighttime;
             @MakeNighttime.performed += instance.OnMakeNighttime;
             @MakeNighttime.canceled += instance.OnMakeNighttime;
+            @StopTime.started += instance.OnStopTime;
+            @StopTime.performed += instance.OnStopTime;
+            @StopTime.canceled += instance.OnStopTime;
+            @IncreaseTimeSpeed.started += instance.OnIncreaseTimeSpeed;
+            @IncreaseTimeSpeed.performed += instance.OnIncreaseTimeSpeed;
+            @IncreaseTimeSpeed.canceled += instance.OnIncreaseTimeSpeed;
+            @DecreaseTimeSpeed.started += instance.OnDecreaseTimeSpeed;
+            @DecreaseTimeSpeed.performed += instance.OnDecreaseTimeSpeed;
+            @DecreaseTimeSpeed.canceled += instance.OnDecreaseTimeSpeed;
         }
 
         /// <summary>
@@ -899,6 +986,15 @@ public partial class @PlayerAction: IInputActionCollection2, IDisposable
             @MakeNighttime.started -= instance.OnMakeNighttime;
             @MakeNighttime.performed -= instance.OnMakeNighttime;
             @MakeNighttime.canceled -= instance.OnMakeNighttime;
+            @StopTime.started -= instance.OnStopTime;
+            @StopTime.performed -= instance.OnStopTime;
+            @StopTime.canceled -= instance.OnStopTime;
+            @IncreaseTimeSpeed.started -= instance.OnIncreaseTimeSpeed;
+            @IncreaseTimeSpeed.performed -= instance.OnIncreaseTimeSpeed;
+            @IncreaseTimeSpeed.canceled -= instance.OnIncreaseTimeSpeed;
+            @DecreaseTimeSpeed.started -= instance.OnDecreaseTimeSpeed;
+            @DecreaseTimeSpeed.performed -= instance.OnDecreaseTimeSpeed;
+            @DecreaseTimeSpeed.canceled -= instance.OnDecreaseTimeSpeed;
         }
 
         /// <summary>
@@ -1339,6 +1435,27 @@ public partial class @PlayerAction: IInputActionCollection2, IDisposable
         /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
         /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
         void OnMakeNighttime(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "Stop Time" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnStopTime(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "Increase Time Speed" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnIncreaseTimeSpeed(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "Decrease Time Speed" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnDecreaseTimeSpeed(InputAction.CallbackContext context);
     }
     /// <summary>
     /// Interface to implement callback methods for all input action callbacks associated with input actions defined by "Camera Controls" which allows adding and removing callbacks.
