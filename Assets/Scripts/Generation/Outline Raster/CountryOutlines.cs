@@ -12,7 +12,7 @@ public class CountryOutlines : MonoBehaviour
 
 	void Start()
 	{
-		CountryLoader countryLoader = FindObjectOfType<CountryLoader>();
+		CountryLoader countryLoader = FindFirstObjectByType<CountryLoader>();
 		Country[] countries = countryLoader.GetCountries();
 
 		outlineRenderer = GetComponent<OutlineRenderer>();

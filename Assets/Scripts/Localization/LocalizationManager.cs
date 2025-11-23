@@ -159,7 +159,7 @@ namespace GeoGame.Localization
 			{
 				if (_instance == null)
 				{
-					_instance = FindObjectOfType<LocalizationManager>(includeInactive: true);
+					_instance = FindFirstObjectByType<LocalizationManager>(FindObjectsInactive.Include);
 					_instance.Init();
 				}
 				return _instance;

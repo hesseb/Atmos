@@ -10,7 +10,7 @@ public class CountryIndexDisplay : MonoBehaviour
 
 	void Start()
 	{
-		texture = FindObjectOfType<CountryIndexMapper>().CreateCountryIndexMap(textureWidth, textureWidth / 2);
+		texture = FindFirstObjectByType<CountryIndexMapper>().CreateCountryIndexMap(textureWidth, textureWidth / 2);
 		texture.filterMode = filterMode;
 		display.material.mainTexture = texture;
 	}

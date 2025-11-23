@@ -128,7 +128,7 @@ public class RenderSettingsController : MonoBehaviour
 		{
 			if (_instance == null)
 			{
-				_instance = FindObjectOfType<RenderSettingsController>(includeInactive: true);
+				_instance = FindFirstObjectByType<RenderSettingsController>(FindObjectsInactive.Include);
 			}
 			return _instance;
 		}

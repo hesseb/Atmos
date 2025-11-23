@@ -22,7 +22,7 @@ namespace GeoGame.Localization
 
 		public void Run()
 		{
-			LocalizationManager manager = FindObjectOfType<LocalizationManager>();
+			LocalizationManager manager = FindFirstObjectByType<LocalizationManager>();
 
 			bool allSuccessful = true;
 

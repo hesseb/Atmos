@@ -97,7 +97,7 @@ public class Player : MonoBehaviour
 
 	void Awake()
 	{
-		gameCamera = FindObjectOfType<GameCamera>();
+		gameCamera = FindFirstObjectByType<GameCamera>();
 
 		worldRadius = heightSettings.worldRadius;
 

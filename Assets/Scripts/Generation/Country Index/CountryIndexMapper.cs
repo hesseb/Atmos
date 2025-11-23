@@ -25,7 +25,7 @@ public class CountryIndexMapper : MonoBehaviour
 
 	void WriteCountryIndices(RenderTexture texture)
 	{
-		Country[] countries = FindObjectOfType<CountryLoader>().GetCountries();
+		Country[] countries = FindFirstObjectByType<CountryLoader>().GetCountries();
 
 		var metaData = new List<PolygonMetaData>();
 		var points = new List<Vector2>();

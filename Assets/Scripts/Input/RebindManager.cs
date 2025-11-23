@@ -17,7 +17,7 @@ public class RebindManager : MonoBehaviour
 	void Awake()
 	{
 		activePlayerActions = new PlayerAction();
-		rebindElements = FindObjectsOfType<RebindUI>(includeInactive: true);
+		rebindElements = FindObjectsByType<RebindUI>(FindObjectsInactive.Include, FindObjectsSortMode.None);
 
 		SetActiveActionsToSavedValues();
 
@@ -150,7 +150,7 @@ public class RebindManager : MonoBehaviour
 		{
 			if (_instance == null)
 			{
-				_instance = FindObjectOfType<RebindManager>(includeInactive: true);
+				_instance = FindFirstObjectByType<RebindManager>(FindObjectsInactive.Include);
 			}
 			return _instance;
 		}
