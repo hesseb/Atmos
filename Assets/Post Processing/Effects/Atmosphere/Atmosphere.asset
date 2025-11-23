@@ -39,7 +39,7 @@ MonoBehaviour:
   transmittanceLUTSize: {x: 128, y: 64}
   aerialPerspectiveLUTCompute: {fileID: 7200000, guid: 5261cb094de7cb64189738546d046b7d, type: 3}
   aerialPerspectiveLUTSize: 32
-  aerialPerspectiveStrength: 0.529
+  aerialPerspectiveStrength: 1
   numSkyScatteringSteps: 256
   skyRenderCompute: {fileID: 7200000, guid: 768e75c0bfe7f084daefc455ceb6b5ac, type: 3}
   skyRenderSize: {x: 128, y: 256}
