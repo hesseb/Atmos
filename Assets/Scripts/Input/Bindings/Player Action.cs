@@ -93,6 +93,24 @@ public partial class @PlayerAction: IInputActionCollection2, IDisposable
             ""id"": ""156a9099-89f5-4544-9c62-805c91ba812e"",
             ""actions"": [
                 {
+                    ""name"": ""Direct Control"",
+                    ""type"": ""Button"",
+                    ""id"": ""58cca24b-43c7-47cb-9159-c64941082833"",
+                    ""expectedControlType"": ""Button"",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""Plane Controls"",
+                    ""type"": ""Button"",
+                    ""id"": ""58cca24b-43c7-47cb-9159-c64941082393"",
+                    ""expectedControlType"": ""Button"",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
                     ""name"": ""Drop Package"",
                     ""type"": ""Button"",
                     ""id"": ""58cca24b-43c7-47cb-9159-c64941082333"",
@@ -175,6 +193,28 @@ public partial class @PlayerAction: IInputActionCollection2, IDisposable
                 }
             ],
             ""bindings"": [
+                {
+                    ""name"": """",
+                    ""id"": ""ef28f26a-1044-4379-a9b0-c82e314dc9cc"",
+                    ""path"": ""<Keyboard>/y"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": ""Keyboard"",
+                    ""action"": ""Direct Control"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""ef28f26a-1044-4379-a9b0-c17e314dc6cc"",
+                    ""path"": ""<Keyboard>/u"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": ""Keyboard"",
+                    ""action"": ""Plane Controls"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
                 {
                     ""name"": """",
                     ""id"": ""ef28f26a-1044-4379-a9b0-c87e314dc6cc"",
@@ -438,6 +478,33 @@ public partial class @PlayerAction: IInputActionCollection2, IDisposable
                     ""processors"": """",
                     ""interactions"": """",
                     ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""CameraMovement"",
+                    ""type"": ""Value"",
+                    ""id"": ""8cee259e-1505-4fab-944c-c26d579003d1"",
+                    ""expectedControlType"": ""Vector2"",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": true
+                },
+                {
+                    ""name"": ""CameraMovementSecondary"",
+                    ""type"": ""Value"",
+                    ""id"": ""8cee259e-1505-4fab-944c-c26d579013d1"",
+                    ""expectedControlType"": ""Vector2"",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": true
+                },
+                {
+                    ""name"": ""Reset Camera"",
+                    ""type"": ""Button"",
+                    ""id"": ""34f7c69f-17bf-4520-b616-6b09ea9d774b"",
+                    ""expectedControlType"": ""Button"",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
                 }
             ],
             ""bindings"": [
@@ -515,6 +582,138 @@ public partial class @PlayerAction: IInputActionCollection2, IDisposable
                     ""processors"": """",
                     ""groups"": ""Gamepad"",
                     ""action"": ""Forward Camera View"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": ""Arrows"",
+                    ""id"": ""5ae49af1-f4f5-44e0-a34f-f42dd641d970"",
+                    ""path"": ""2DVector(mode=1)"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""CameraMovement"",
+                    ""isComposite"": true,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": ""up"",
+                    ""id"": ""2c2ddba2-37a7-4601-9d09-6f601c78e1d0"",
+                    ""path"": ""<Keyboard>/upArrow"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": ""Keyboard"",
+                    ""action"": ""CameraMovement"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": true
+                },
+                {
+                    ""name"": ""down"",
+                    ""id"": ""6251075d-298f-4c1f-90ee-3102a21de069"",
+                    ""path"": ""<Keyboard>/downArrow"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": ""Keyboard"",
+                    ""action"": ""CameraMovement"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": true
+                },
+                {
+                    ""name"": ""left"",
+                    ""id"": ""ddb02a61-e35a-4f5d-a0fa-27cb70f7449b"",
+                    ""path"": ""<Keyboard>/leftArrow"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": ""Keyboard"",
+                    ""action"": ""CameraMovement"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": true
+                },
+                {
+                    ""name"": ""right"",
+                    ""id"": ""64ed9813-ee75-47d5-9165-ae9d922a3162"",
+                    ""path"": ""<Keyboard>/rightArrow"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": ""Keyboard"",
+                    ""action"": ""CameraMovement"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": true
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""03578778-67e6-43d8-825e-74af556afd83"",
+                    ""path"": ""<Gamepad>/rightStick"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": ""Gamepad"",
+                    ""action"": ""CameraMovement"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": ""IJKL"",
+                    ""id"": ""eb47fda7-7456-47e9-40f0-63263bb5b831"",
+                    ""path"": ""2DVector(mode=1)"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""CameraMovementSecondary"",
+                    ""isComposite"": true,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": ""up"",
+                    ""id"": ""097cdf2a-158b-41fb-b083-01921142ebaf"",
+                    ""path"": ""<Keyboard>/i"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": ""Keyboard"",
+                    ""action"": ""CameraMovementSecondary"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": true
+                },
+                {
+                    ""name"": ""down"",
+                    ""id"": ""7932e6aa-683b-4ec0-bafd-4fd084f9c55a"",
+                    ""path"": ""<Keyboard>/k"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": ""Keyboard"",
+                    ""action"": ""CameraMovementSecondary"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": true
+                },
+                {
+                    ""name"": ""left"",
+                    ""id"": ""209170c4-ccfc-44c8-af56-5df09bf3044b"",
+                    ""path"": ""<Keyboard>/j"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": ""Keyboard"",
+                    ""action"": ""CameraMovementSecondary"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": true
+                },
+                {
+                    ""name"": ""right"",
+                    ""id"": ""2cdfad30-015a-4ec0-0a5a-812908165284"",
+                    ""path"": ""<Keyboard>/l"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": ""Keyboard"",
+                    ""action"": ""CameraMovementSecondary"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": true
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""ff42c09b-a04c-45af-8062-eb61b6ccbabd"",
+                    ""path"": ""<Keyboard>/r"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": ""Keyboard"",
+                    ""action"": ""Reset Camera"",
                     ""isComposite"": false,
                     ""isPartOfComposite"": false
                 }
@@ -743,6 +942,8 @@ public partial class @PlayerAction: IInputActionCollection2, IDisposable
 }");
         // Player Controls
         m_PlayerControls = asset.FindActionMap("Player Controls", throwIfNotFound: true);
+        m_PlayerControls_DirectControl = m_PlayerControls.FindAction("Direct Control", throwIfNotFound: true);
+        m_PlayerControls_PlaneControls = m_PlayerControls.FindAction("Plane Controls", throwIfNotFound: true);
         m_PlayerControls_DropPackage = m_PlayerControls.FindAction("Drop Package", throwIfNotFound: true);
         m_PlayerControls_Movement = m_PlayerControls.FindAction("Movement", throwIfNotFound: true);
         m_PlayerControls_Speed = m_PlayerControls.FindAction("Speed", throwIfNotFound: true);
@@ -757,6 +958,9 @@ public partial class @PlayerAction: IInputActionCollection2, IDisposable
         m_CameraControls_ForwardCameraView = m_CameraControls.FindAction("Forward Camera View", throwIfNotFound: true);
         m_CameraControls_BackwardCameraView = m_CameraControls.FindAction("Backward Camera View", throwIfNotFound: true);
         m_CameraControls_TopCameraView = m_CameraControls.FindAction("Top Camera View", throwIfNotFound: true);
+        m_CameraControls_CameraMovement = m_CameraControls.FindAction("CameraMovement", throwIfNotFound: true);
+        m_CameraControls_CameraMovementSecondary = m_CameraControls.FindAction("CameraMovementSecondary", throwIfNotFound: true);
+        m_CameraControls_ResetCamera = m_CameraControls.FindAction("Reset Camera", throwIfNotFound: true);
         // UI Controls
         m_UIControls = asset.FindActionMap("UI Controls", throwIfNotFound: true);
         m_UIControls_TogglePause = m_UIControls.FindAction("Toggle Pause", throwIfNotFound: true);
@@ -848,6 +1052,8 @@ public partial class @PlayerAction: IInputActionCollection2, IDisposable
     // Player Controls
     private readonly InputActionMap m_PlayerControls;
     private List<IPlayerControlsActions> m_PlayerControlsActionsCallbackInterfaces = new List<IPlayerControlsActions>();
+    private readonly InputAction m_PlayerControls_DirectControl;
+    private readonly InputAction m_PlayerControls_PlaneControls;
     private readonly InputAction m_PlayerControls_DropPackage;
     private readonly InputAction m_PlayerControls_Movement;
     private readonly InputAction m_PlayerControls_Speed;
@@ -868,6 +1074,14 @@ public partial class @PlayerAction: IInputActionCollection2, IDisposable
         /// Construct a new instance of the input action map wrapper class.
         /// </summary>
         public PlayerControlsActions(@PlayerAction wrapper) { m_Wrapper = wrapper; }
+        /// <summary>
+        /// Provides access to the underlying input action "PlayerControls/DirectControl".
+        /// </summary>
+        public InputAction @DirectControl => m_Wrapper.m_PlayerControls_DirectControl;
+        /// <summary>
+        /// Provides access to the underlying input action "PlayerControls/PlaneControls".
+        /// </summary>
+        public InputAction @PlaneControls => m_Wrapper.m_PlayerControls_PlaneControls;
         /// <summary>
         /// Provides access to the underlying input action "PlayerControls/DropPackage".
         /// </summary>
@@ -930,6 +1144,12 @@ public partial class @PlayerAction: IInputActionCollection2, IDisposable
         {
             if (instance == null || m_Wrapper.m_PlayerControlsActionsCallbackInterfaces.Contains(instance)) return;
             m_Wrapper.m_PlayerControlsActionsCallbackInterfaces.Add(instance);
+            @DirectControl.started += instance.OnDirectControl;
+            @DirectControl.performed += instance.OnDirectControl;
+            @DirectControl.canceled += instance.OnDirectControl;
+            @PlaneControls.started += instance.OnPlaneControls;
+            @PlaneControls.performed += instance.OnPlaneControls;
+            @PlaneControls.canceled += instance.OnPlaneControls;
             @DropPackage.started += instance.OnDropPackage;
             @DropPackage.performed += instance.OnDropPackage;
             @DropPackage.canceled += instance.OnDropPackage;
@@ -968,6 +1188,12 @@ public partial class @PlayerAction: IInputActionCollection2, IDisposable
         /// <seealso cref="PlayerControlsActions" />
         private void UnregisterCallbacks(IPlayerControlsActions instance)
         {
+            @DirectControl.started -= instance.OnDirectControl;
+            @DirectControl.performed -= instance.OnDirectControl;
+            @DirectControl.canceled -= instance.OnDirectControl;
+            @PlaneControls.started -= instance.OnPlaneControls;
+            @PlaneControls.performed -= instance.OnPlaneControls;
+            @PlaneControls.canceled -= instance.OnPlaneControls;
             @DropPackage.started -= instance.OnDropPackage;
             @DropPackage.performed -= instance.OnDropPackage;
             @DropPackage.canceled -= instance.OnDropPackage;
@@ -1035,6 +1261,9 @@ public partial class @PlayerAction: IInputActionCollection2, IDisposable
     private readonly InputAction m_CameraControls_ForwardCameraView;
     private readonly InputAction m_CameraControls_BackwardCameraView;
     private readonly InputAction m_CameraControls_TopCameraView;
+    private readonly InputAction m_CameraControls_CameraMovement;
+    private readonly InputAction m_CameraControls_CameraMovementSecondary;
+    private readonly InputAction m_CameraControls_ResetCamera;
     /// <summary>
     /// Provides access to input actions defined in input action map "Camera Controls".
     /// </summary>
@@ -1058,6 +1287,18 @@ public partial class @PlayerAction: IInputActionCollection2, IDisposable
         /// Provides access to the underlying input action "CameraControls/TopCameraView".
         /// </summary>
         public InputAction @TopCameraView => m_Wrapper.m_CameraControls_TopCameraView;
+        /// <summary>
+        /// Provides access to the underlying input action "CameraControls/CameraMovement".
+        /// </summary>
+        public InputAction @CameraMovement => m_Wrapper.m_CameraControls_CameraMovement;
+        /// <summary>
+        /// Provides access to the underlying input action "CameraControls/CameraMovementSecondary".
+        /// </summary>
+        public InputAction @CameraMovementSecondary => m_Wrapper.m_CameraControls_CameraMovementSecondary;
+        /// <summary>
+        /// Provides access to the underlying input action "CameraControls/ResetCamera".
+        /// </summary>
+        public InputAction @ResetCamera => m_Wrapper.m_CameraControls_ResetCamera;
         /// <summary>
         /// Provides access to the underlying input action map instance.
         /// </summary>
@@ -1093,6 +1334,15 @@ public partial class @PlayerAction: IInputActionCollection2, IDisposable
             @TopCameraView.started += instance.OnTopCameraView;
             @TopCameraView.performed += instance.OnTopCameraView;
             @TopCameraView.canceled += instance.OnTopCameraView;
+            @CameraMovement.started += instance.OnCameraMovement;
+            @CameraMovement.performed += instance.OnCameraMovement;
+            @CameraMovement.canceled += instance.OnCameraMovement;
+            @CameraMovementSecondary.started += instance.OnCameraMovementSecondary;
+            @CameraMovementSecondary.performed += instance.OnCameraMovementSecondary;
+            @CameraMovementSecondary.canceled += instance.OnCameraMovementSecondary;
+            @ResetCamera.started += instance.OnResetCamera;
+            @ResetCamera.performed += instance.OnResetCamera;
+            @ResetCamera.canceled += instance.OnResetCamera;
         }
 
         /// <summary>
@@ -1113,6 +1363,15 @@ public partial class @PlayerAction: IInputActionCollection2, IDisposable
             @TopCameraView.started -= instance.OnTopCameraView;
             @TopCameraView.performed -= instance.OnTopCameraView;
             @TopCameraView.canceled -= instance.OnTopCameraView;
+            @CameraMovement.started -= instance.OnCameraMovement;
+            @CameraMovement.performed -= instance.OnCameraMovement;
+            @CameraMovement.canceled -= instance.OnCameraMovement;
+            @CameraMovementSecondary.started -= instance.OnCameraMovementSecondary;
+            @CameraMovementSecondary.performed -= instance.OnCameraMovementSecondary;
+            @CameraMovementSecondary.canceled -= instance.OnCameraMovementSecondary;
+            @ResetCamera.started -= instance.OnResetCamera;
+            @ResetCamera.performed -= instance.OnResetCamera;
+            @ResetCamera.canceled -= instance.OnResetCamera;
         }
 
         /// <summary>
@@ -1394,6 +1653,20 @@ public partial class @PlayerAction: IInputActionCollection2, IDisposable
     public interface IPlayerControlsActions
     {
         /// <summary>
+        /// Method invoked when associated input action "Direct Control" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnDirectControl(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "Plane Controls" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnPlaneControls(InputAction.CallbackContext context);
+        /// <summary>
         /// Method invoked when associated input action "Drop Package" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
         /// </summary>
         /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
@@ -1485,6 +1758,27 @@ public partial class @PlayerAction: IInputActionCollection2, IDisposable
         /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
         /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
         void OnTopCameraView(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "CameraMovement" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnCameraMovement(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "CameraMovementSecondary" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnCameraMovementSecondary(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "Reset Camera" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnResetCamera(InputAction.CallbackContext context);
     }
     /// <summary>
     /// Interface to implement callback methods for all input action callbacks associated with input actions defined by "UI Controls" which allows adding and removing callbacks.

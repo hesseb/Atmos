@@ -20,10 +20,15 @@ public class GameCamera : MonoBehaviour
 
 	float angle;
 
+	public Vector2 movementInput { get; private set; }
+	public Vector2 rotationInput { get; private set; }
+	public Vector2 secondaryInput { get; private set; }
+
 	[Header("Alternate View Settings")]
 	public ViewSettings lookingAheadView;
 	public ViewSettings lookingBehindView;
 	public ViewSettings menuView;
+	public ViewSettings directControlView;
 
 	[Header("References")]
 	public Camera cam;
@@ -75,6 +80,12 @@ public class GameCamera : MonoBehaviour
 		{
 			menuToGameViewTransitionT = 0;
 			activeView = ViewMode.MainMenu;
+		}
+
+		if ( player.activeControlMode == Player.ControlMode.DirectControl )
+		{
+			UpdateDirectControlView();
+			return;
 		}
 
 		// Set camera based on active view
@@ -152,6 +163,41 @@ public class GameCamera : MonoBehaviour
 
 		transform.position = newPos;
 		transform.LookAt(lookTarget, player.GravityUp);
+	}
+
+	public void UpdateDirectMovementInput(Vector2 moveInput, Vector2 rotInput, Vector2 secInput)
+	{
+		movementInput = moveInput;
+		rotationInput = rotInput;
+		secondaryInput = secInput;
+	}
+
+	public void ResetDirectCameraOffset()
+	{
+		directControlView.offset = new Vector3(0f, 50f, 0f);
+	}
+
+	void UpdateDirectControlView()
+	{
+		transform.position = target.position;
+
+		if (player.worldIsSpherical)
+		{
+			directControlView.offset.x += rotationInput.x;
+			directControlView.offset.y += rotationInput.y;
+			directControlView.offset.z += secondaryInput.x;
+
+			Vector3 gravityUp = transform.position.normalized;
+			Vector3 lookTarget = (transform.position - gravityUp).normalized;
+
+			transform.LookAt(lookTarget + new Vector3(directControlView.offset.x, directControlView.offset.y, 0));
+
+			transform.Rotate(new Vector3(0, 0, -directControlView.offset.z));			
+		}
+		else
+		{
+			transform.RotateAround(transform.position, Vector3.up, rotationInput.x);
+		}
 	}
 
 	public bool topDownMode

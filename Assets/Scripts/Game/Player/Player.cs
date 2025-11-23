@@ -1,11 +1,16 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem;
+using static GameCamera;
 
 public class Player : MonoBehaviour
 {
 
 	public event System.Action<Package> packageDropped;
+
+	public enum ControlMode { PlaneControls, DirectControl }
+	public ControlMode activeControlMode = ControlMode.DirectControl;
 
 	[Header("Startup Settings")]
 	public bool worldIsSpherical = true;
@@ -67,6 +72,10 @@ public class Player : MonoBehaviour
 	float pitchSmoothV;
 	float rollSmoothV;
 
+	public Vector2 directInput {  get; private set; }
+	public Vector2 cameraInput { get; private set; }
+	public Vector2 secondaryInput { get; private set; }
+
 	public float currentPitchAngle { get; private set; }
 	public float currentRollAngle { get; private set; }
 	public float turnInput { get; private set; }
@@ -115,10 +124,17 @@ public class Player : MonoBehaviour
 	{
 		if (GameController.IsState(GameState.Playing))
 		{
-			HandleInput();
-			HandleMovement();
-			UpdatePositionHistory();
-			UpdateBoostTimer();
+			if ( activeControlMode == ControlMode.PlaneControls)
+			{
+				HandleInput();
+				HandleMovement();
+				UpdatePositionHistory();
+				UpdateBoostTimer();
+			}
+			if ( activeControlMode == ControlMode.DirectControl )
+			{
+				HandleDirectMovement();
+			}
 		}
 
 		UpdateGraphics();
@@ -161,6 +177,7 @@ public class Player : MonoBehaviour
 			}
 		}
 	}
+
 	void HandleMovement()
 	{
 		// Turn
@@ -225,6 +242,60 @@ public class Player : MonoBehaviour
 			boostTimeRemaining += boostTimeToAddThisFrame;
 			boostTimeToAdd -= boostTimeToAddThisFrame;
 			boostTimeRemaining = Mathf.Min(boostTimeRemaining, maxBoostTime);
+		}
+	}
+
+	public void SetActiveControlMode(ControlMode controlMode)
+	{
+		activeControlMode = controlMode;
+	}
+
+	public void UpdateDirectMovementInput(Vector2 moveInput, Vector2 directCameraInput, Vector2 secondaryCameraInput)
+	{
+		directInput = moveInput;
+		cameraInput = directCameraInput;
+		secondaryInput = secondaryCameraInput;
+	}
+
+	void HandleDirectMovement()
+	{
+		UpdateDirectPosition();
+		UpdateDirectRotation();
+	}
+
+	void UpdateDirectPosition()
+	{
+		// Update elevation
+		currentElevation -= secondaryInput.y;
+		currentElevation = Mathf.Clamp(currentElevation, minElevation, maxElevation);
+
+		// Update position
+		Vector3 newPos = transform.position + gameCamera.transform.right * directInput.x + gameCamera.transform.up * directInput.y;
+		if (worldIsSpherical)
+		{
+			newPos = newPos.normalized * (worldRadius + currentElevation);
+		}
+		else
+		{
+			newPos = new Vector3(newPos.x, currentElevation, newPos.z);
+		}
+		transform.position = newPos;
+	}
+
+	void UpdateDirectRotation()
+	{
+		if (worldIsSpherical)
+		{
+			Vector3 gravityUp = transform.position.normalized;
+			Vector3 facing = transform.forward.normalized;
+			Vector3 right = Vector3.Cross(gravityUp, facing);
+			transform.RotateAround(transform.position, gravityUp, cameraInput.x);
+
+			transform.Rotate(new Vector3(-cameraInput.y, 0, 0));
+		}
+		else
+		{
+			transform.RotateAround(transform.position, Vector3.up, cameraInput.x);
 		}
 	}
 
@@ -298,7 +369,7 @@ public class Player : MonoBehaviour
 
 	public void SetStartPos(PlayerStartPoint startPoint)
 	{
-
+		
 		Coordinate coord = startPoint.coordinate.ConvertToRadians();
 		currentElevation = Mathf.Lerp(minElevation, maxElevation, startPoint.elevationT);
 		transform.position = GeoMaths.CoordinateToPoint(coord, worldRadius + currentElevation);

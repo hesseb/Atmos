@@ -38,15 +38,34 @@ public class PlayerInputHandler : MonoBehaviour
 
 	void PlayerControls()
 	{
-		Vector2 movementInput = playerActions.PlayerControls.Movement.ReadValue<Vector2>();
-		float accelerateDir = playerActions.PlayerControls.Speed.ReadValue<float>();
-		bool boosting = playerActions.PlayerControls.Boost.IsPressed();
-		player.UpdateMovementInput(movementInput, accelerateDir, boosting);
-
-
-		if (playerActions.PlayerControls.DropPackage.WasPressedThisFrame())
+		if (playerActions.PlayerControls.DirectControl.WasPressedThisFrame())
 		{
-			questSystem.TryDropPackage();
+			player.SetActiveControlMode(Player.ControlMode.DirectControl);
+		}
+		if (playerActions.PlayerControls.PlaneControls.WasPressedThisFrame())
+		{
+			player.SetActiveControlMode(Player.ControlMode.PlaneControls);
+		}
+
+		if ( player.activeControlMode == Player.ControlMode.PlaneControls)
+		{
+			Vector2 movementInput = playerActions.PlayerControls.Movement.ReadValue<Vector2>();
+			float accelerateDir = playerActions.PlayerControls.Speed.ReadValue<float>();
+			bool boosting = playerActions.PlayerControls.Boost.IsPressed();
+			player.UpdateMovementInput(movementInput, accelerateDir, boosting);
+
+
+			if (playerActions.PlayerControls.DropPackage.WasPressedThisFrame())
+			{
+				questSystem.TryDropPackage();
+			}
+		}
+		else if ( player.activeControlMode == Player.ControlMode.DirectControl )
+		{
+			Vector2 movementInput = playerActions.PlayerControls.Movement.ReadValue<Vector2>();
+			Vector2 directCameraInput = playerActions.CameraControls.CameraMovement.ReadValue<Vector2>();
+			Vector2 secondaryInput = playerActions.CameraControls.CameraMovementSecondary.ReadValue<Vector2>();
+			player.UpdateDirectMovementInput(movementInput, directCameraInput, secondaryInput);
 		}
 	}
 
@@ -90,6 +109,19 @@ public class PlayerInputHandler : MonoBehaviour
 		if (playerActions.CameraControls.TopCameraView.WasPressedThisFrame())
 		{
 			gameCamera.SetActiveView(GameCamera.ViewMode.TopDown);
+		}
+
+		if (playerActions.CameraControls.ResetCamera.WasPressedThisFrame())
+		{
+			gameCamera.ResetDirectCameraOffset();
+		}
+
+		if (player.activeControlMode == Player.ControlMode.DirectControl)
+		{
+			Vector2 movementInput = playerActions.PlayerControls.Movement.ReadValue<Vector2>();
+			Vector2 rotationInput = playerActions.CameraControls.CameraMovement.ReadValue<Vector2>();
+			Vector2 secondaryInput = playerActions.CameraControls.CameraMovementSecondary.ReadValue<Vector2>();
+			gameCamera.UpdateDirectMovementInput(movementInput, rotationInput, secondaryInput);
 		}
 	}
 
