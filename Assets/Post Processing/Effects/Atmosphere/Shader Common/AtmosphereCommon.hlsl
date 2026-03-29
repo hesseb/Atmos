@@ -37,11 +37,11 @@ ScatteringParameters getScatteringValues(float3 rayPos) {
 	ScatteringParameters scattering;
 
 	float height = length(rayPos - 0) - planetRadius;
-	float height01 = saturate(height / atmosphereThickness);
+	float height01 = saturate(height / atmosphereThickness); // Clamp
 
 	float rayleighDensity = exp(-height01 / rayleighDensityAvg);
 	float mieDensity = exp(-height01 / mieDensityAvg);
-	float ozoneDensity = saturate(1 - abs(ozonePeakDensityAltitude - height01) * ozoneDensityFalloff);
+	float ozoneDensity = saturate(1 - abs(ozonePeakDensityAltitude - height01) * ozoneDensityFalloff); // Clamp
 
 	float mie = mieCoefficient * mieDensity;
 	float3 rayleigh = rayleighCoefficients * rayleighDensity;
@@ -56,12 +56,23 @@ ScatteringParameters getScatteringValues(float3 rayPos) {
 // Thanks to https://www.shadertoy.com/view/slSXRW
 float getMiePhase(float cosTheta) {
 	const float g = 0.8;
+    
+    // Schlick approximation
+    const float k = 1.55f * g - 0.55f * g * g * g;
+    
+    float num = 1.0f - k * k;
+    float denom = 4.0f * PI * (1.0f + k * cosTheta);
+    
+    return num / denom;
+    
+    /*
 	const float scale = 3.0/(8.0*PI);
 	
 	float num = (1.0-g*g)*(1.0+cosTheta*cosTheta);
 	float denom = (2.0+g*g)*pow(abs(1.0 + g*g - 2.0*g*cosTheta), 1.5);
 	
 	return scale*num/denom;
+    */
 }
 
 float getRayleighPhase(float cosTheta) {
@@ -130,11 +141,14 @@ float3 getSunTransmittance(float3 pos, float3 sunDir) {
 		pos += sunDir * stepSize;
 		ScatteringParameters scattering = getScatteringValues(pos);
 		
-		transmittance *= exp(-scattering.extinction / atmosphereThickness * stepSize);
-		opticalDepth += scattering.extinction;
+        // Transmittance not used?
+		//transmittance *= exp(-scattering.extinction / atmosphereThickness * stepSize);
+        transmittance *= exp(- stepSize / rayLength * scattering.extinction);
+        opticalDepth += scattering.extinction;
 
 	}
-	return exp(-(opticalDepth / atmosphereThickness * stepSize));
+    return transmittance;
+	//return exp(-(opticalDepth / atmosphereThickness * stepSize));
 }
 
 float3 getSunTransmittanceLUT(sampler2D lut, float3 pos, float3 dir) {
@@ -155,7 +169,11 @@ ScatteringResult raymarch(float3 rayPos, float3 rayDir, float rayLength, int num
 
 	float cosTheta = dot(rayDir, dirToSun);
 	//float rayleighPhaseValue = getRayleighPhase(-cosTheta);
+
+	//TODO: Weird bug, rayleigh not active. Value too small but not zero?
+    const float realRayleigh = getRayleighPhase(-cosTheta);
 	float rayleighPhaseValue = 1;
+    rayleighPhaseValue = realRayleigh*15;
 	float miePhase = getMiePhase(cosTheta);
 
 	// Step through the atmosphere

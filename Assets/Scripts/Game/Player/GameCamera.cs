@@ -66,7 +66,7 @@ public class GameCamera : MonoBehaviour
 		{
 			UpdateView();
 
-			cam.fieldOfView = Mathf.SmoothDamp(cam.fieldOfView, CalculateFOV(), ref smoothFovVelocity, fovSmoothTime);
+			//cam.fieldOfView = Mathf.SmoothDamp(cam.fieldOfView, CalculateFOV(), ref smoothFovVelocity, fovSmoothTime);
 
 
 			gameCameraUpdateComplete?.Invoke(cam);

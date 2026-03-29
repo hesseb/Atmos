@@ -16,8 +16,6 @@ public class AtmosphereEffect : PostProcessingEffect
 	public float bodyRadius;
 	public float atmosphereThickness;
 
-	public Shader atmosphereShader;
-	public Vector4 testParams = new Vector4(7, 1.26f, 0.1f, 3);
 
 	// Num raymarch steps when drawing aerial perspective (planet viewed through atmosphere)
 	public int numAerialScatteringSteps = 20;
@@ -35,9 +33,9 @@ public class AtmosphereEffect : PostProcessingEffect
 	// Altitude [0, 1] at which the average density of particles causing mie scattering is found
 	[Range(0, 1)] public float mieDensityAvg = 0.1f;
 	// Strength of mie scattering
-	public float mieCoefficient;
+	[Range(0, 1)] public float mieCoefficient;
 	// Strength of mie absorption
-	public float mieAbsorption;
+	[Range(0, 1)] public float mieAbsorption;
 
 	[Header("Ozone")]
 	//Altitude [0, 1] at which ozone density is at the greatest
@@ -183,7 +181,7 @@ public class AtmosphereEffect : PostProcessingEffect
 
 
 			InitAndRenderTransmittanceLUT();
-			InitAeiralPerspectiveLUTs();
+			InitAerialPerspectiveLUTs();
 			InitSkyLUT();
 
 			// Set shader params after all LUTs have been initialized
@@ -260,7 +258,6 @@ public class AtmosphereEffect : PostProcessingEffect
 		drawAerial.SetTexture("BlueNoise", blueNoise);
 
 		// Values
-		drawAerial.SetVector("params", testParams);
 		drawAerial.SetFloat("ditherStrength", ditherStrength);
 		drawAerial.SetFloat("aerialPerspectiveStrength", aerialPerspectiveStrength);
 
@@ -281,7 +278,7 @@ public class AtmosphereEffect : PostProcessingEffect
 		ComputeHelper.Dispatch(transmittanceLUTCompute, transmittanceLUT);
 	}
 
-	void InitAeiralPerspectiveLUTs()
+	void InitAerialPerspectiveLUTs()
 	{
 		GraphicsFormat aerialPerspectiveLUTFormat = GraphicsFormat.R16G16B16A16_SFloat;
 		GraphicsFormat transmittance3DFormat = GraphicsFormat.R16G16B16A16_UNorm;
@@ -306,6 +303,7 @@ public class AtmosphereEffect : PostProcessingEffect
 		aerialPerspectiveLUTCompute.SetFloat(ShaderParamID.farClip, cam.farClipPlane);
 		aerialPerspectiveLUTCompute.SetVector(ShaderParamID.dirToSun, -light.transform.forward);
 		// Render
+		// The passed in texture is merely used to gather its size. The actual textures in the shader are set in InitAerialPerspectiveLUTs
 		ComputeHelper.Dispatch(aerialPerspectiveLUTCompute, aerialPerspectiveLuminance);
 	}
 
