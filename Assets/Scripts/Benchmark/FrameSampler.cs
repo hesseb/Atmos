@@ -112,6 +112,12 @@ public class FrameSampler : System.IDisposable
 			}
 		}
 
+		// Captured before the baseline is updated below: the first call has no previous
+		// timestamp to compare against, so every timing already sitting in the buffer counts
+		// as fresh. That is the priming call establishing a baseline, not an attribution
+		// failure.
+		bool hadBaseline = lastSeenPresentTime >= 0;
+
 		if (fresh > 0)
 		{
 			lastSeenPresentTime = timingBuffer[0].cpuTimePresentCalled;
@@ -132,7 +138,12 @@ public class FrameSampler : System.IDisposable
 				TimingLagFrames = captureCount;
 			}
 
-			if (fresh > 1) { AttributionAnomalies++; }
+			// Counting the priming call made every single run emit
+			// TIMING_ATTRIBUTION_ANOMALIES:1 - verified against a release run with 2681 rows
+			// and zero timing_valid=0 frames, so nothing was actually mis-attributed. A
+			// warning that fires on every run is worse than none: it teaches the reader to
+			// ignore the field that is supposed to mean something.
+			if (fresh > 1 && hadBaseline) { AttributionAnomalies++; }
 		}
 		else if (captureCount > 4)
 		{
