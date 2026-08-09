@@ -129,6 +129,17 @@ Three things that are load-bearing and non-obvious:
   337k vertices sit above r=150.05, up to 153.17. Left at sea level it drifts by
   `dr/tan(elevation)` — 1.3 units looking straight down, ~20 at a grazing angle.
 
+The hovered country's **terrain is also brightened**, in `Terrain.shader`, reusing the
+`texCoord` it already computes. Behind a `COUNTRY_HIGHLIGHT_ON` keyword rather than a
+branch, so the extra texture fetch is compiled out when the country UI is off — that
+shader is in the path the thesis measures, so the off state has to be genuinely free. The
+keyword toggles once on enable/disable, not per hover (swapping variants on every cursor
+move risks a hitch); index `-1` is the "nothing highlighted" state. Both the keyword and
+the globals outlive the component, so they are cleared on disable and destroy.
+
+Note the fill is applied *before* the atmosphere's tone mapping, so it reads more subtly
+at low sun angles than at midday.
+
 ### Labels
 `CountryLabelData` holds a baked **pole of inaccessibility** per country plus the angular
 radius of the inscribed circle there. A centroid is not sufficient — for a concave country
@@ -145,6 +156,15 @@ radius, faded by projected on-screen size and by a horizon test. Uses TMP's
 **Distance Field Overlay** shader — the plain one declares `ZTest [unity_GUIZTestMode]`,
 a global set by Canvas rendering, and there is no Canvas in this scene.
 
+Idle labels are dimmed and semi-transparent so the map reads first; the hovered country's
+label grows, goes fully opaque and turns white, and ignores the size filter since the
+cursor has already established which country is meant. Colour and scale are only written
+when they change, since `TMP_Text.color` dirties vertex colours.
+
+`flipFacing` is on: TMP's glyphs read correctly from their local −Z, so the object's
+forward points into the globe. Determined by looking at it, not by reasoning about TMP's
+winding.
+
 ### Validation
 `LookupProbe` (on `World Lookup`) has three tests, run from its context menu.
 **`runOnStart` is off by default** — the sweeps issue ~460 blocking GPU readbacks. Re-run
@@ -160,8 +180,13 @@ labels would be 0.03–0.16 world units wide against Russia's 94, so the size fi
 shows them. Not fixable without a higher-resolution index map, and not worth it.
 
 ### Cost to record in the thesis
-`Country Data.asset` is **9 MB and was not previously loaded by `Game.unity`** — the
-country UI adds it to scene load time and memory for a scene the thesis measures.
+- `Country Data.asset` is **9 MB and was not previously loaded by `Game.unity`** — the
+  country UI adds it to scene load time and memory for a scene the thesis measures.
+- `Terrain.shader` gained a `COUNTRY_HIGHLIGHT_ON` variant, doubling its variant count.
+  The off state costs nothing at runtime (the fetch is compiled out), but the extra
+  variant is a compile-time and build-size cost worth stating if shader counts come up.
+- **Measurement runs should disable `Game/World/Country Interaction`.** That clears the
+  terrain keyword and stops all three per-frame updates in one go.
 
 ### A trap worth remembering
 Unity keeps serialized values when a script's defaults change, so retuning a default never
