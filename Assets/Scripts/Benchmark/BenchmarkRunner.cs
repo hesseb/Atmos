@@ -114,6 +114,12 @@ public class BenchmarkRunner : MonoBehaviour
 	public FrameSampler Sampler { get; private set; }
 	public IReadOnlyList<string> Warnings => warnings;
 
+	/// <summary>Results of the passes completed so far. Valid when onCompleted fires; cleared
+	/// by the next StartRun, so a caller that wants to keep them must copy.</summary>
+	public IReadOnlyList<BenchmarkWriter.PassResult> PassResults => passResults;
+	/// <summary>Where this run wrote, or null if writeResults is off.</summary>
+	public string RunFolder => runFolder;
+
 	// Instrumentation state, snapshotted before the sampler is disposed so the writer can
 	// record what was and was not available.
 	public bool FrameTimingAvailable { get; private set; }

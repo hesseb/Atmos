@@ -449,3 +449,37 @@ debugging, and is ignored in Capture mode regardless.
 they cannot share one, and each gets its own output folder. If `StartRun` refuses one (most
 likely a capture run over a benchmark marking no frames), the queue logs it and skips to the
 next rather than stalling on the bad entry.
+
+### Batch runs (All)
+Selecting **All** now writes one parent folder, `<stamp>_batch_<commit>/`, containing each
+benchmark's own run folder plus two cross-benchmark files. Runs still get their own folders
+— different benchmarks have different plans and frame counts, so they cannot share one; the
+batch groups them and adds a view across them.
+
+- **`batch-summary.md`** — one row per (benchmark, segment): each profile's median GPU
+  frame time and its delta from the baseline. The baseline is the **first entry in the
+  runner's `profiles` array**, so reorder that array to change what everything is compared
+  against.
+- **`batch-summary.csv`** — every segment of every run with `benchmark`, `mode`, `pass_id`,
+  `profile` and `repeat` columns prepended to the full statistic set. This is the file a
+  plotting script wants; assembling it from the per-run folder layout by hand is tedious.
+
+Rendered from the real runs on disk, the shape is:
+
+| benchmark | segment | sky frac | noatmo | pbr | delta pbr |
+|---|---|---|---|---|---|
+| daycycle | daylight | 0.77 | 0.749 | 1.127 | +0.379 |
+| daycycle | twilight | 0.77 | 0.764 | 1.126 | +0.363 |
+| orbit | alps | 0.26 | 1.072 | 1.642 | +0.570 |
+| orbit | sahara | 0.26 | 1.070 | 1.626 | +0.556 |
+
+Note the atmosphere costs *more* in the low-sky-fraction views (+0.57 ms at 0.26) than in
+the high-sky ones (+0.38 ms at 0.77). That is the expected direction — the sky raymarch
+early-outs on rays that miss the atmosphere, while the aerial-perspective composite runs on
+terrain pixels — but **these two benchmarks differ in altitude and LOD count as well as
+framing**, so it is not a clean attribution. `framing` is the benchmark that isolates it:
+four holds from one position varying only pitch.
+
+An aborted batch still writes a summary covering the runs that completed, with a warning
+saying how many of how many it covers. The output-root redirect is restored on every exit
+path, so a later single run never writes into a stale batch folder.
