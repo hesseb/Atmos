@@ -19217,7 +19217,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: adb1a12ae37f6c54c9e2c9371284138a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  startupState: 0
+  startupState: 1
   allowDevModeToggleInBuild: 0
   mainMenu: {fileID: 2090125109}
   statsMenu: {fileID: 1156096073}
@@ -19599,11 +19599,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: af3a2cc79336cb446b6ff5dc17e8d910, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  maxCameraCullDst: 200
+  maxCameraCullDst: 600
   maxLightShadowCullDst: 150
   layerOverrides:
   - layer: 6
-    cameraCullDst: 110
+    cameraCullDst: 400
     shadowCullDst: 110
   shadowResolution: 3
   shadowDrawDistance: 150
