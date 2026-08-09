@@ -1079,3 +1079,34 @@ to within 0.003 ms, so nothing on the critical path is blocked.
 > The wider point is an RQ3 observation about the inherited implementation: a tone map with a
 > one-decade usable window cannot display a physically based sky's true dynamic range, and
 > that constrains every sky variant equally.
+
+---
+
+## Hazard: baked assets go stale silently
+
+Three assets are derived, and **nothing detects when their inputs have moved on**. There is no
+error, no warning, and no visual cue — just a baseline that quietly no longer corresponds to
+the renderer it was derived from. Given that the whole point of `baseline-baked` is to be *the
+physically based sky, flattened*, a stale bake makes the comparison meaningless while looking
+entirely healthy.
+
+| asset | silently invalidated by |
+|---|---|
+| `SkyGradient.exr` (hand-authored) | any change to `BaselineSkyRenderer`'s `intensity`, `contrast` or `whitePoint` — it is inverse-tone-mapped against them |
+| `SkyGradientBaked.exr` | any `AtmosphereEffect` scattering parameter, the transmittance LUT, `BakeAltitude`, `BakeAzimuthDegrees`, `ScatteringSteps` |
+| `SkyCubemap.asset` | all of the above plus `CubemapSunElevationDegrees` |
+
+This already bit once: the tone-map constants were corrected (intensity 1 → 1.31, whitePoint
+1.1 → 1) and **both** gradients silently became wrong until regenerated — the hand-authored one
+because its inverse mapping no longer matched, the baked one because the pedestal moved
+underneath it.
+
+**Proposed fix, for whenever the bakes are next touched:** a *bake stamp*, in the same spirit
+as `plan_hash` and `pose_hash`. Hash the inputs at bake time (the atmosphere's shader values,
+the bake parameters, the tone-map constants) and store it beside the asset. At run start,
+recompute from the live scene and compare; on mismatch, warn and record `BAKE_STALE` in
+`run.json`'s warnings. That converts an invisible failure into a loud one, which is the same
+move `COUNTERS_UNAVAILABLE` and `CAPTURE_RUN_NOT_MEASURED` make.
+
+Until that exists, the protocol is manual: **re-run both bakes after touching the atmosphere
+or the tone map, before any measured run.**
