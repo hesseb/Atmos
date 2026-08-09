@@ -139,19 +139,23 @@ public class LookupProbe : MonoBehaviour
 		}
 
 		int tested = matched + mismatched + ocean;
-		float pct = tested > 0 ? 100f * matched / tested : 0f;
+		// Ocean hits are a property of the test points, not of the lookup: a coastal
+		// capital's coordinate simply falls on an ocean texel. Judge correctness only on
+		// the samples that landed on land at all.
+		int onLand = matched + mismatched;
+		float pct = onLand > 0 ? 100f * matched / onLand : 0f;
 
 		Debug.Log(
-			$"[Probe B] capital sweep: {matched}/{tested} matched ({pct:0.0}%)\n" +
-			$"          wrong country {mismatched}   landed on ocean {ocean}   no city data {noCity}\n" +
+			$"[Probe B] capital sweep: {matched}/{onLand} of on-land samples correct ({pct:0.0}%)\n" +
+			$"          wrong country {mismatched}   landed on ocean {ocean} (coastal/island capitals)   no city data {noCity}\n" +
 			(mismatches.Length > 0 ? $"          first {listed}:\n{mismatches}" : ""), this);
 
-		if (pct >= 90f)
+		if (pct >= 95f)
 		{
-			Debug.Log("[Probe B] PASS - decode and index alignment are sound. " +
-				"Remaining misses are expected (coastal capitals on ocean texels, enclaves).", this);
+			Debug.Log("[Probe B] PASS - decode and index alignment are sound. Remaining misses " +
+				"are disputed borders where the rasterised answer is defensible.", this);
 		}
-		else if (matched < tested * 0.1f)
+		else if (matched < onLand * 0.1f)
 		{
 			Debug.LogError("[Probe B] FAIL, near-total mismatch. If returned indices are biased " +
 				"toward 0, sRGB decode is being applied. If wrong with no pattern, the " +

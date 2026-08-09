@@ -14,35 +14,59 @@ public class WorldLookup : MonoBehaviour
 	// Small map containing normalized height values
 	RenderTexture heightLookup;
 
+	// Persistent buffer for the async path. Allocating one per query would mean a
+	// ComputeBuffer per frame for anything polling this (e.g. mouse hover).
+	ComputeBuffer asyncResultBuffer;
+	System.Action<AsyncGPUReadbackRequest> onReadbackComplete;
+	System.Action<TerrainInfo> pendingCallback;
+	bool requestInFlight;
+
+	/// <summary>
+	/// True while an async query is awaiting readback. Only one is allowed at a time,
+	/// which makes out-of-order or stale callbacks structurally impossible - the result
+	/// always belongs to the most recent request. Callers polling every frame should skip
+	/// dispatching while this is true.
+	/// </summary>
+	public bool RequestPending => requestInFlight;
+
 	public void Init(RenderTexture heightMap)
 	{
 		GraphicsFormat format = GraphicsFormat.R8_UNorm;
 		heightLookup = ComputeHelper.CreateRenderTexture(4096, 2048, FilterMode.Bilinear, format, "Height Lookup");
 		Graphics.Blit(heightMap, heightLookup);
+
+		ComputeHelper.CreateStructuredBuffer<float>(ref asyncResultBuffer, 2);
+		// Cached so the async path doesn't allocate a closure per query.
+		onReadbackComplete = OnReadbackComplete;
 	}
 
-	ComputeBuffer RunLookupCompute(Coordinate coordinate)
+	void DispatchLookup(Coordinate coordinate, ComputeBuffer target)
 	{
-		ComputeBuffer resultBuffer = ComputeHelper.CreateStructuredBuffer<float>(2);
 		lookupShader.SetTexture(0, "HeightMap", heightLookup);
 		lookupShader.SetTexture(0, "CountryIndices", countryIndices);
-		lookupShader.SetBuffer(0, "Result", resultBuffer);
+		lookupShader.SetBuffer(0, "Result", target);
 		lookupShader.SetVector("uv", coordinate.ToUV());
 		ComputeHelper.Dispatch(lookupShader, 1);
-		return resultBuffer;
 	}
 
+	/// <summary>
+	/// Queries terrain height and country index without stalling the pipeline. The
+	/// callback arrives 2-3 frames later. Ignored if a request is already in flight.
+	/// </summary>
 	public void GetTerrainInfoAsync(Coordinate coord, System.Action<TerrainInfo> callback)
 	{
-		if (SystemInfo.supportsAsyncGPUReadback)
+		if (!SystemInfo.supportsAsyncGPUReadback)
 		{
-			ComputeBuffer resultBuffer = RunLookupCompute(coord);
-			AsyncGPUReadback.Request(resultBuffer, (request) => AsyncRequestComplete(request, resultBuffer, callback));
+			callback?.Invoke(GetTerrainInfoImmediate(coord));
+			return;
 		}
-		else
-		{
-			callback.Invoke(GetTerrainInfoImmediate(coord));
-		}
+
+		if (requestInFlight) { return; }
+
+		requestInFlight = true;
+		pendingCallback = callback;
+		DispatchLookup(coord, asyncResultBuffer);
+		AsyncGPUReadback.Request(asyncResultBuffer, onReadbackComplete);
 	}
 
 	public void GetTerrainInfoAsync(Vector3 point, System.Action<TerrainInfo> callback)
@@ -51,41 +75,54 @@ public class WorldLookup : MonoBehaviour
 		GetTerrainInfoAsync(coord, callback);
 	}
 
+	/// <summary>
+	/// Blocking variant - stalls the GPU pipeline waiting for the result. Fine for
+	/// one-shot setup and editor tooling, never for per-frame use.
+	/// Uses its own buffer so it cannot clobber an async query in flight.
+	/// </summary>
 	public TerrainInfo GetTerrainInfoImmediate(Coordinate coordinate)
 	{
-		ComputeBuffer resultBuffer = RunLookupCompute(coordinate);
+		ComputeBuffer resultBuffer = ComputeHelper.CreateStructuredBuffer<float>(2);
+		DispatchLookup(coordinate, resultBuffer);
+
 		float[] data = new float[2];
 		resultBuffer.GetData(data);
 		resultBuffer.Release();
-		return CreateTerrainInfoFromData(data);
+
+		return CreateTerrainInfo(data[0], data[1]);
 	}
 
-	void AsyncRequestComplete(AsyncGPUReadbackRequest request, ComputeBuffer buffer, System.Action<TerrainInfo> callback)
+	void OnReadbackComplete(AsyncGPUReadbackRequest request)
 	{
-		if (Application.isPlaying && !request.hasError)
+		requestInFlight = false;
+		var callback = pendingCallback;
+		pendingCallback = null;
+
+		if (!Application.isPlaying || request.hasError) { return; }
+
+		// Read straight off the NativeArray - ToArray() would allocate per readback.
+		var data = request.GetData<float>();
+		if (data.Length >= 2)
 		{
-			var info = CreateTerrainInfoFromData(request.GetData<float>().ToArray());
-			callback?.Invoke(info);
+			callback?.Invoke(CreateTerrainInfo(data[0], data[1]));
 		}
-
-		ComputeHelper.Release(buffer);
-
 	}
 
-	TerrainInfo CreateTerrainInfoFromData(float[] data)
+	TerrainInfo CreateTerrainInfo(float heightT, float countryT)
 	{
-		float heightT = data[0];
-		float countryT = data[1];
-
 		float worldHeight = heightSettings.worldRadius + heightT * heightSettings.heightMultiplier;
+		// Texel stores (countryIndex + 1) / 255, ocean stores 0. Truncation is safe here:
+		// float(k/255) * 255.0 never lands below k for any k in 0..255 (verified for all
+		// 256 values), so this is NOT the off-by-one it resembles. Leave it alone.
 		int countryIndex = (int)(countryT * 255.0) - 1;
-		TerrainInfo info = new TerrainInfo(worldHeight, countryIndex);
-		return info;
+		return new TerrainInfo(worldHeight, countryIndex);
 	}
-
 
 	void OnDestroy()
 	{
+		// Let any in-flight readback finish before the buffer it targets goes away.
+		AsyncGPUReadback.WaitAllRequests();
+
 		// Getting a warning when exiting playmode from menu scene after async loading game scene (but not activating).
 		// This stops the warning. TODO: investigate
 		if (RenderTexture.active == heightLookup)
@@ -94,6 +131,7 @@ public class WorldLookup : MonoBehaviour
 		}
 
 		ComputeHelper.Release(heightLookup);
+		ComputeHelper.Release(asyncResultBuffer);
 	}
 }
 
