@@ -62,17 +62,27 @@ public class RenderingManager : MonoBehaviour
 		physicallyBasedSkyCommand = new CommandBuffer { name = "Sky Render (PBR)" };
 		atmosphereEffect.SetupSkyRenderingCommand(physicallyBasedSkyCommand);
 
+		// A buffer is kept only if it actually recorded something. The alternative - attaching
+		// a buffer whose material is null because a shader has not been assigned yet - blits
+		// with a null material every frame, which is a far less obvious failure than simply
+		// having no sky.
 		if (baselineSky != null)
 		{
-			baselineSkyCommand = new CommandBuffer { name = "Sky Render (Baseline)" };
-			baselineSky.RecordBaselinePass(baselineSkyCommand);
-
-			nullSkyCommand = new CommandBuffer { name = "Sky Render (Null)" };
-			baselineSky.RecordNullPass(nullSkyCommand);
+			baselineSkyCommand = Record("Sky Render (Baseline)", baselineSky.RecordBaselinePass);
+			nullSkyCommand = Record("Sky Render (Null)", baselineSky.RecordNullPass);
 		}
 
 		activeMode = SkyMode.None;
 		ApplyMode(DesiredMode);
+	}
+
+	static CommandBuffer Record(string name, System.Func<CommandBuffer, bool> record)
+	{
+		var buffer = new CommandBuffer { name = name };
+		if (record(buffer)) { return buffer; }
+
+		buffer.Release();
+		return null;
 	}
 
 	/// <summary>
