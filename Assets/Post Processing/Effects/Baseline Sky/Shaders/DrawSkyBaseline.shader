@@ -65,6 +65,8 @@ Shader "Hidden/DrawSkyBaseline"
 
 			// The planet orbits, so its centre is not the origin. Supplied per frame.
 			float3 planetCentre;
+			// The planet's rotation axis, for building the observer's local frame.
+			float3 planetAxis;
 			// saturate(dot(dirToSun, up) * 0.5 + 0.5) at the camera, computed on the CPU once
 			// per frame rather than per pixel - it does not vary across the screen.
 			float sunElevation01;
@@ -110,7 +112,26 @@ Shader "Hidden/DrawSkyBaseline"
 				float3 up = normalize(_WorldSpaceCameraPos - planetCentre);
 
 #if defined(SKY_CUBEMAP)
-				float3 skyLum = texCUBE(SkyCubemap, viewDir).rgb * skyIntensity;
+				// Sampled in the OBSERVER'S frame, not world space. This is a globe: a cubemap
+				// sampled by raw world direction has its horizon pinned to world +Y, so it
+				// only lines up with the real horizon at one point on the planet. Everywhere
+				// else the baked horizon - a hard planet-occlusion edge - sits at an angle to
+				// the real one and reads as a seam when the camera turns.
+				//
+				// Only the vertical axis has to match the bake. The azimuth origin is
+				// arbitrary: a static cubemap cannot track the sun's azimuth either, so
+				// aligning to it would be a false precision. What the frame does need is to be
+				// continuous, or the sky would swing as the camera moves.
+				//
+				// Singular where the observer's up meets the planet's axis - i.e. at the
+				// poles, where the reference falls back and the azimuth jumps. None of the
+				// benchmarks go there; a pole flyover would need a better basis.
+				float3 reference = abs(dot(up, planetAxis)) > 0.99 ? float3(0, 0, 1) : planetAxis;
+				float3 east = normalize(cross(reference, up));
+				float3 north = cross(up, east);
+				float3 localDir = float3(dot(viewDir, east), dot(viewDir, up), dot(viewDir, north));
+
+				float3 skyLum = texCUBE(SkyCubemap, localDir).rgb * skyIntensity;
 #else
 				// Full -1..1 range rather than horizon-to-zenith only: this is a globe scene,
 				// so the camera can be high enough to look down past the horizon.

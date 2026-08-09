@@ -302,14 +302,26 @@ static class SkyGradientBaker
 		AssetDatabase.CreateAsset(cubemap, CubemapPath);
 		AssetDatabase.SaveAssets();
 
-		Debug.Log($"[BaselineSky] baked {CubemapSize}^2 sky cubemap to {CubemapPath}\n" +
-			$"  frozen at sun elevation {CubemapSunElevationDegrees} deg, observer " +
-			$"{BakeAltitude} above the surface, {ScatteringSteps} scattering steps\n" +
-			$"  brightest texel on +X is at row {sunRow:F1}; the sun must be at " +
-			$"{expectDirect:F1} unflipped or {expectFlipped:F1} flipped\n" +
-			$"  -> using {(flip ? "FLIPPED" : "direct")} row order\n" +
-			"  If the measured row is near NEITHER prediction, the face basis is wrong rather " +
-			"than the row order, and seams will remain.");
+		// Shown as a dialog rather than only logged: the orientation verdict is the one piece
+		// of evidence that says whether the bake is trustworthy, and it is no use sitting in a
+		// Console nobody is filtering to Info.
+		float missBy = Mathf.Min(Mathf.Abs(sunRow - expectDirect), Mathf.Abs(sunRow - expectFlipped));
+		bool confident = missBy < CubemapSize * 0.05f;
+
+		string verdict =
+			$"Baked {CubemapSize}x{CubemapSize}, sun frozen at {CubemapSunElevationDegrees} deg.\n\n" +
+			$"Orientation check\n" +
+			$"  sun found on +X at row {sunRow:F1}\n" +
+			$"  expected {expectDirect:F1} unflipped, {expectFlipped:F1} flipped\n" +
+			$"  -> using {(flip ? "FLIPPED" : "direct")} row order\n\n" +
+			(confident
+				? "The sun landed where one hypothesis predicts, so the face basis and row " +
+				  "order are both right.\nAny remaining seam is not an orientation problem."
+				: "WARNING: the sun landed near NEITHER prediction. The face basis is wrong, " +
+				  "not just the row order - expect seams.");
+
+		Debug.Log($"[BaselineSky] {CubemapPath}\n{verdict}");
+		EditorUtility.DisplayDialog("Sky cubemap baked", verdict, "OK");
 
 		Selection.activeObject = cubemap;
 	}
