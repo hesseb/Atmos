@@ -46,17 +46,28 @@ public class BenchmarkRunner : MonoBehaviour
 	public ulong ObservedPoseHash { get; private set; }
 	public System.Action<BenchmarkRunner> onCompleted;
 
-	/// <summary>Observed per-frame state, for the pose hash and later for the CSV.</summary>
-	public struct ObservedFrame
+	/// <summary>Everything recorded for one frame: what was planned, what was observed,
+	/// and what it cost.</summary>
+	public struct FrameRecord
 	{
 		public Vector3 cameraPosition;
 		public Vector3 cameraForward;
 		public Vector3 sunDirection;
 		public double deltaMs;
 		public int lodHighResCount;
+		public FrameSampler.Sample sample;
 	}
 
-	public ObservedFrame[] Observed { get; private set; }
+	public FrameRecord[] Records { get; private set; }
+	public FrameSampler Sampler { get; private set; }
+	public IReadOnlyList<string> Warnings => warnings;
+
+	// Instrumentation state, snapshotted before the sampler is disposed so the writer can
+	// record what was and was not available.
+	public bool FrameTimingAvailable { get; private set; }
+	public int TimingLagFrames { get; private set; } = -1;
+	public int AttributionAnomalies { get; private set; }
+	public List<(string name, bool available)> CounterAvailability { get; private set; }
 
 	RestoreScope scope;
 	readonly List<string> warnings = new List<string>();
@@ -117,7 +128,8 @@ public class BenchmarkRunner : MonoBehaviour
 
 		scope = BenchmarkEnvironment.Pin(sceneRefs, settings, warnings);
 
-		Observed = new ObservedFrame[Plan.Length];
+		Records = new FrameRecord[Plan.Length];
+		Sampler = new FrameSampler();
 		FrameCursor = 0;
 		deltaDriftFrames = 0;
 		expectedDeltaMs = Plan.CaptureDeltaTime * 1000.0;
@@ -133,6 +145,15 @@ public class BenchmarkRunner : MonoBehaviour
 	void Update()
 	{
 		if (!IsRunning) { return; }
+
+		// A sample taken now describes the frame that just completed, so it belongs to the
+		// previous row. This is why the plan ends with flush frames: the last measured
+		// frame's timing arrives during them.
+		FrameSampler.Sample sample = Sampler.Capture();
+		if (FrameCursor > 0 && FrameCursor - 1 < Records.Length)
+		{
+			Records[FrameCursor - 1].sample = sample;
+		}
 
 		if (FrameCursor >= Plan.Length)
 		{
@@ -162,27 +183,28 @@ public class BenchmarkRunner : MonoBehaviour
 			if (!IsRunning || FrameCursor >= Plan.Length) { yield break; }
 
 			Transform camT = sceneRefs.camera.transform;
-			var observed = new ObservedFrame
-			{
-				cameraPosition = camT.position,
-				cameraForward = camT.forward,
-				deltaMs = Time.deltaTime * 1000.0,
-				lodHighResCount = sceneRefs.lodSystem != null ? sceneRefs.lodSystem.HighResCount : 0
-			};
+
+			// Preserve the sample already written by the next Update's Capture; only the
+			// observed fields are filled here.
+			FrameRecord record = Records[FrameCursor];
+			record.cameraPosition = camT.position;
+			record.cameraForward = camT.forward;
+			record.deltaMs = Time.deltaTime * 1000.0;
+			record.lodHighResCount = sceneRefs.lodSystem != null ? sceneRefs.lodSystem.HighResCount : 0;
 
 			if (sceneRefs.solarSystem != null && sceneRefs.solarSystem.sun != null)
 			{
-				observed.sunDirection = -sceneRefs.solarSystem.sun.transform.forward;
+				record.sunDirection = -sceneRefs.solarSystem.sun.transform.forward;
 			}
 
 			// captureDeltaTime pins Time.deltaTime (not unscaledDeltaTime - measured).
 			// This is the direct check that the frame lock actually engaged.
-			if (Mathf.Abs((float)(observed.deltaMs - expectedDeltaMs)) > 0.01f)
+			if (Mathf.Abs((float)(record.deltaMs - expectedDeltaMs)) > 0.01f)
 			{
 				deltaDriftFrames++;
 			}
 
-			Observed[FrameCursor] = observed;
+			Records[FrameCursor] = record;
 			FrameCursor++;
 		}
 	}
@@ -201,8 +223,23 @@ public class BenchmarkRunner : MonoBehaviour
 
 		if (deltaDriftFrames > 0) { warnings.Add($"DELTA_TIME_DRIFT:{deltaDriftFrames}"); }
 
-		scope?.Dispose();
-		scope = null;
+		// Snapshot the instrumentation state before disposing the sampler - the writer
+		// needs it, and an absent counter must be recorded as absent rather than zero.
+		if (Sampler != null)
+		{
+			FrameTimingAvailable = Sampler.FrameTimingAvailable;
+			TimingLagFrames = Sampler.TimingLagFrames;
+			AttributionAnomalies = Sampler.AttributionAnomalies;
+			CounterAvailability = Sampler.CounterAvailability();
+
+			if (!FrameTimingAvailable) { warnings.Add("NO_GPU_TIME"); }
+			if (AttributionAnomalies > 0)
+			{
+				warnings.Add($"TIMING_ATTRIBUTION_ANOMALIES:{AttributionAnomalies}");
+			}
+		}
+
+		ReleaseResources();
 
 		if (logProgress)
 		{
@@ -215,6 +252,7 @@ public class BenchmarkRunner : MonoBehaviour
 				$"  pose_hash         0x{ObservedPoseHash:x16}\n" +
 				$"  delta drift       {deltaDriftFrames} frames " +
 				$"(expected {expectedDeltaMs.ToString("F4", ci)} ms/frame)\n" +
+				$"  gpu timing        {(FrameTimingAvailable ? $"available, lag {TimingLagFrames} frame(s)" : "UNAVAILABLE")}\n" +
 				$"  warnings          {(warnings.Count > 0 ? string.Join(", ", warnings) : "none")}\n" +
 				$"  Run twice and compare pose_hash: equal means both runs rendered the same poses.",
 				this);
@@ -230,7 +268,16 @@ public class BenchmarkRunner : MonoBehaviour
 
 		Debug.LogWarning($"[Benchmark] aborted at frame {FrameCursor} / {Plan.Length}.", this);
 		IsRunning = false;
+		ReleaseResources();
+	}
 
+	/// <summary>
+	/// Every exit path funnels through here. The restore scope in particular must not
+	/// outlive the run under any circumstance: the effect enabled flags it snapshotted
+	/// are asset state, and a leaked change reaches disk on the next project save.
+	/// </summary>
+	void ReleaseResources()
+	{
 		if (endOfFrameRoutine != null)
 		{
 			StopCoroutine(endOfFrameRoutine);
@@ -239,16 +286,18 @@ public class BenchmarkRunner : MonoBehaviour
 
 		scope?.Dispose();
 		scope = null;
+		Sampler?.Dispose();
+		Sampler = null;
 	}
 
 	ulong ComputePoseHash()
 	{
 		ulong hash = 0xcbf29ce484222325UL;
-		int count = Mathf.Min(FrameCursor, Observed.Length);
+		int count = Mathf.Min(FrameCursor, Records.Length);
 
 		for (int i = 0; i < count; i++)
 		{
-			ObservedFrame o = Observed[i];
+			FrameRecord o = Records[i];
 			MixQuantized(ref hash, o.cameraPosition.x, 10000f);
 			MixQuantized(ref hash, o.cameraPosition.y, 10000f);
 			MixQuantized(ref hash, o.cameraPosition.z, 10000f);
@@ -272,11 +321,9 @@ public class BenchmarkRunner : MonoBehaviour
 		}
 	}
 
-	// The scope must not outlive the component under any exit path, or the effect
-	// enabled flags it snapshotted stay modified in memory and reach disk on save.
-	void OnDisable() { scope?.Dispose(); scope = null; IsRunning = false; }
-	void OnDestroy() { scope?.Dispose(); scope = null; }
-	void OnApplicationQuit() { scope?.Dispose(); scope = null; }
+	void OnDisable() { IsRunning = false; ReleaseResources(); }
+	void OnDestroy() { ReleaseResources(); }
+	void OnApplicationQuit() { IsRunning = false; ReleaseResources(); }
 
 	[ContextMenu("Dump Plan CSV To Console")]
 	void DumpPlan()
