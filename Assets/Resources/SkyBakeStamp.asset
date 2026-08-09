@@ -1,0 +1,132 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b536e84ce9050694dbe3c0bce68a199c, type: 3}
+  m_Name: SkyBakeStamp
+  m_EditorClassIdentifier: Assembly-CSharp::SkyBakeStamp
+  entries:
+  - assetPath: Assets/Post Processing/Effects/Baseline Sky/Textures/SkyGradientBaked.exr
+    recipe: 0
+    hash: 0x996bb2541e4a2272
+    bakedUtc: 2026-08-09 23:18:11Z
+    inputs: 'bodyRadius=149.5
+
+      atmosphereThickness=110
+
+      wavelengthsRGB.x=639.5
+
+      wavelengthsRGB.y=526
+
+      wavelengthsRGB.z=441.8
+
+      wavelengthScale=748.5
+
+      rayleighDensityAvg=0.086
+
+      mieCoefficient=0.38
+
+      mieDensityAvg=0.08
+
+      mieAbsorption=0.11
+
+      ozonePeakDensityAltitude=0.12
+
+      ozoneDensityFalloff=3.7
+
+      ozoneStrength=0.4
+
+      ozoneAbsorption.x=-3
+
+      ozoneAbsorption.y=3.12
+
+      ozoneAbsorption.z=0.02
+
+      transmittanceLUTSize.x=128
+
+      transmittanceLUTSize.y=64
+
+      bakeAltitude=12
+
+      bakeAzimuthDegrees=0
+
+      bakeScatteringSteps=512
+
+      bakeWidth=128
+
+      bakeHeight=64
+
+'
+  - assetPath: Assets/Post Processing/Effects/Baseline Sky/Textures/SkyCubemap.asset
+    recipe: 0
+    hash: 0x996bb2541e4a2272
+    bakedUtc: 2026-08-09 23:18:16Z
+    inputs: 'bodyRadius=149.5
+
+      atmosphereThickness=110
+
+      wavelengthsRGB.x=639.5
+
+      wavelengthsRGB.y=526
+
+      wavelengthsRGB.z=441.8
+
+      wavelengthScale=748.5
+
+      rayleighDensityAvg=0.086
+
+      mieCoefficient=0.38
+
+      mieDensityAvg=0.08
+
+      mieAbsorption=0.11
+
+      ozonePeakDensityAltitude=0.12
+
+      ozoneDensityFalloff=3.7
+
+      ozoneStrength=0.4
+
+      ozoneAbsorption.x=-3
+
+      ozoneAbsorption.y=3.12
+
+      ozoneAbsorption.z=0.02
+
+      transmittanceLUTSize.x=128
+
+      transmittanceLUTSize.y=64
+
+      bakeAltitude=12
+
+      bakeSunElevationDegrees=25
+
+      bakeScatteringSteps=512
+
+      bakeCubemapSize=512
+
+'
+  - assetPath: Assets/Post Processing/Effects/Baseline Sky/Textures/SkyGradient.exr
+    recipe: 1
+    hash: 0x841d28f4205ac2ec
+    bakedUtc: 2026-08-09 23:18:23Z
+    inputs: 'intensity=1.31
+
+      contrast=1.45
+
+      whitePoint=1
+
+      bakeWidth=128
+
+      bakeHeight=64
+
+      bakeZenithFalloff=0.65
+
+'
