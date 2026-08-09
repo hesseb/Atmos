@@ -113,14 +113,20 @@ public class BenchmarkPlan
 
 		// Prewarm walks a decimated set of the run's own poses so every terrain tile
 		// variant and both extremes of the raymarch create their pipeline states before
-		// anything is measured.
-		int stride = Mathf.Max(1, definition.prewarmPosesEvery);
-		for (int i = 0; i < content.Count; i += stride)
+		// anything is measured. On screen this looks like the camera teleporting through
+		// the whole route in a fraction of a second, which is what it is doing.
+		//
+		// 0 means off, and must not fall through to a stride of 1 - that would prewarm
+		// every single pose, i.e. render the entire run twice.
+		if (definition.prewarmPosesEvery > 0)
 		{
-			PlannedFrame f = content[i];
-			f.phase = BenchmarkPhase.Prewarm;
-			f.screenshot = false;
-			all.Add(f);
+			for (int i = 0; i < content.Count; i += definition.prewarmPosesEvery)
+			{
+				PlannedFrame f = content[i];
+				f.phase = BenchmarkPhase.Prewarm;
+				f.screenshot = false;
+				all.Add(f);
+			}
 		}
 
 		AddRepeated(all, first, BenchmarkPhase.Warmup, Mathf.Max(0, definition.warmupFrames));
@@ -461,15 +467,28 @@ public class BenchmarkPlan
 	public string Describe()
 	{
 		int measured = 0, screenshots = 0;
+		var byPhase = new int[System.Enum.GetValues(typeof(BenchmarkPhase)).Length];
 		foreach (PlannedFrame f in frames)
 		{
+			byPhase[(int)f.phase]++;
 			if (f.phase == BenchmarkPhase.Measure) { measured++; }
 			if (f.screenshot) { screenshots++; }
+		}
+
+		// Spelled out because prewarm is visually alarming - the camera teleports through
+		// the whole route - and the first question anyone asks is whether that is a bug.
+		var phases = new System.Text.StringBuilder();
+		foreach (BenchmarkPhase phase in System.Enum.GetValues(typeof(BenchmarkPhase)))
+		{
+			if (byPhase[(int)phase] == 0) { continue; }
+			if (phases.Length > 0) { phases.Append(" -> "); }
+			phases.Append(phase).Append(' ').Append(byPhase[(int)phase]);
 		}
 
 		var ci = CultureInfo.InvariantCulture;
 		return $"plan '{definition.id}': {frames.Length} frames total, {measured} measured, " +
 			$"{screenshots} screenshots, {segmentLabels.Length} segments\n" +
+			$"  phases: {phases}\n" +
 			$"  plan_hash 0x{planHash:x16}   captureDeltaTime {CaptureDeltaTime.ToString("F5", ci)}" +
 			(usedLiveBookmarks ? "\n  WARNING: resolved through live bookmarks - bake before publishing" : "") +
 			(warnings.Count > 0 ? "\n  warnings: " + string.Join(", ", warnings) : "");
