@@ -1236,3 +1236,32 @@ Two design points worth keeping:
 
 A first attempt reconstructed each entry's inputs by parsing the stored text and guessing which
 parts came from where. That was clever and brittle; the recipe enum replaced it.
+
+### Stage 1a caught two problems, both worth keeping
+`Testbed → Atmosphere → Validate` reported the LUT zenith at (0.9987, 0.9967, 0.9942) against
+an expected (0.8642, 0.6943, 0.5251) — optical depth **110.4–112.2× too small**, with the
+blue/red ratio still 4.47 against the coefficients' 4.39.
+
+The colour being right while the magnitude was out by exactly `atmosphereThickness` is the
+signature of **old shader code running against new uniforms**: the previous march divided every
+step by the thickness, and the new coefficients already are per world unit, so the division
+happened twice.
+
+> **Unity does not track `.hlsl` includes as import dependencies for `.compute` files.**
+> Editing `AtmosphereCommon.hlsl` left all four computes running the previous code. Touching
+> the `.compute` files forces the reimport; a note to that effect now sits in each of them,
+> because the failure mode is a plausible-looking sky rather than an error.
+
+Separately, the run produced `Property (TransmittanceLUT) at kernel index (0) is not set` —
+**a real regression from stage 0b.** Compute shader texture bindings do not survive a domain
+reload, and nothing restored them: the per-frame re-init that 0b removed had been silently
+re-binding everything every editor frame. Removing the per-frame *dispatch* was worth doing;
+removing the per-frame *rebind* was not.
+
+Split into `BindComputeResources()`, called unconditionally on every `SetProperties` because
+binds are cheap, with render-texture creation and the transmittance dispatch left behind the
+dirty flag. That keeps 0b's benefit without its regression.
+
+Worth noting what this says about the harness: neither problem was visible in the image at a
+glance, and both were caught by a numeric check against a closed form within minutes of being
+introduced.
