@@ -1110,3 +1110,21 @@ move `COUNTERS_UNAVAILABLE` and `CAPTURE_RUN_NOT_MEASURED` make.
 
 Until that exists, the protocol is manual: **re-run both bakes after touching the atmosphere
 or the tone map, before any measured run.**
+
+---
+
+## Sequencing: measurements and the report come at the end
+
+Real measurement runs and report writing happen once the **whole** system is assembled,
+clouds included — not at the end of each milestone.
+
+The renderers are still changing, and numbers taken mid-build get invalidated by the next fix.
+That already happened twice over: the fog-over-sky bug and the mismatched tone-map constants
+each superseded a full release batch.
+
+So the benchmark runs done so far were **harness validation and bug-hunting**, not results.
+They earned their keep that way — they caught the black `noatmo` sky, the mislabelled
+decomposition, the fog painting over the sky, the stripped-counter false pass, and the
+tone-map pedestal — but none of their numbers should be quoted.
+
+Findings go in this file for later rather than being acted on as if final.
