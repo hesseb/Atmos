@@ -302,7 +302,23 @@ static class SkyGradientBaker
 		// work - a vertical flip applied consistently to every face leaves that comparison
 		// unchanged while still producing seams once the faces are assembled.
 		OrientationCheck check = CheckOrientation(pixels[0], pixels[1]);
-		bool flip = check.flip;
+
+		// The sun test says the faces are internally consistent, but it reads the arrays and
+		// never the assembled cube - so it cannot see a flip applied uniformly to every face,
+		// which is exactly what produces seams. This does: it walks a great-circle arc through
+		// the +Z/+Y face boundary using the real cube lookup and measures the largest step
+		// between neighbouring samples. A correct assembly is smooth across the edge; a
+		// uniformly flipped one is not.
+		float smooth = EdgeDiscontinuity(pixels, flipped: false);
+		float flippedSmooth = EdgeDiscontinuity(pixels, flipped: true);
+		bool flip = flippedSmooth < smooth;
+
+		if (flip != check.flip)
+		{
+			Debug.LogWarning($"[BaselineSky] the sun test wanted {(check.flip ? "flipped" : "direct")} " +
+				$"but cross-face continuity wants {(flip ? "flipped" : "direct")}. Continuity wins - " +
+				"it is measured on the assembled cube, which is what the seam lives in.");
+		}
 
 		if (flip)
 		{
@@ -327,7 +343,9 @@ static class SkyGradientBaker
 			$"  row {check.expectedDirect:F1} unflipped vs {check.expectedFlipped:F1} flipped " +
 			$"-> using {(flip ? "FLIPPED" : "direct")} row order\n" +
 			$"  implied sun elevation {check.impliedElevationDegrees:F1} deg " +
-			$"(actual {CubemapSunElevationDegrees:F1})\n\n" +
+			$"(actual {CubemapSunElevationDegrees:F1})\n" +
+			$"  cross-face continuity: direct {smooth:F4}, flipped {flippedSmooth:F4} " +
+			$"-> {(flip ? "FLIPPED" : "direct")}\n\n" +
 			(check.confident
 				? "Orientation looks correct."
 				: "The sun did not land where expected. This check has produced false alarms " +
@@ -424,6 +442,74 @@ static class SkyGradientBaker
 		check.confident = elevationPlausible && centred;
 
 		return check;
+	}
+
+	/// <summary>
+	/// Largest brightness step along an arc that crosses the +Z / +Y face boundary, sampled
+	/// through the real cube-map lookup.
+	///
+	/// This is the test the two earlier ones could not be. Comparing face arrays to each other
+	/// is blind to a flip applied to every face uniformly, and locating the sun only proves the
+	/// faces agree internally. Going through the lookup means a uniform flip *does* change
+	/// which texel a direction resolves to, so it breaks continuity at horizontal edges - which
+	/// is precisely the seam being chased.
+	/// </summary>
+	static float EdgeDiscontinuity(Color[][] pixels, bool flipped)
+	{
+		Color[][] faces = pixels;
+		if (flipped)
+		{
+			faces = new Color[6][];
+			for (int f = 0; f < 6; f++) { faces[f] = FlipRows(pixels[f], CubemapSize); }
+		}
+
+		float worst = 0f;
+		float previous = float.NaN;
+
+		// Straddles the +Z/+Y edge, which sits at 45 degrees.
+		for (float elevation = 30f; elevation <= 60f; elevation += 0.25f)
+		{
+			float r = elevation * Mathf.Deg2Rad;
+			var dir = new Vector3(0f, Mathf.Sin(r), Mathf.Cos(r));
+
+			Color c = SampleCube(faces, dir);
+			float luminance = c.r + c.g + c.b;
+
+			if (!float.IsNaN(previous)) { worst = Mathf.Max(worst, Mathf.Abs(luminance - previous)); }
+			previous = luminance;
+		}
+		return worst;
+	}
+
+	/// <summary>The Direct3D cube-map lookup, in C#, against the read-back face arrays.</summary>
+	static Color SampleCube(Color[][] faces, Vector3 dir)
+	{
+		float ax = Mathf.Abs(dir.x), ay = Mathf.Abs(dir.y), az = Mathf.Abs(dir.z);
+		int face;
+		float u, v, major;
+
+		if (ax >= ay && ax >= az)
+		{
+			face = dir.x > 0 ? 0 : 1; major = ax;
+			u = (dir.x > 0 ? -dir.z : dir.z) / major; v = -dir.y / major;
+		}
+		else if (ay >= az)
+		{
+			face = dir.y > 0 ? 2 : 3; major = ay;
+			u = dir.x / major; v = (dir.y > 0 ? dir.z : -dir.z) / major;
+		}
+		else
+		{
+			face = dir.z > 0 ? 4 : 5; major = az;
+			u = (dir.z > 0 ? dir.x : -dir.x) / major; v = -dir.y / major;
+		}
+
+		int x = Mathf.Clamp(Mathf.FloorToInt((u + 1f) * 0.5f * CubemapSize), 0, CubemapSize - 1);
+		int fromTop = Mathf.Clamp(Mathf.FloorToInt((v + 1f) * 0.5f * CubemapSize), 0, CubemapSize - 1);
+		// Arrays are row 0 = bottom, the lookup's v runs downward.
+		int y = CubemapSize - 1 - fromTop;
+
+		return faces[face][y * CubemapSize + x];
 	}
 
 	static Color[] FlipRows(Color[] pixels, int size)
