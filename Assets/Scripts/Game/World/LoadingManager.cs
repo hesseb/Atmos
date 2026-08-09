@@ -10,14 +10,10 @@ public class LoadingManager : MonoBehaviour
 	public bool logTotalLoadTime;
 
 	[Header("References")]
-	public Player player;
-	public LoadScreen loadScreen;
-	public TerrainHeightSettings heightSettings;
 	public TerrainHeightProcessor heightProcessor;
 	public CityLights cityLights;
 	public WorldLookup worldLookup;
 	public Light sunLight;
-	public AtmosphereEffect atmosphereEffect;
 	public GlobeMapLoader globeMapLoader;
 
 	public LodMeshLoader terrainLoader;
@@ -63,7 +59,7 @@ public class LoadingManager : MonoBehaviour
 
 		foreach (LoadTask task in tasks)
 		{
-			long taskTime = task.Execute(null, false);
+			long taskTime = task.Execute();
 			if (logTaskLoadTimes)
 			{
 				Debug.Log($"{task.taskName}: {taskTime} ms.");
@@ -82,8 +78,6 @@ public class LoadingManager : MonoBehaviour
 	void OnLoadStart()
 	{
 		SetActiveStateAll(deactivateWhileLoading, false);
-		loadScreen.gameObject.SetActive(true);
-		loadScreen.Init();
 	}
 
 	void OnLoadFinish()
@@ -94,7 +88,6 @@ public class LoadingManager : MonoBehaviour
 
 		// Start game
 		SetActiveStateAll(deactivateWhileLoading, true);
-		loadScreen.Close();
 	}
 
 	public class LoadTask
@@ -108,28 +101,24 @@ public class LoadingManager : MonoBehaviour
 			this.taskName = name;
 		}
 
-		public long Execute(LoadScreen loadScreen, bool log)
+		public long Execute()
 		{
-			if (log)
-			{
-				loadScreen.Log(taskName, newLine: true);
-			}
 			var sw = System.Diagnostics.Stopwatch.StartNew();
 			task.Invoke();
-
-			if (log)
-			{
-				loadScreen.Log($" {sw.ElapsedMilliseconds}ms.", newLine: false);
-			}
 			return sw.ElapsedMilliseconds;
 		}
 	}
 
 	void SetActiveStateAll(GameObject[] gameObjects, bool isActive)
 	{
+		// Null-tolerant on purpose: this runs at execution order -1100, so an unguarded
+		// null here would abort the entire world bootstrap with a single misleading error.
 		foreach (var g in gameObjects)
 		{
-			g.SetActive(isActive);
+			if (g != null)
+			{
+				g.SetActive(isActive);
+			}
 		}
 	}
 
