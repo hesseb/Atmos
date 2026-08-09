@@ -843,3 +843,25 @@ leaves that comparison unchanged while still producing seams once assembled. The
 uses ground truth — we choose the sun's elevation, so it must land on a computable texel of
 the +X face (~119 rows apart between the two hypotheses at 256²) — and now reports the verdict
 in a **dialog**, not just the Console.
+
+### The cubemap orientation warning was a false alarm
+The bake reported "the face basis is wrong" on a cubemap that is correct. The measurement:
+brightest texel on +X at row **174.0**, against predictions of 187.2 unflipped and 67.8
+flipped. The decision (direct) was never in doubt — 13 rows versus 106 — but the 13-row
+residual tripped a tolerance set at 5% of the face (12.8 rows).
+
+Decoding the residual explains it: row 174 implies a sun elevation of **19.97°** when the sun
+was placed at **25°**. The check assumed the brightest texel *is* the sun direction, and it is
+not. **Air mass grows toward the horizon, so the product of the Mie phase function and the
+path integral peaks a few degrees below the sun rather than at it.** A ~5° downward bias is
+the physically correct result.
+
+The criteria are now stated in terms that mean something rather than in texels:
+- implied sun elevation within 12° of the actual, with the downward bias expected and
+  explained in the message
+- brightest texel on the face's centre column (within 0.08 of centre) — the bias is purely
+  vertical, so a horizontal offset *would* indicate a broken basis
+
+Against the real measurement those give elevation error 5.03° and column offset 0.0000 →
+confident. Worth keeping as a lesson: a self-check built on an assumption that is *nearly*
+true reports failure on correct output, which costs more than having no check at all.
