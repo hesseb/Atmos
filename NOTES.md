@@ -1297,3 +1297,48 @@ ray-planet test could miss ground the depth buffer saw.
 
 This is also the first real exercise of the bake stamp: changing `bodyRadius` should make all
 three baked assets report `BAKE_STALE`.
+
+### Stage 1c: Hillaire's physical constants
+The unit mapping is fixed by declaring the atmosphere column to be Earth's 100 km:
+**1 world unit = 0.90909 km**. Chosen on the column rather than the planet because the terrain
+globe is pinned at radius 150, so the planet cannot also be Earth-sized. The honest trade:
+every scale height, ozone altitude and optical depth becomes directly comparable to a
+published value, while **curvature stays wrong** — thickness/radius 0.733 against Earth's
+0.0157.
+
+A pleasing traceability result fell out. Hillaire's β_R is **exactly a λ⁻⁴ family through
+(680, 550, 440) nm** — the implied `wavelengthScale` agrees to 0.002% across all three
+channels — so his constants drop straight into the existing `(scale/λ)⁴` machinery, which is
+also what the report's "σ ∝ 1/λ⁴" statement describes. No new plumbing, and the numbers are
+citable rather than fitted.
+
+| | before | after | source |
+|---|---|---|---|
+| λ | (639.5, 526, 441.8) | (680, 550, 440) nm | Hillaire |
+| wavelengthScale | 748.5 | 593.483 | derived, not fitted |
+| Rayleigh scale height | 9.46 u = 8.6 km | 8.80 u = **8.0 km** | report §2.1 |
+| Mie scale height | 8.80 u = 8.0 km | 1.32 u = **1.2 km** | report §2.1 |
+| ozone peak / half-width | 13.2 / 29.7 u | 27.5 / 16.5 u = **25 / 15 km** | report §2.1 |
+| ozone red absorption | **−3** (adds energy) | +0.65 | Hillaire |
+| scale height ratio | 1.075 : 1 | **6.67 : 1** | physical |
+
+The scale heights and the ozone tent were **already committed on paper** in report §2.1, so
+adopting Hillaire's coefficients is not an invention — it is the only coefficient set
+consistent with the density profiles the report has already published.
+
+Predicted: vertical optical depth (0.173, 0.420, 0.748) → **(0.0662, 0.1468, 0.2761)**, and
+LUT zenith (0.8416, 0.6577, 0.4746) → **(0.9359, 0.8635, 0.7587)**. Much more transparent.
+
+**Expected sampling problem.** With H_Mie at 1.32 units the 256-step uniform march is
+marginal and in places inadequate:
+
+| view | units per step | samples per Mie scale height |
+|---|---|---|
+| zenith from ground | 0.43 | 3.1 |
+| horizon from ground | 0.83 | 1.6 |
+| through, from altitude 220 | 1.66 | **0.8** |
+
+So high-altitude and horizon views may band or shimmer. That is 1d — non-uniform stepping —
+and the requirement is itself an RQ3 finding: *physical scale heights force non-uniform
+sampling*. Left separate deliberately so the visual change from the constants can be judged on
+its own before the sampling changes underneath it.
