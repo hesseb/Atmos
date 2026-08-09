@@ -801,3 +801,19 @@ To explore when the PBR profiles get detailed attention:
 
 Defaulted `Aerial Perspective.asset` to `enabled: 0` so the authored scene is plain PBR; this
 hybrid needs to be a deliberate profile, not an accident of asset defaults.
+
+### Cubemap bake
+`Testbed → Baseline Sky → Bake Sky Cubemap From PBR` renders the six faces through the same
+`raymarch()` as everything else and writes `SkyCubemap.asset`. Unlike the gradient it keeps
+full directional detail — azimuth variation, the Mie forward lobe, the sun's own glow — which
+is what a real skybox has.
+
+Baking a sky model to a cubemap is what studios actually do, so this is a representative
+"textured skybox" workflow rather than a shortcut. It is **frozen at 25° sun elevation**;
+that is the variant's entire point, and the day-cycle benchmark is where the failure shows.
+
+Face orientation is the known trap: get the convention wrong and the result still looks like
+a sky, just with seams. The face bases are checked against the Direct3D reference formulas
+(verified exact), and the baker additionally **measures the discontinuity across the +Z/+Y
+seam both with and without a vertical row flip and takes whichever is smaller**, logging both
+numbers. If both are large the basis is wrong rather than the row order, and the log says so.

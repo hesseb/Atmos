@@ -8,6 +8,7 @@
 // One dispatch per output row: the sun direction is a shader global set once per dispatch,
 // and each row of the LUT is a different sun elevation.
 #pragma kernel BakeSkyGradientRow
+#pragma kernel BakeSkyCubemapFace
 
 #include "../Atmosphere/Shader Common/AtmosphereCommon.hlsl"
 
@@ -76,4 +77,48 @@ void BakeSkyGradientRow (uint3 id : SV_DispatchThreadID)
 	}
 
 	Result[uint2(id.x, row)] = float4(sum / max(1, numAzimuthSamples), 1);
+}
+
+// ---------------------------------------------------------------- cubemap
+
+// One cubemap face per dispatch. Unlike the gradient this keeps full directional detail -
+// azimuth variation, the Mie forward lobe, the sun's own glow - which is what a real painted
+// skybox would have and what the 2D LUT necessarily averages away.
+//
+// The face basis arrives from the CPU as three vectors rather than being derived from a face
+// index here. Cubemap face orientation is a well-known source of silently mirrored or rotated
+// results, and keeping it in C# means it can be verified against edge continuity rather than
+// trusted.
+RWTexture2D<float4> FaceResult;
+uint faceSize;
+float3 faceForward;
+float3 faceRight;
+float3 faceUp;
+
+[numthreads(8, 8, 1)]
+void BakeSkyCubemapFace (uint3 id : SV_DispatchThreadID)
+{
+	if (id.x >= faceSize || id.y >= faceSize) { return; }
+
+	float2 uv = (id.xy + 0.5) / faceSize * 2.0 - 1.0;
+	float3 viewDir = normalize(faceForward + faceRight * uv.x + faceUp * uv.y);
+
+	float3 pos = observerUp * (planetRadius + bakeAltitude);
+
+	float2 hitInfo = raySphere(0, atmosphereRadius, pos, viewDir);
+	float rayLength = hitInfo.y;
+
+	float dstToPlanet = rayIntersectSphere(pos, viewDir, planetRadius);
+	if (dstToPlanet > 0) { rayLength = min(rayLength, dstToPlanet); }
+
+	float3 col = 0;
+	if (rayLength > 0)
+	{
+		float3 inPoint = pos + viewDir * hitInfo.x;
+		ScatteringResult result = raymarch(inPoint, viewDir, rayLength,
+			numScatteringSteps, TransmittanceLUT, planetRadius);
+		col = result.luminance;
+	}
+
+	FaceResult[id.xy] = float4(col, 1);
 }
