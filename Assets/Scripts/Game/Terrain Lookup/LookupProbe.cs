@@ -24,6 +24,8 @@ public class LookupProbe : MonoBehaviour
 {
 	public WorldLookup worldLookup;
 	public CountryData countryData;
+	// Optional. If assigned, Test C cross-checks every baked label anchor.
+	public CountryLabelData labelData;
 
 	[Header("Run")]
 	public bool runOnStart = true;
@@ -41,6 +43,7 @@ public class LookupProbe : MonoBehaviour
 	{
 		if (!TestA()) { return; }
 		if (runCapitalSweep) { TestB(); }
+		if (labelData != null) { TestC(); }
 	}
 
 	[ContextMenu("Test A: texture reality check")]
@@ -166,6 +169,78 @@ public class LookupProbe : MonoBehaviour
 		{
 			Debug.LogWarning($"[Probe B] INCONCLUSIVE at {pct:0.0}%. Inspect the listed mismatches " +
 				"before building on this.", this);
+		}
+	}
+
+	/// <summary>
+	/// Cross-checks every baked label anchor against the country index map.
+	///
+	/// This is a much sharper test than the capital sweep: an anchor is the point
+	/// furthest from any border, so it should be deep inside its own country by
+	/// construction. Anything other than near-100% means a real bug - the wrong polygon
+	/// chosen, holes mishandled, or the entries no longer aligned with CountryData.
+	/// </summary>
+	[ContextMenu("Test C: label anchor cross-check")]
+	public void TestC()
+	{
+		if (labelData == null)
+		{
+			Debug.LogError("LookupProbe: assign labelData to run Test C.", this);
+			return;
+		}
+
+		if (!labelData.ValidateAlignment(countryData, out string alignmentError))
+		{
+			Debug.LogError($"[Probe C] FAIL: {alignmentError}", this);
+			return;
+		}
+
+		Country[] countries = countryData.Countries;
+		int matched = 0, mismatched = 0, ocean = 0, skipped = 0;
+		var mismatches = new System.Text.StringBuilder();
+		int listed = 0;
+
+		for (int i = 0; i < labelData.entries.Length; i++)
+		{
+			CountryLabelData.Entry entry = labelData.entries[i];
+			// Failed bakes fell back to a centroid, which is allowed to be outside.
+			if (entry.bakeFailed) { skipped++; continue; }
+
+			TerrainInfo info = worldLookup.GetTerrainInfoImmediate(entry.anchor);
+
+			if (info.countryIndex == i) { matched++; continue; }
+
+			if (info.inOcean) { ocean++; } else { mismatched++; }
+
+			if (listed < maxMismatchesToList)
+			{
+				string got = info.inOcean ? "OCEAN"
+					: (info.countryIndex >= 0 && info.countryIndex < countries.Length
+						? $"{countries[info.countryIndex].name} [{info.countryIndex}]"
+						: $"OUT OF RANGE [{info.countryIndex}]");
+				mismatches.AppendLine($"    [{i}] {countries[i].name} ({entry.alpha3Code}) " +
+					$"anchor r={entry.angularRadius * Mathf.Rad2Deg:0.00}deg -> {got}");
+				listed++;
+			}
+		}
+
+		int tested = matched + mismatched + ocean;
+		float pct = tested > 0 ? 100f * matched / tested : 0f;
+
+		Debug.Log(
+			$"[Probe C] anchor cross-check: {matched}/{tested} correct ({pct:0.0}%)\n" +
+			$"          wrong country {mismatched}   ocean {ocean}   skipped (bake failed) {skipped}\n" +
+			(mismatches.Length > 0 ? $"          first {listed}:\n{mismatches}" : ""), this);
+
+		if (pct >= 98f)
+		{
+			Debug.Log("[Probe C] PASS - anchors land inside their own countries.", this);
+		}
+		else
+		{
+			Debug.LogError($"[Probe C] FAIL at {pct:0.0}%. Anchors should be deep inside their " +
+				"country by construction, so this indicates a real bug: wrong polygon chosen, " +
+				"holes mishandled, or index alignment broken.", this);
 		}
 	}
 }
