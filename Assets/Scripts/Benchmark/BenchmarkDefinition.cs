@@ -81,8 +81,10 @@ public struct BenchmarkSegment
 	public string label;
 	public SegmentKind kind;
 	[Min(1)] public int frames;
-	// -1 uses the definition's default.
-	public int settleFramesOverride;
+	// 0 (the default for a serialized int) uses the definition's default. Only a positive
+	// value overrides - otherwise every segment authored in the inspector would silently
+	// get zero settle frames, and a pose discontinuity would land in the statistics.
+	[Min(0)] public int settleFramesOverride;
 
 	public ViewRef from;
 	public ViewRef to;
@@ -135,6 +137,6 @@ public class BenchmarkDefinition : ScriptableObject
 
 	public int SettleFramesFor(BenchmarkSegment segment)
 	{
-		return segment.settleFramesOverride >= 0 ? segment.settleFramesOverride : defaultSettleFrames;
+		return segment.settleFramesOverride > 0 ? segment.settleFramesOverride : defaultSettleFrames;
 	}
 }
