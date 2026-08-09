@@ -56,6 +56,14 @@ public class CountryHighlight : MonoBehaviour
 	[Range(3, 24)] public int joinResolution = 8;
 	public bool drawJoins = true;
 
+	[Header("Interior fill")]
+	// Brightens the hovered country's terrain, via a keyword in Terrain.shader. Turning
+	// this off compiles the extra texture fetch out of the terrain shader entirely.
+	public bool fillEnabled = true;
+	// rgb tints the terrain, a is the blend strength.
+	public Color fillColour = new Color(1f, 0.95f, 0.82f, 1f);
+	[Range(1f, 3f)] public float fillBrightness = 1.35f;
+
 	[Header("Rendering")]
 	// Layer 5 (UI) - unused by the scene, inside the camera's culling mask, and not
 	// subject to the 400-unit cull distance that layer 6 (Earth) has.
@@ -74,9 +82,16 @@ public class CountryHighlight : MonoBehaviour
 	readonly List<LineSegment> scratch = new List<LineSegment>();
 	readonly uint[] args = new uint[5];
 	int activeSegments;
+	int hoveredIndex = -1;
 	float fade;
 	Bounds bounds;
 	bool initialised;
+
+	const string FillKeyword = "COUNTRY_HIGHLIGHT_ON";
+	static readonly int CountryIndicesId = Shader.PropertyToID("_CountryIndices");
+	static readonly int HighlightIndexId = Shader.PropertyToID("_HighlightCountryIndex");
+	static readonly int FillColourId = Shader.PropertyToID("_HighlightFillColour");
+	static readonly int FillBrightnessId = Shader.PropertyToID("_HighlightFillBrightness");
 
 	float GlobeRadius => heightSettings != null ? heightSettings.worldRadius : 150f;
 
@@ -85,6 +100,8 @@ public class CountryHighlight : MonoBehaviour
 		if (picker == null) { picker = GetComponent<GlobePicker>(); }
 		if (worldLookup == null) { worldLookup = FindObjectOfType<WorldLookup>(); }
 		Initialise();
+
+		EnableFillKeyword();
 
 		if (picker != null)
 		{
@@ -97,6 +114,44 @@ public class CountryHighlight : MonoBehaviour
 	{
 		if (picker != null) { picker.onHoveredCountryChanged -= OnHoveredCountryChanged; }
 		activeSegments = 0;
+		// Globals and keywords outlive the component, so the terrain would stay tinted.
+		ClearFill();
+	}
+
+	/// <summary>
+	/// Enables the terrain shader's fill path once, not per hover. Toggling a global
+	/// keyword swaps shader variants, so doing it on every hover change risks a hitch;
+	/// an index of -1 is the shader's "nothing highlighted" state instead.
+	/// </summary>
+	void EnableFillKeyword()
+	{
+		if (!fillEnabled || worldLookup == null || worldLookup.countryIndices == null) { return; }
+
+		Shader.EnableKeyword(FillKeyword);
+		Shader.SetGlobalTexture(CountryIndicesId, worldLookup.countryIndices);
+		Shader.SetGlobalFloat(HighlightIndexId, -1f);
+	}
+
+	void ClearFill()
+	{
+		hoveredIndex = -1;
+		Shader.SetGlobalFloat(HighlightIndexId, -1f);
+		Shader.DisableKeyword(FillKeyword);
+	}
+
+	void UpdateFill()
+	{
+		if (!fillEnabled) { return; }
+
+		Shader.SetGlobalFloat(HighlightIndexId, hoveredIndex);
+		if (hoveredIndex < 0) { return; }
+
+		Shader.SetGlobalFloat(FillBrightnessId, fillBrightness);
+
+		// Fade the strength in with the border rather than snapping the terrain colour.
+		Color c = fillColour;
+		c.a *= fade;
+		Shader.SetGlobalVector(FillColourId, c);
 	}
 
 	void Initialise()
@@ -164,6 +219,7 @@ public class CountryHighlight : MonoBehaviour
 
 		activeSegments = 0;
 		fade = 0f;
+		hoveredIndex = index;
 
 		if (index < 0) { return; }
 
@@ -239,11 +295,19 @@ public class CountryHighlight : MonoBehaviour
 
 	void LateUpdate()
 	{
-		if (!initialised || activeSegments == 0) { return; }
+		if (!initialised) { return; }
 
-		fade = fadeInDuration > 0f
-			? Mathf.MoveTowards(fade, 1f, Time.unscaledDeltaTime / fadeInDuration)
-			: 1f;
+		if (activeSegments > 0)
+		{
+			fade = fadeInDuration > 0f
+				? Mathf.MoveTowards(fade, 1f, Time.unscaledDeltaTime / fadeInDuration)
+				: 1f;
+		}
+
+		// Runs even with no country hovered, so the terrain tint clears.
+		UpdateFill();
+
+		if (activeSegments == 0) { return; }
 
 		float width = widthPixels / Mathf.Max(1f, Screen.height);
 		float radius = GlobeRadius;
@@ -293,6 +357,7 @@ public class CountryHighlight : MonoBehaviour
 
 	void OnDestroy()
 	{
+		ClearFill();
 		ComputeHelper.Release(segmentsBuffer, lineArgsBuffer, joinArgsBuffer);
 
 		DestroyObject(lineMaterial);
