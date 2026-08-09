@@ -933,3 +933,58 @@ Related and also deferred: `SkyPass.Record` allocates a temporary RT and blits t
 at **0.041 ms**. A single-pass approach is impossible while the sky shaders composite against
 `_MainTex.a` (the star/moon brightness channel) with a non-linear blend, but that hack is
 flagged "TODO: make it good" in `DrawSky.shader` and replacing it would make one blit viable.
+
+---
+
+## First authoritative baseline results: release, SelfCheck, 1440p, RTX 4090
+
+Full batch, 7 profiles x 2 repeats, all five benchmarks. Pose hash and geometry **PASS** on
+every benchmark. **Noise floor 0.029 ms worst case** (a single outlier on
+`baseline-baked/nadir`); typical run-to-run spread is **0.000–0.004 ms**.
+
+### The cost decomposition, at last measured cleanly
+
+| component | mean | how |
+|---|---|---|
+| sky pass structure | **0.041 ms** | `nullsky − noatmo` — two blits and a temp RT |
+| cheap aerial perspective | **0.116 ms** | `nullsky-aerial − nullsky` |
+| baseline sky shading | **0.050 ms** | `baseline-gradient − nullsky-aerial` |
+| physically based over baseline | **~0.00 ms** | `pbr − baseline-gradient` |
+
+All three components are strikingly consistent across 13 segments spanning sky fractions from
+0.00 to 0.97.
+
+### The headline: the two are indistinguishable in cost
+`pbr − baseline-gradient` averages **+0.001 ms** below sky fraction 0.30 and **+0.005 ms**
+above 0.70 — both inside the noise floor. Per segment it ranges −0.037 to +0.062, with one
+outlier at −0.113 (`altitude/descend`).
+
+At 1440p on a 4090, **a physically based sky costs the same as a textured one.** Hillaire's
+method precomputes scattering into a 128×256 LUT, so per pixel both are a texture fetch; the
+runtime cost is the pass that carries them, not the model inside.
+
+That reframes RQ2. The question "what does physical accuracy cost" has the answer "nothing
+measurable here", which makes RQ1 and RQ3 carry the thesis and is a stronger result than a
+trade-off curve would have been. It needs stating carefully: it is one resolution on one very
+fast GPU, and the LUT sizes are fixed — the cost would reappear at higher LUT resolutions,
+with multiple scattering, or on hardware where 3.7 M pixels of texture fetch is not free.
+
+### The biggest single cost is not the sky
+The cheap aerial perspective pass (0.116 ms) costs **more than twice** the sky shading
+(0.050 ms) and nearly three times the pass structure (0.041 ms). It computes one `exp()`. The
+cost is a full-screen read-modify-write at 1440p, not arithmetic — which says the interesting
+optimizations here are about pass count and bandwidth, not about the scattering model.
+
+### Bug this exposed: the cheap fog was being applied to the sky
+`AerialPerspectiveSimple` had no sky exclusion, so at the far plane the exponential left only
+40% of the sky and **replaced 60% of it with the haze colour**. The physically based pass
+skips sky pixels explicitly. So the two were doing different jobs and the difference was being
+attributed to the technique. Fixed; **the batch above needs re-running**, and the baseline's
+cost should fall at high sky fractions where it was previously doing needless work.
+
+### Outlier to investigate
+`altitude/descend` is the only segment where the physically based path is dramatically cheaper
+(−0.113 ms), and `daycycle` at the same nominal sky fraction shows the opposite sign (+0.058).
+The mean sky fraction of a segment that sweeps altitude 220 → 4 is not a meaningful summary of
+it, so this is probably an artefact of averaging over a huge altitude range rather than a real
+effect — but it should be checked before anything is claimed about sky fraction.
