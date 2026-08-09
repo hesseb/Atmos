@@ -13,8 +13,11 @@ MonoBehaviour:
   m_Name: PBR
   m_EditorClassIdentifier: Assembly-CSharp::PostProcessRendererProfile
   id: pbr
-  description: 
+  description: 'Physically based: raymarched sky plus scattering-LUT aerial perspective.'
   effects:
   - effect: {fileID: 11400000, guid: 7526e0f14e0a0a7479aeb2e5d87ae0a3, type: 2}
     enabled: 1
+  - effect: {fileID: 11400000, guid: 04fe8bd6952ff0c42bd708348a5b3dd1, type: 2}
+    enabled: 0
   objects: []
+  sky: 1

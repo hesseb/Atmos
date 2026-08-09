@@ -609,9 +609,16 @@ MonoBehaviour:
     lodSystem: {fileID: 1620373749}
     postProcessing: {fileID: 1160123625}
     countryInteraction: {fileID: 662225698}
+    renderingManager: {fileID: 0}
+    baselineSky: {fileID: 0}
   profiles:
-  - {fileID: 11400000, guid: 5838a65e2cc0d4b45b6fb9bc45fd02a7, type: 2}
   - {fileID: 11400000, guid: 98d6d7e4fed7877438d2efc8ecdf5c65, type: 2}
+  - {fileID: 11400000, guid: 5ca9a267c726eca4393d87cf6159d2dd, type: 2}
+  - {fileID: 11400000, guid: 838c630df157a1c4e9ed3ff7a3491569, type: 2}
+  - {fileID: 11400000, guid: 592f45c0160603e4bbc42a9d4bb6852b, type: 2}
+  - {fileID: 11400000, guid: a1e8e4e7ba2953441bd98db91c3d081f, type: 2}
+  - {fileID: 11400000, guid: ac2545b424cc50549a09d0888ce8d2f9, type: 2}
+  - {fileID: 11400000, guid: 5838a65e2cc0d4b45b6fb9bc45fd02a7, type: 2}
   repeats: 2
   interleaveRepeats: 1
   mode: 0
@@ -638,6 +645,7 @@ MonoBehaviour:
   cycleBenchmarkKey: 283
   cycleModeKey: 284
   runKey: 285
+  cycleProfileKey: 286
   abortKey: 27
   toggleOverlayKey: 287
   showOverlay: 1
@@ -658,6 +666,7 @@ GameObject:
   - component: {fileID: 1160123621}
   - component: {fileID: 1160123625}
   - component: {fileID: 1533676488}
+  - component: {fileID: 1533676489}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -753,6 +762,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   effects:
   - {fileID: 11400000, guid: 7526e0f14e0a0a7479aeb2e5d87ae0a3, type: 2}
+  - {fileID: 11400000, guid: 04fe8bd6952ff0c42bd708348a5b3dd1, type: 2}
   - {fileID: 11400000, guid: e5eed753fe86b904b8e130f8b903378d, type: 2}
   - {fileID: 11400000, guid: e608ff61b1c8d714baca914975e7bdf2, type: 2}
 --- !u!1 &1389253764
@@ -844,7 +854,7 @@ MeshFilter:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1389253764}
-  m_Mesh: {fileID: 1486764855}
+  m_Mesh: {fileID: 1456566747}
 --- !u!1 &1433245418
 GameObject:
   m_ObjectHideFlags: 0
@@ -877,56 +887,7 @@ Transform:
   - {fileID: 1737174890}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &1459814462
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1459814464}
-  - component: {fileID: 1459814463}
-  m_Layer: 6
-  m_Name: Country Outlines
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 4294967295
-  m_IsActive: 1
---- !u!114 &1459814463
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1459814462}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e8a67bb3cebfd4141a991f0d232a17b3, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  loadFile: {fileID: 4900000, guid: 5061ce50176828442a54c8b2a63d6709, type: 3}
-  mat: {fileID: 2100000, guid: fc090c8e85cf51e4bb9f7017dd686a3b, type: 2}
-  useStaticBatching: 1
-  loadOnStart: 0
-  disableLoading: 0
---- !u!4 &1459814464
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1459814462}
-  serializedVersion: 2
-  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 698678720}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!43 &1486764855
+--- !u!43 &1456566747
 Mesh:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -1104,6 +1065,55 @@ Mesh:
       - serializedVersion: 1
         m_IndexStart: 0
         m_IndexCount: 0
+--- !u!1 &1459814462
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1459814464}
+  - component: {fileID: 1459814463}
+  m_Layer: 6
+  m_Name: Country Outlines
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 4294967295
+  m_IsActive: 1
+--- !u!114 &1459814463
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1459814462}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e8a67bb3cebfd4141a991f0d232a17b3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  loadFile: {fileID: 4900000, guid: 5061ce50176828442a54c8b2a63d6709, type: 3}
+  mat: {fileID: 2100000, guid: fc090c8e85cf51e4bb9f7017dd686a3b, type: 2}
+  useStaticBatching: 1
+  loadOnStart: 0
+  disableLoading: 0
+--- !u!4 &1459814464
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1459814462}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 698678720}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1499138102
 GameObject:
   m_ObjectHideFlags: 0
@@ -1167,9 +1177,43 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   starRenderer: {fileID: 1552619273}
   atmosphereEffect: {fileID: 11400000, guid: 7526e0f14e0a0a7479aeb2e5d87ae0a3, type: 2}
+  baselineSky: {fileID: 1533676489}
   mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
   mat: {fileID: 2100000, guid: 75c6bad84ea426641a38d06c9216639a, type: 2}
   moon: {fileID: 197948336}
+--- !u!114 &1533676489
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1160123620}
+  m_Enabled: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b8e63df443eb08b40baddc047893f9fe, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::BaselineSkyRenderer
+  variant: 0
+  baselineShader: {fileID: 4800000, guid: 5b7da1d783f043b4db27b40914aa77fc, type: 3}
+  nullShader: {fileID: 4800000, guid: cd03949ce7977ca4583a1570723502ee, type: 3}
+  skyGradient: {fileID: 2800000, guid: da3073cc73c2b6a4faca997051e6473e, type: 3}
+  skyGradientBaked: {fileID: 2800000, guid: e3cc5e1affead0a448979b22077c6f58, type: 3}
+  skyCubemap: {fileID: 8900000, guid: ef81babdc46c34b4d861fc13c4fafab3, type: 2}
+  skyIntensity: 1
+  sunColour: {r: 1, g: 1, b: 1, a: 1}
+  sunDiscSize: 1
+  sunDiscBlurA: 1
+  sunDiscBlurB: 1
+  glowColour: {r: 1, g: 0.85, b: 0.65, a: 1}
+  glowPower: 8
+  glowStrength: 0.4
+  starFadeStrength: 4
+  intensity: 1.31
+  contrast: 1.45
+  whitePoint: 1
+  ditherStrength: 4
+  blueNoise: {fileID: 2800000, guid: f94aa116956069842b6a2820258a64f0, type: 3}
+  planet: {fileID: 1499138103}
 --- !u!1 &1544279447
 GameObject:
   m_ObjectHideFlags: 0

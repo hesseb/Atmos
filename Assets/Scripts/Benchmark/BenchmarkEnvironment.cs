@@ -17,6 +17,9 @@ public class BenchmarkSceneRefs
 	public PostProcessingManager postProcessing;
 	// The GameObject carrying GlobePicker + CountryHighlight + CountryLabelSystem.
 	public GameObject countryInteraction;
+	// Owns the sky command buffers and reports which sky is actually attached.
+	public RenderingManager renderingManager;
+	public BaselineSkyRenderer baselineSky;
 
 	public EarthOrbit Earth => solarSystem != null ? solarSystem.earth : null;
 
@@ -33,6 +36,18 @@ public class BenchmarkSceneRefs
 		{
 			GlobePicker picker = Object.FindFirstObjectByType<GlobePicker>(FindObjectsInactive.Include);
 			if (picker != null) { countryInteraction = picker.gameObject; }
+		}
+
+		if (renderingManager == null)
+		{
+			renderingManager = Object.FindFirstObjectByType<RenderingManager>();
+		}
+		if (baselineSky == null)
+		{
+			// FindObjectsInactive.Include, because a profile that enables the baseline needs a
+			// handle to it while it is disabled - which is its resting state whenever the
+			// physically based renderer is the one being measured.
+			baselineSky = Object.FindFirstObjectByType<BaselineSkyRenderer>(FindObjectsInactive.Include);
 		}
 
 		var missing = new List<string>();

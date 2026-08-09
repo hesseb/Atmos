@@ -25,6 +25,9 @@ public class BenchmarkHud : MonoBehaviour
 	public KeyCode cycleBenchmarkKey = KeyCode.F2;
 	public KeyCode cycleModeKey = KeyCode.F3;
 	public KeyCode runKey = KeyCode.F4;
+	[Tooltip("Applies a renderer profile live, for looking at the difference rather than " +
+		"measuring it. Cycles: scene as authored -> each profile -> back.")]
+	public KeyCode cycleProfileKey = KeyCode.F5;
 	public KeyCode abortKey = KeyCode.Escape;
 	public KeyCode toggleOverlayKey = KeyCode.F6;
 
@@ -54,6 +57,15 @@ public class BenchmarkHud : MonoBehaviour
 	string batchFolder;
 	string savedOutputOverride;
 	int queueLengthAtStart;
+
+	// Live profile preview. -1 is "scene as authored".
+	//
+	// The scope is not optional bookkeeping: applying a profile writes
+	// PostProcessingEffect.enabled, which is a serialized field on a ScriptableObject asset.
+	// Leaving a preview applied would write it to the project on the next save, so the scene
+	// would quietly come back configured as whichever profile was last looked at.
+	int previewIndex = -1;
+	RestoreScope previewScope;
 
 	GUIStyle overlayStyle;
 	Texture2D overlayBackground;
@@ -91,6 +103,10 @@ public class BenchmarkHud : MonoBehaviour
 	void OnDisable()
 	{
 		if (runner != null) { runner.onCompleted -= HandleCompleted; }
+
+		// Effect enabled flags are asset state. A preview left applied when play mode ends
+		// would be written to the project on the next save.
+		ClearPreview();
 	}
 
 	void Update()
@@ -135,8 +151,74 @@ public class BenchmarkHud : MonoBehaviour
 
 		if (Input.GetKeyDown(cycleBenchmarkKey)) { CycleBenchmark(); }
 		if (Input.GetKeyDown(cycleModeKey)) { CycleMode(); }
+		if (Input.GetKeyDown(cycleProfileKey)) { CyclePreviewProfile(); }
 		if (Input.GetKeyDown(runKey)) { Run(); }
 	}
+
+	// ------------------------------------------------------------------ live preview
+
+	/// <summary>
+	/// Applies the next renderer profile live, so the difference can be looked at rather than
+	/// only measured. Not part of any measurement path - a benchmark applies its own profiles
+	/// through its own scope.
+	/// </summary>
+	void CyclePreviewProfile()
+	{
+		List<RendererProfile> profiles = LivePreviewProfiles();
+		if (profiles.Count == 0)
+		{
+			lastMessage = "no renderer profiles on the runner";
+			return;
+		}
+
+		if (!runner.sceneRefs.Resolve(out string error))
+		{
+			lastMessage = "cannot preview: " + error;
+			Debug.LogWarning($"[Benchmark] {error}", this);
+			return;
+		}
+
+		// Unwind the previous preview before applying the next, so profiles compose by
+		// replacement rather than by accumulation.
+		ClearPreview();
+
+		// One past the end returns to the scene's authored configuration, which is the only
+		// way to get back to it without restarting.
+		previewIndex++;
+		if (previewIndex >= profiles.Count)
+		{
+			previewIndex = -1;
+			lastMessage = "preview: scene as authored";
+			return;
+		}
+
+		RendererProfile profile = profiles[previewIndex];
+		previewScope = new RestoreScope();
+		profile.Apply(runner.sceneRefs, previewScope);
+		lastMessage = $"preview: {profile.id}";
+	}
+
+	/// <summary>Undoes the live preview. Safe to call when nothing is previewed.</summary>
+	void ClearPreview()
+	{
+		previewScope?.Dispose();
+		previewScope = null;
+	}
+
+	List<RendererProfile> LivePreviewProfiles()
+	{
+		previewProfiles.Clear();
+		if (runner.profiles != null)
+		{
+			foreach (RendererProfile profile in runner.profiles)
+			{
+				if (profile != null) { previewProfiles.Add(profile); }
+			}
+		}
+		return previewProfiles;
+	}
+
+	readonly List<RendererProfile> previewProfiles = new List<RendererProfile>();
 
 	void CycleBenchmark()
 	{
@@ -163,6 +245,12 @@ public class BenchmarkHud : MonoBehaviour
 	{
 		List<BenchmarkDefinition> definitions = Available;
 		if (definitions.Count == 0) { lastMessage = "no benchmarks in availableBenchmarks"; return; }
+
+		// Before anything else. A run pins the environment by snapshotting current values, so
+		// starting one with a preview applied would record the previewed state as the thing to
+		// restore to - and every pass would measure from a perturbed starting point.
+		ClearPreview();
+		previewIndex = -1;
 
 		queue.Clear();
 		batchEntries.Clear();
@@ -350,9 +438,48 @@ public class BenchmarkHud : MonoBehaviour
 			$"  mode        {runner.mode}{ModeNote()}\n" +
 			$"  profiles    {ProfileList()}\n" +
 			$"  size        {sizeLine}\n" +
+			$"  viewing     {PreviewName()}\n" +
+			$"  post        {EnabledEffects()}\n" +
 			$"  {KeyName(cycleBenchmarkKey)} benchmark   {KeyName(cycleModeKey)} mode   " +
-			$"{KeyName(runKey)} run   {KeyName(toggleOverlayKey)} hide" +
+			$"{KeyName(cycleProfileKey)} view   {KeyName(runKey)} run   " +
+			$"{KeyName(toggleOverlayKey)} hide" +
 			(string.IsNullOrEmpty(lastMessage) ? "" : $"\n  {lastMessage}");
+	}
+
+	/// <summary>
+	/// What is on screen right now. Reads back the live sky from RenderingManager rather than
+	/// echoing the requested profile, so a profile that failed to apply cannot claim on screen
+	/// that it worked - the same reasoning the run metadata uses.
+	/// </summary>
+	string PreviewName()
+	{
+		List<RendererProfile> profiles = LivePreviewProfiles();
+
+		string requested = previewIndex >= 0 && previewIndex < profiles.Count
+			? profiles[previewIndex].id
+			: "scene as authored";
+
+		RenderingManager rendering = runner.sceneRefs != null ? runner.sceneRefs.renderingManager : null;
+		return rendering != null ? $"{requested}   (sky: {rendering.ActiveMode})" : requested;
+	}
+
+	/// <summary>
+	/// The post-processing effects currently on. Shown because the sky line alone cannot tell
+	/// two configurations apart: the aerial perspective passes live in the post chain, so
+	/// "PBR sky" and "PBR sky plus the cheap fog on top" report identically without this.
+	/// </summary>
+	string EnabledEffects()
+	{
+		PostProcessingManager post = runner.sceneRefs != null ? runner.sceneRefs.postProcessing : null;
+		if (post == null || post.effects == null) { return "-"; }
+
+		var on = new List<string>();
+		foreach (PostProcessingEffect effect in post.effects)
+		{
+			if (effect != null && effect.enabled) { on.Add(effect.name); }
+		}
+
+		return on.Count > 0 ? string.Join(", ", on) : "none";
 	}
 
 	string ProgressText()

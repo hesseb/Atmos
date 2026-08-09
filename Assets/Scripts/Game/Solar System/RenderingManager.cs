@@ -1,23 +1,41 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
 
+/// <summary>
+/// Owns the camera's command buffers: the stars and moon, and exactly one sky.
+///
+/// Every sky renderer's buffer is created here rather than by the renderer itself, because
+/// <see cref="Setup"/> calls RemoveAllCommandBuffers - a buffer added from anywhere else is
+/// silently wiped the next time this component is enabled.
+///
+/// Which sky is attached is *derived* from the renderers' own enabled flags rather than
+/// stored, so "two skies attached at once" cannot be represented. That matters because the
+/// benchmark switches renderers between passes and a stuck buffer would silently double the
+/// sky cost of every subsequent pass.
+/// </summary>
 [ExecuteInEditMode]
 public class RenderingManager : MonoBehaviour
 {
-
 	public SolarSystem.StarRenderer starRenderer;
 	public AtmosphereEffect atmosphereEffect;
-
-	bool atmosphereActive;
-	CommandBuffer outerSpaceRenderCommand;
-	CommandBuffer skyRenderCommand;
-	Camera cam;
+	public BaselineSkyRenderer baselineSky;
 
 	public Mesh mesh;
 	public Material mat;
 	public SolarSystem.Moon moon;
+
+	CommandBuffer outerSpaceRenderCommand;
+	CommandBuffer physicallyBasedSkyCommand;
+	CommandBuffer baselineSkyCommand;
+	CommandBuffer nullSkyCommand;
+
+	SkyMode activeMode = SkyMode.None;
+	Camera cam;
+
+	/// <summary>What is actually attached right now. Recorded into run.json in preference to
+	/// what a profile requested - the same principle as hashing the observed camera pose
+	/// rather than the planned one.</summary>
+	public SkyMode ActiveMode => activeMode;
 
 	void OnEnable()
 	{
@@ -29,47 +47,95 @@ public class RenderingManager : MonoBehaviour
 		cam = Camera.main;
 		cam.RemoveAllCommandBuffers();
 
-		outerSpaceRenderCommand = new CommandBuffer();
-		outerSpaceRenderCommand.name = "Outer Space Render";
-
-
+		outerSpaceRenderCommand = new CommandBuffer { name = "Outer Space Render" };
 		starRenderer?.SetUpStarRenderingCommand(outerSpaceRenderCommand);
 		moon?.Setup(outerSpaceRenderCommand);
 		cam.AddCommandBuffer(CameraEvent.BeforeForwardOpaque, outerSpaceRenderCommand);
 
-		// Atmosphere
-		skyRenderCommand = new CommandBuffer();
-		skyRenderCommand.name = "Sky Render";
-		atmosphereEffect.SetupSkyRenderingCommand(skyRenderCommand);
+		// All sky buffers are recorded up front. Recording is free while detached, and it
+		// keeps the attach/detach path down to a single Add/Remove pair - which is what lets
+		// a renderer swap happen inside one frame during a benchmark pass change.
+		//
+		// Order matters: the outer-space buffer is added first and never removed, so every
+		// sky lands after it. The sky shaders composite against the stars and moon via the
+		// alpha channel, so a sky that ran first would have nothing to composite against.
+		physicallyBasedSkyCommand = new CommandBuffer { name = "Sky Render (PBR)" };
+		atmosphereEffect.SetupSkyRenderingCommand(physicallyBasedSkyCommand);
 
-		atmosphereActive = atmosphereEffect.enabled;
-		if (atmosphereActive)
+		// A buffer is kept only if it actually recorded something. The alternative - attaching
+		// a buffer whose material is null because a shader has not been assigned yet - blits
+		// with a null material every frame, which is a far less obvious failure than simply
+		// having no sky.
+		if (baselineSky != null)
 		{
-			cam.AddCommandBuffer(CameraEvent.BeforeForwardOpaque, skyRenderCommand);
+			baselineSkyCommand = Record("Sky Render (Baseline)", baselineSky.RecordBaselinePass);
+			nullSkyCommand = Record("Sky Render (Null)", baselineSky.RecordNullPass);
 		}
+
+		activeMode = SkyMode.None;
+		ApplyMode(DesiredMode);
+	}
+
+	static CommandBuffer Record(string name, System.Func<CommandBuffer, bool> record)
+	{
+		var buffer = new CommandBuffer { name = name };
+		if (record(buffer)) { return buffer; }
+
+		buffer.Release();
+		return null;
+	}
+
+	/// <summary>
+	/// The physically based sky wins if its effect is enabled. That coupling is deliberate:
+	/// the sky LUT compute only dispatches when AtmosphereEffect.RenderEffectToTarget has run
+	/// (it is what sets lutUpdateRequired), so with the effect disabled the physically based
+	/// sky buffer would blit an increasingly stale texture.
+	/// </summary>
+	SkyMode DesiredMode
+	{
+		get
+		{
+			if (atmosphereEffect != null && atmosphereEffect.enabled) { return SkyMode.PhysicallyBased; }
+			if (baselineSky != null && baselineSky.isActiveAndEnabled) { return baselineSky.Mode; }
+			return SkyMode.None;
+		}
+	}
+
+	CommandBuffer BufferFor(SkyMode mode)
+	{
+		switch (mode)
+		{
+			case SkyMode.PhysicallyBased: return physicallyBasedSkyCommand;
+			case SkyMode.Baseline: return baselineSkyCommand;
+			case SkyMode.Null: return nullSkyCommand;
+			default: return null;
+		}
+	}
+
+	void ApplyMode(SkyMode desired)
+	{
+		if (desired == activeMode || cam == null) { return; }
+
+		CommandBuffer previous = BufferFor(activeMode);
+		if (previous != null) { cam.RemoveCommandBuffer(CameraEvent.BeforeForwardOpaque, previous); }
+
+		CommandBuffer next = BufferFor(desired);
+		if (next != null) { cam.AddCommandBuffer(CameraEvent.BeforeForwardOpaque, next); }
+
+		activeMode = desired;
 	}
 
 	void Update()
 	{
-		//Graphics.DrawMesh(mesh, Matrix4x4.TRS(new Vector3(70, 134, -80), Quaternion.identity, Vector3.one * 30), mat, 0);
-		if (atmosphereEffect.enabled != atmosphereActive)
-		{
-			atmosphereActive = atmosphereEffect.enabled;
-			if (atmosphereActive)
-			{
-				cam.AddCommandBuffer(CameraEvent.BeforeForwardOpaque, skyRenderCommand);
-			}
-			else
-			{
-				cam.RemoveCommandBuffer(CameraEvent.BeforeForwardOpaque, skyRenderCommand);
-			}
-		}
+		ApplyMode(DesiredMode);
 	}
 
 	void OnDisable()
 	{
-		skyRenderCommand?.Release();
 		outerSpaceRenderCommand?.Release();
+		physicallyBasedSkyCommand?.Release();
+		baselineSkyCommand?.Release();
+		nullSkyCommand?.Release();
+		activeMode = SkyMode.None;
 	}
-
 }

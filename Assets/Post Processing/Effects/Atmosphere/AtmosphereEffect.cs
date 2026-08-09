@@ -95,7 +95,6 @@ public class AtmosphereEffect : PostProcessingEffect
 
 	ShaderValues sharedAtmosphereValues;
 	public event System.Action onSettingsUpdated;
-	CommandBuffer drawSkyCommand;
 	Material drawSkyMaterial;
 	bool lutUpdateRequired;
 
@@ -113,15 +112,16 @@ public class AtmosphereEffect : PostProcessingEffect
 	public void SetupSkyRenderingCommand(CommandBuffer skyRenderCommand)
 	{
 		lutUpdateRequired = true;
-		drawSkyMaterial = new Material(drawSkyShader);
 
-		int id = Shader.PropertyToID("_TempSkyRenderTexture");
-		skyRenderCommand.GetTemporaryRT(id, -1, -1, 0, FilterMode.Bilinear);
-		skyRenderCommand.Blit(BuiltinRenderTextureType.CameraTarget, id, drawSkyMaterial);
-		skyRenderCommand.Blit(id, BuiltinRenderTextureType.CameraTarget);
-		skyRenderCommand.ReleaseTemporaryRT(id);
+		// HideAndDontSave: this is recreated on every domain reload under [ExecuteInEditMode],
+		// and without it each reload leaked a material.
+		if (drawSkyMaterial == null || drawSkyMaterial.shader != drawSkyShader)
+		{
+			drawSkyMaterial = new Material(drawSkyShader) { hideFlags = HideFlags.HideAndDontSave };
+		}
 
-
+		// Shared with the baseline sky, so the two passes cannot drift apart.
+		SkyPass.Record(skyRenderCommand, drawSkyMaterial);
 
 		SetDrawSkyShaderParameters(drawSkyMaterial);
 	}
@@ -144,12 +144,13 @@ public class AtmosphereEffect : PostProcessingEffect
 
 	void OnDisable()
 	{
-		// Todo: only clear own cmd buffer
-		if (cam != null)
-		{
-			cam.RemoveAllCommandBuffers();
-		}
-		drawSkyCommand?.Release();
+		// This effect owns no command buffer. RenderingManager creates the sky buffer, passes
+		// it to SetupSkyRenderingCommand to be filled, and owns its lifetime - so there is
+		// nothing here to release, and the RemoveAllCommandBuffers() that used to be here was
+		// pure collateral damage: as a ScriptableObject this fires on domain reload, and it
+		// detached the stars and the moon along with the sky while RenderingManager still
+		// believed all three were attached. Its Update only reacts to `enabled` *changing*,
+		// so it never repaired them.
 		Camera.onPreCull -= RenderLUTs;
 	}
 
@@ -199,6 +200,24 @@ public class AtmosphereEffect : PostProcessingEffect
 			settingsUpToDate = true;
 			onSettingsUpdated?.Invoke();
 		}
+	}
+
+	/// <summary>
+	/// Applies the current atmosphere parameters to an arbitrary compute shader, after making
+	/// sure the LUTs they depend on are up to date.
+	///
+	/// Exists for the baseline renderer's offline sky bake, which evaluates the *same*
+	/// scattering code as the runtime renderer rather than a reimplementation of it. If the
+	/// bake carried its own copy of the physics, a difference between the baked baseline and
+	/// the physically based sky could be a difference in the bake rather than in the
+	/// technique - which is exactly the confound the comparison cannot afford.
+	/// </summary>
+	public void ApplyAtmosphereValuesTo(ComputeShader compute)
+	{
+		// In edit mode SetProperties always takes its init branch, so this also guarantees
+		// transmittanceLUT has been rendered.
+		SetProperties();
+		GetShaderValues().Apply(compute);
 	}
 
 	ShaderValues GetShaderValues()

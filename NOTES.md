@@ -649,3 +649,482 @@ Originally scoped as a temporary diagnostic. Keeping it, for two reasons:
 
 Removing it would also mean deleting a live component from `Game.unity` by hand, which is a
 worse trade than keeping an inert script.
+
+---
+
+## Milestone 4: the baseline renderer
+
+### `noatmo` was never a baseline
+The camera clears to solid black (`m_ClearFlags: 2`) and `RenderSettings.skybox` is the stock
+Default-Skybox that is never drawn, so "atmosphere off" renders a **black sky** and terrain
+with no distance haze. Every RQ2 number recorded before this milestone is "PBR minus
+nothing", not "PBR minus a cheap alternative". `noatmo` is kept, but as an **ablation
+control** and labelled as one.
+
+The physically based path also does two jobs — sky radiance and aerial perspective — so the
+baseline has to do both or the comparison is two features against one.
+
+### Where the sky is drawn, and why not in the post chain
+Every sky variant renders from a CommandBuffer at `BeforeForwardOpaque`, through one shared
+`SkyPass.Record`. Making the baseline a `PostProcessingEffect` instead would have integrated
+with the profile system for free, but it would have confounded the shading model with **four**
+simultaneous differences, all favouring the baseline: pass slot, blit count (1 vs 2), a
+possible MSAA resolve the pre-opaque slot pays, and depth rejection. One full-screen RGBA16F
+read+write at 2560x1440 is roughly 0.06–0.09 ms against a measured atmosphere cost of
+0.158–0.240 ms — the confound is the same size as the signal.
+
+Depth rejection is available in **both** slots (`PostProcessingManager` sets
+`depthTextureMode = Depth`, forcing a prepass, and `AfterDepthTexture` precedes
+`BeforeForwardOpaque`). So "the PBR sky wastes work on covered pixels" is not a property of
+the slot — it is an optimization `DrawSky` does not do. Applying it to one arm only would be
+a measurement error; applying it to both and measuring is Stage 6.
+
+`RenderSettings.skybox` + `clearFlags = Skybox` was rejected outright: the built-in skybox
+draws after opaque with `ZTest LEqual` and `Star.shader` is `ZWrite Off`, so **every star
+would be painted over** while the moon survives (it writes depth) — a moon in an empty sky.
+
+### The tone-map pedestal
+The gradient generator authors anchors as **the colour wanted on screen** and inverts the
+tone map to find what to store. Authoring stored values directly does not work: `toneMap`
+applies `lerp(0.5, lum, 1.45)`, which has a pedestal at 0.155, so every plausible night-sky
+radiance lands on the `smoothMax` floor and comes out flat black — leaving the stars nothing
+to sit against — while daylight clips past 1. **The usable input band is roughly [0.17, 0.87]**,
+which is not a range anyone would guess; the first set of hand-picked anchors was an order of
+magnitude out at both ends. The inverse round-trips to 2e-16 and reads the tone-map constants
+off the scene renderer rather than assuming them.
+
+### Profiles: decomposition, not just A/B
+| profile | Atmosphere | Aerial | sky |
+|---|---|---|---|
+| `pbr` | on | off | PBR |
+| `baseline-gradient` | off | on | hand-authored LUT |
+| `baseline-baked` | off | on | LUT baked from PBR |
+| `baseline-cubemap` | off | on | static cubemap |
+| `nullsky` | off | off | pass with no shading |
+| `noatmo` | off | off | none |
+
+`nullsky − noatmo` is the pass structure alone; `baseline − nullsky` the shading model;
+`pbr − baseline` the headline number. `baseline-gradient` vs `baseline-baked` share a shader
+path and a cost exactly, so any visual difference between them is **purely** authoring method
+— which is the cleanest authoring-flexibility evidence the report can get.
+
+Every profile states every switch explicitly. An omitted toggle inherits whatever the previous
+pass left behind.
+
+### Baked LUT: two structural limitations, both findings
+- **No azimuth axis.** Each texel is the mean radiance over all horizontal directions, so the
+  Mie forward lobe is absent by construction. The shader's separate glow term stands in for it.
+- **No altitude axis.** Baked at one observer height (12, matching the benchmark cameras) and
+  progressively wrong away from it. A strategy-game camera ranges over a large fraction of the
+  atmosphere's thickness, so this is a real limit of the technique rather than of this
+  implementation.
+
+The bake includes `AtmosphereCommon.hlsl` and calls the same `raymarch()` the runtime sky
+does, so a difference between baked and physically based cannot be a difference in the bake.
+
+### First baseline measurement — and the premise does not hold
+`smoke`, editor, 2560x1440, RTX 4090, 6 profiles x 2 repeats. Plumbing verified:
+`nullsky - noatmo` is **exactly +2 draw calls**, all 12 passes share one pose hash, scene
+hashes group 425 / 427 / 428 exactly as the pass counts predict, and `run.json` records the
+*live* sky mode per profile. The three baseline variants land within **0.003 ms** of each
+other, which is the expected consequence of their sharing a code path.
+
+| | ms |
+|---|---|
+| sky pass structure (`nullsky − noatmo`) | +0.051 |
+| baseline shading + aerial (`baseline − nullsky`) | +0.162 |
+| **PBR over baseline** | **+0.073** |
+| whole sky + aerial (`pbr − noatmo`) | +0.286 |
+
+**The cheap baseline captures 74% of the physically based renderer's cost**, and the delta is
+7x the worst repeat spread (0.010 ms), so it is not noise.
+
+The reason is structural: Hillaire's method precomputes scattering into a 128x256 LUT, so at
+the pixel level the physically based sky is *also* just a texture fetch. Everything else -
+two full-screen blits, tone map, dither, star composite, the aerial pass - is common to both.
+The report's framing ("physically based versus a cheaper textured method") assumes a cost gap
+that this technique largely removes. That is a finding, not a problem, but RQ2's phrasing
+should account for it.
+
+Caveat: editor run, dirty tree, and `smoke` has only 200 measured frames per segment, so the
+1% low is suppressed (n < 300, working as designed). Re-run on the release build with a
+longer benchmark before quoting.
+
+### Two defects this run exposed
+1. **`baseline-cubemap` had no cubemap.** `skyCubemap: {fileID: 0}` - the plan called for
+   baking one and it was never implemented, so the variant sampled an unbound sampler. Its
+   *cost* is still a valid measurement of the code path, but the image is meaningless, so it
+   cannot be used for RQ1. The renderer now warns loudly instead of rendering something
+   plausible-looking and wrong.
+2. **The decomposition was mislabelled.** `nullsky` has no aerial perspective pass (427 draw
+   calls) while the baselines do (428), so `baseline − nullsky` bundles the entire aerial pass
+   in with the sky shading - 0.162 ms reported as "shading" when the shading alone is a
+   fraction of it. Added a `nullsky-aerial` control that is the structural twin of the
+   baselines, so `baseline − nullsky-aerial` isolates the sky shading and nothing else.
+
+### F5: live renderer preview
+`BenchmarkHud` cycles the runner's profiles live — scene as authored, then each profile in
+turn, then back. For looking at the difference rather than measuring it.
+
+It applies through a `RestoreScope`, which is not optional bookkeeping here:
+`PostProcessingEffect.enabled` is a serialized field on a ScriptableObject *asset*, so a
+preview left applied would be written to the project on the next save and the scene would
+quietly come back configured as whichever renderer was last looked at. The scope is unwound
+on three paths — cycling to the next profile, starting a run, and `OnDisable`.
+
+Clearing it before a run matters for a second reason: a run pins the environment by
+snapshotting current values, so starting one with a preview applied would record the
+previewed state as the thing to restore to, and every pass would measure from a perturbed
+starting point.
+
+The overlay's `viewing` line reports the live `RenderingManager.ActiveMode` alongside the
+requested profile, so a profile that failed to apply cannot claim on screen that it worked.
+
+### Open thread: art-directed haze *on top of* physically based aerial perspective
+The doubled-up configuration found by accident — `Atmosphere` (PBR sky + scattering-LUT
+aerial perspective) **plus** `AerialPerspectiveSimple` (cheap exponential fog keyed to sun
+elevation) — was judged to look **better** than the physically based aerial perspective alone.
+
+Worth taking seriously rather than filing as a bug, because it is an RQ3-shaped result: the
+physically based path is correct but not art-directable, and a cheap ramp on top restores
+artistic control over distance haze for ~0.05 ms without touching the scattering. That is
+exactly the "how can the physically based method be adapted to work practically" question,
+and it is a hybrid neither arm of the current comparison represents.
+
+To explore when the PBR profiles get detailed attention:
+- Is the improvement the *colour* (art-directed ramp vs derived) or just *more* haze? Test by
+  raising the physically based `aerialPerspectiveStrength` alone and comparing.
+- The PBR aerial perspective is disabled for Earth shadow at 32³ (`START.md` §3) and the LUT
+  is coarse; some of what the cheap fog adds may be covering a resolution artefact.
+- If it survives scrutiny it deserves its own profile (`pbr-hybrid`) and a paragraph, since
+  "keep the physics, add an art-directed term" is a transferable recommendation.
+
+Defaulted `Aerial Perspective.asset` to `enabled: 0` so the authored scene is plain PBR; this
+hybrid needs to be a deliberate profile, not an accident of asset defaults.
+
+### Cubemap bake
+`Testbed → Baseline Sky → Bake Sky Cubemap From PBR` renders the six faces through the same
+`raymarch()` as everything else and writes `SkyCubemap.asset`. Unlike the gradient it keeps
+full directional detail — azimuth variation, the Mie forward lobe, the sun's own glow — which
+is what a real skybox has.
+
+Baking a sky model to a cubemap is what studios actually do, so this is a representative
+"textured skybox" workflow rather than a shortcut. It is **frozen at 25° sun elevation**;
+that is the variant's entire point, and the day-cycle benchmark is where the failure shows.
+
+Face orientation is the known trap: get the convention wrong and the result still looks like
+a sky, just with seams. The face bases are checked against the Direct3D reference formulas
+(verified exact), and the baker additionally **measures the discontinuity across the +Z/+Y
+seam both with and without a vertical row flip and takes whichever is smaller**, logging both
+numbers. If both are large the basis is wrong rather than the row order, and the log says so.
+
+### The cubemap seam was not an orientation bug
+Visible seams on `baseline-cubemap` turned out not to be face orientation at all.
+
+**A cubemap sampled by raw world direction has its horizon pinned to world +Y.** On a globe
+that only lines up with the real horizon at one point on the planet; everywhere else the
+baked horizon — a hard planet-occlusion edge — sits at an angle to the real one, and turning
+the camera sweeps across it. The gradient variants were unaffected because they derive view
+elevation from the observer's local up, which is correct anywhere.
+
+Fixed by sampling in the observer's frame: `up` from the camera and planet centre, plus a
+continuous horizontal basis from the planet's axis.
+
+Only the vertical axis has to match the bake. The **azimuth origin is deliberately not
+aligned** to the bake's: a static cubemap cannot track the sun's azimuth either, so matching
+it would be false precision. The requirement is continuity, verified orthonormal to 0.0 and
+continuous to 0.0 across latitude. It is singular at the poles, where the reference falls
+back and the azimuth jumps — no benchmark goes there, but a pole flyover would need a better
+basis.
+
+The first seam check was also worthless and is replaced: it compared the +Z/+Y seam in the
+read-back arrays *before* `SetPixels`, and a vertical flip applied consistently to every face
+leaves that comparison unchanged while still producing seams once assembled. The replacement
+uses ground truth — we choose the sun's elevation, so it must land on a computable texel of
+the +X face (~119 rows apart between the two hypotheses at 256²) — and now reports the verdict
+in a **dialog**, not just the Console.
+
+### The cubemap orientation warning was a false alarm
+The bake reported "the face basis is wrong" on a cubemap that is correct. The measurement:
+brightest texel on +X at row **174.0**, against predictions of 187.2 unflipped and 67.8
+flipped. The decision (direct) was never in doubt — 13 rows versus 106 — but the 13-row
+residual tripped a tolerance set at 5% of the face (12.8 rows).
+
+Decoding the residual explains it: row 174 implies a sun elevation of **19.97°** when the sun
+was placed at **25°**. The check assumed the brightest texel *is* the sun direction, and it is
+not. **Air mass grows toward the horizon, so the product of the Mie phase function and the
+path integral peaks a few degrees below the sun rather than at it.** A ~5° downward bias is
+the physically correct result.
+
+The criteria are now stated in terms that mean something rather than in texels:
+- implied sun elevation within 12° of the actual, with the downward bias expected and
+  explained in the message
+- brightest texel on the face's centre column (within 0.08 of centre) — the bias is purely
+  vertical, so a horizontal offset *would* indicate a broken basis
+
+Against the real measurement those give elevation error 5.03° and column offset 0.0000 →
+confident. Worth keeping as a lesson: a self-check built on an assumption that is *nearly*
+true reports failure on correct output, which costs more than having no check at all.
+
+### The real cubemap bug: planet occlusion baked into a background
+The remaining seam — serrated, only at mid zoom, gone near one particular altitude — was
+neither orientation nor sampling frame. **Both bakes stopped rays at the planet surface**, so
+they contained a hard dark edge at the horizon *as seen from the bake altitude of 12*.
+
+The real horizon moves with altitude, and by a lot:
+
+| camera altitude | horizon below local horizontal | mismatch vs bake |
+|---|---|---|
+| 4 | −13.1° | 9.1° |
+| 12 | −22.2° | 0° |
+| 30 (`orbit`) | −33.6° | 11.4° |
+| 220 (`altitude`) | −66.1° | 43.9° |
+
+Across the mismatch band the baked texture says *planet* while the scene says *sky*, putting
+a hard dark edge in open sky. That accounts for every symptom: serrated (a hard edge in a
+256² map, magnified), absent near altitude 12 (no mismatch there), and hidden at the extremes
+where terrain covers the band or it leaves the frame.
+
+**A baked sky is a background drawn behind real terrain, so it must contain only sky.**
+Downward rays are now folded up onto the horizon, making the lower hemisphere a smooth
+continuation of horizon colour — what a skybox actually looks like, and altitude-independent.
+Terrain covers it in practice. Applied to the gradient bake too, which had the same defect in
+its lower half.
+
+Cubemap also raised to 512² (~12 MB): it is magnified across the whole sky and the horizon
+band is where the gradient is steepest.
+
+Marching *through* the planet instead was not an option: `getScatteringValues` takes height as
+`|pos| − planetRadius`, so a negative height makes the density exponential blow up.
+
+**Resolved.** Sky-only baking fixed the seam. The chain of three wrong diagnoses is worth
+keeping as a record: face orientation (never wrong), sampling frame (wrong, and a real bug,
+but not the seam's cause), and finally planet occlusion baked into a background (the actual
+cause). The self-check gave a false alarm at every step, because each version rested on an
+assumption that was only nearly true.
+
+Consequence for the numbers already taken: the `smoke` timings stand — texture *content* does
+not change the cost of a texture fetch — but any RQ1 figure from `baseline-baked` or
+`baseline-cubemap` predates the fix and must be recaptured.
+
+---
+
+## Deferred to the optimization phase: depth rejection on the sky pass
+
+**Not done, deliberately.** Recorded here so it is picked up when optimizations get their own
+attention rather than being lost.
+
+The sky pass shades every pixel, including those terrain later covers. `PostProcessingManager`
+sets `depthTextureMode = Depth` unconditionally, which forces a depth prepass, and
+`CameraEvent.AfterDepthTexture` precedes `BeforeForwardOpaque` — so `_CameraDepthTexture` is
+already available where the sky is drawn, and rejecting covered pixels costs one sample.
+
+Expected saving scales with the terrain-to-sky ratio, so it is largest exactly where the sky
+pass is currently most wasteful: `framing/nadir` at sky fraction 0.00 spends the whole pass on
+pixels the terrain overwrites.
+
+**It must be applied to BOTH arms and measured as its own pair of profiles.** Applying it to
+the physically based path alone would be a measurement error, not an optimization — and the
+temptation is real, because the physically based sky is the one that looks like it needs
+optimizing. Applied symmetrically and reported with a number, it is exactly the "named,
+justified optimization against a named baseline" that RQ3 asks for and THESIS.md §6.1 requires.
+
+Related and also deferred: `SkyPass.Record` allocates a temporary RT and blits twice, measured
+at **0.041 ms**. A single-pass approach is impossible while the sky shaders composite against
+`_MainTex.a` (the star/moon brightness channel) with a non-linear blend, but that hack is
+flagged "TODO: make it good" in `DrawSky.shader` and replacing it would make one blit viable.
+
+---
+
+## First authoritative baseline results: release, SelfCheck, 1440p, RTX 4090
+
+Full batch, 7 profiles x 2 repeats, all five benchmarks. Pose hash and geometry **PASS** on
+every benchmark. **Noise floor 0.029 ms worst case** (a single outlier on
+`baseline-baked/nadir`); typical run-to-run spread is **0.000–0.004 ms**.
+
+### The cost decomposition, at last measured cleanly
+
+| component | mean | how |
+|---|---|---|
+| sky pass structure | **0.041 ms** | `nullsky − noatmo` — two blits and a temp RT |
+| cheap aerial perspective | **0.116 ms** | `nullsky-aerial − nullsky` |
+| baseline sky shading | **0.050 ms** | `baseline-gradient − nullsky-aerial` |
+| physically based over baseline | **~0.00 ms** | `pbr − baseline-gradient` |
+
+All three components are strikingly consistent across 13 segments spanning sky fractions from
+0.00 to 0.97.
+
+### The headline: the two are indistinguishable in cost
+`pbr − baseline-gradient` averages **+0.001 ms** below sky fraction 0.30 and **+0.005 ms**
+above 0.70 — both inside the noise floor. Per segment it ranges −0.037 to +0.062, with one
+outlier at −0.113 (`altitude/descend`).
+
+At 1440p on a 4090, **a physically based sky costs the same as a textured one.** Hillaire's
+method precomputes scattering into a 128×256 LUT, so per pixel both are a texture fetch; the
+runtime cost is the pass that carries them, not the model inside.
+
+That reframes RQ2. The question "what does physical accuracy cost" has the answer "nothing
+measurable here", which makes RQ1 and RQ3 carry the thesis and is a stronger result than a
+trade-off curve would have been. It needs stating carefully: it is one resolution on one very
+fast GPU, and the LUT sizes are fixed — the cost would reappear at higher LUT resolutions,
+with multiple scattering, or on hardware where 3.7 M pixels of texture fetch is not free.
+
+### The biggest single cost is not the sky
+The cheap aerial perspective pass (0.116 ms) costs **more than twice** the sky shading
+(0.050 ms) and nearly three times the pass structure (0.041 ms). It computes one `exp()`. The
+cost is a full-screen read-modify-write at 1440p, not arithmetic — which says the interesting
+optimizations here are about pass count and bandwidth, not about the scattering model.
+
+### Bug this exposed: the cheap fog was being applied to the sky
+`AerialPerspectiveSimple` had no sky exclusion, so at the far plane the exponential left only
+40% of the sky and **replaced 60% of it with the haze colour**. The physically based pass
+skips sky pixels explicitly. So the two were doing different jobs and the difference was being
+attributed to the technique. Fixed; **the batch above needs re-running**, and the baseline's
+cost should fall at high sky fractions where it was previously doing needless work.
+
+### Outlier to investigate
+`altitude/descend` is the only segment where the physically based path is dramatically cheaper
+(−0.113 ms), and `daycycle` at the same nominal sky fraction shows the opposite sign (+0.058).
+The mean sky fraction of a segment that sweeps altitude 220 → 4 is not a meaningful summary of
+it, so this is probably an artefact of averaging over a huge altitude range rather than a real
+effect — but it should be checked before anything is claimed about sky fraction.
+
+### The tone map's pedestal is a threshold, and it was hiding behind the fog
+Removing the fog-over-sky bug revealed two defects it had been masking — it was replacing 60%
+of the sky with haze colour, which papers over a dark sky and softens seams.
+
+**Root cause of both: `toneMap` applies `lerp(0.5, lum, 1.45)`, whose zero crossing is at
+0.155.** That is not a curve near black, it is a *threshold*: anything below crushes to the
+floor, so a value that is slightly too dark does not render dim, it renders **absent**, and a
+smooth gradient crossing 0.155 becomes a hard edge.
+
+Two consequences, both now fixed:
+
+1. **Tone-map constants did not match.** `AtmosphereEffect` uses intensity 1.31, whitePoint 1,
+   dither 4; `BaselineSkyRenderer`'s C# defaults were guesses at 1, 1.1, 0.8. Scene values
+   corrected. Note the hand-authored gradient is inverse-mapped against these constants, so
+   **it must be regenerated after any change to them.**
+
+2. **Azimuth averaging removed sunsets entirely.** The bake averaged 32 azimuths. At low sun
+   the sky is bright only *toward* the sun, so the mean fell under the pedestal and sunset
+   went black, while noon survived because the sky is near-uniform there. Measured from the
+   baked EXR: at sunset the horizon stored 0.182 and the zenith 0.040, against a threshold of
+   0.155 (0.118 once intensity is corrected) — so the whole sky bar a sliver of horizon was
+   below it.
+
+   Now sampled at a **fixed azimuth measured from the sun**, defaulting to 0 (sunward). That
+   keeps the colours that make a sunset legible; the cost is an anti-solar sky rendered too
+   warm. That trade is the honest limitation of having no azimuth axis, and which way it was
+   taken is what needs stating.
+
+The cubemap seams are the same story: it has full directional detail and needs no averaging,
+but with the sky sitting near 0.155 the pedestal turned every small cross-face difference into
+a hard black/not-black edge. Correcting the exposure should take most of it out.
+
+> Debugging note: the EXRs are uncompressed float, so they can be parsed directly to read the
+> baked values. That is how this was settled rather than guessed — and worth remembering,
+> since two earlier hypotheses (face orientation, sampling frame) were wrong.
+
+### Cubemap orientation, third check: continuity through the real lookup
+The sun-differencing check locates the sun accurately (23.3° measured against 25° actual,
+column dead centre) but it still could not see the seam, because **it reads the face arrays
+and never the assembled cube**. A flip applied uniformly to every face leaves array-space
+comparisons unchanged while still breaking the cube.
+
+The deciding test now walks a great-circle arc from 30° to 60° elevation — crossing the +Z/+Y
+boundary at 45°, verified — sampling through the **Direct3D cube lookup in C#** and measuring
+the largest step between neighbouring samples. Going through the lookup is what makes it
+work: a uniform flip changes which texel a direction resolves to, so it breaks continuity at
+horizontal edges, which is exactly the seam. Both orientations are measured and the smoother
+one wins; if it disagrees with the sun test, continuity wins and says so.
+
+That is three checks on one property, and the lesson is consistent: **each earlier one tested
+a proxy rather than the thing that fails.** Array agreement, then sun position, then finally
+the assembled cube sampled the way the GPU samples it.
+
+> `baseline-cubemap` showing no sunset is **not** a defect. It is frozen at 25° sun elevation
+> and cannot track the sun; that is the failure mode the variant exists to demonstrate. Only
+> the gradient variants respond to time of day.
+
+### The cubemap seam is a tone-map contour, not geometry — variant parked
+Both orientation checks now agree and continuity is decisive: **direct 0.6332 vs flipped
+0.0028**, a 226x difference. The assembly is correct, and it was already flipped in the
+previous bake — so the cubemap being looked at has been correctly assembled throughout.
+
+The seam is the shared tone map crushing the darker sky to black with a hard edge.
+
+**`toneMap`'s usable input range is about one decade.** The pedestal sits at raw 0.118 (with
+intensity 1.31) and `whitePoint` 1.0 maps to displayed 1.0, so the window is **8.5:1**. The
+sky exceeds that *within a single sun elevation*: measured from the baked gradient at 25° sun,
+the horizon's blue channel is 0.4875 and the zenith's red is 0.0435 — **11:1**. Crushing is
+per channel, so the zenith loses red and green while keeping blue, and where blue crosses too
+the sky goes fully black. A cubemap stores every direction including the anti-solar sky, which
+is darker still, so a large fraction of it is under the pedestal.
+
+The gradient variants escape this because the hand-authored one is inverse-tone-mapped into
+the usable band by construction, and the baked one samples **sunward only**, which is the
+bright end.
+
+**Parked, deliberately.** Fixing it means one of:
+- making the cubemap display-referred (tone mapped at bake time, shader skips `toneMap` for
+  that path) — most faithful to what a skybox actually is, a painted image of finished
+  colours, but it breaks the shared output pipeline that makes the variants comparable;
+- retuning the shared tone map — which would invalidate every measurement taken so far;
+- a gain, which cannot work: the range needing compression is 100:1 against a 8.5:1 window.
+
+All three are decisions with thesis consequences and belong with the RQ1 figure work, not with
+a bug fix. `baseline-cubemap`'s **cost** is already measured and is identical to the gradient's
+to within 0.003 ms, so nothing on the critical path is blocked.
+
+> The wider point is an RQ3 observation about the inherited implementation: a tone map with a
+> one-decade usable window cannot display a physically based sky's true dynamic range, and
+> that constrains every sky variant equally.
+
+---
+
+## Hazard: baked assets go stale silently
+
+Three assets are derived, and **nothing detects when their inputs have moved on**. There is no
+error, no warning, and no visual cue — just a baseline that quietly no longer corresponds to
+the renderer it was derived from. Given that the whole point of `baseline-baked` is to be *the
+physically based sky, flattened*, a stale bake makes the comparison meaningless while looking
+entirely healthy.
+
+| asset | silently invalidated by |
+|---|---|
+| `SkyGradient.exr` (hand-authored) | any change to `BaselineSkyRenderer`'s `intensity`, `contrast` or `whitePoint` — it is inverse-tone-mapped against them |
+| `SkyGradientBaked.exr` | any `AtmosphereEffect` scattering parameter, the transmittance LUT, `BakeAltitude`, `BakeAzimuthDegrees`, `ScatteringSteps` |
+| `SkyCubemap.asset` | all of the above plus `CubemapSunElevationDegrees` |
+
+This already bit once: the tone-map constants were corrected (intensity 1 → 1.31, whitePoint
+1.1 → 1) and **both** gradients silently became wrong until regenerated — the hand-authored one
+because its inverse mapping no longer matched, the baked one because the pedestal moved
+underneath it.
+
+**Proposed fix, for whenever the bakes are next touched:** a *bake stamp*, in the same spirit
+as `plan_hash` and `pose_hash`. Hash the inputs at bake time (the atmosphere's shader values,
+the bake parameters, the tone-map constants) and store it beside the asset. At run start,
+recompute from the live scene and compare; on mismatch, warn and record `BAKE_STALE` in
+`run.json`'s warnings. That converts an invisible failure into a loud one, which is the same
+move `COUNTERS_UNAVAILABLE` and `CAPTURE_RUN_NOT_MEASURED` make.
+
+Until that exists, the protocol is manual: **re-run both bakes after touching the atmosphere
+or the tone map, before any measured run.**
+
+---
+
+## Sequencing: measurements and the report come at the end
+
+Real measurement runs and report writing happen once the **whole** system is assembled,
+clouds included — not at the end of each milestone.
+
+The renderers are still changing, and numbers taken mid-build get invalidated by the next fix.
+That already happened twice over: the fog-over-sky bug and the mismatched tone-map constants
+each superseded a full release batch.
+
+So the benchmark runs done so far were **harness validation and bug-hunting**, not results.
+They earned their keep that way — they caught the black `noatmo` sky, the mislabelled
+decomposition, the fog painting over the sky, the stripped-counter false pass, and the
+tone-map pedestal — but none of their numbers should be quoted.
+
+Findings go in this file for later rather than being acted on as if final.

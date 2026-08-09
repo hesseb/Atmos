@@ -1,0 +1,148 @@
+// Bakes the physically based sky into the baseline's 2D gradient LUT.
+//
+// Deliberately includes AtmosphereCommon.hlsl and calls the same raymarch() the runtime sky
+// compute does, rather than reimplementing the scattering. A reimplementation would mean any
+// difference between the baked baseline and the physically based sky could be a difference
+// in the bake, which is the one thing the comparison cannot tolerate.
+//
+// One dispatch per output row: the sun direction is a shader global set once per dispatch,
+// and each row of the LUT is a different sun elevation.
+#pragma kernel BakeSkyGradientRow
+#pragma kernel BakeSkyCubemapFace
+
+#include "../Atmosphere/Shader Common/AtmosphereCommon.hlsl"
+
+RWTexture2D<float4> Result;
+sampler2D TransmittanceLUT;
+
+uint width;
+uint row;
+int numScatteringSteps;
+
+// The LUT has no azimuth axis, so one horizontal direction has to stand for all of them.
+//
+// Averaging over azimuth was the obvious choice and it was wrong. At low sun elevations the
+// sky is bright only TOWARD the sun, so the mean is far darker than the sunward sky that
+// dominates the visual impression - and the shared tone map has a pedestal at 0.155, below
+// which everything crushes to black. The average fell under it, so sunsets did not come out
+// dim, they came out ABSENT, while noon survived because the sky is near-uniform there.
+//
+// So the sample is taken at a fixed azimuth instead, measured from the sun. 0 keeps the
+// sunset colours that make a sunset legible; the cost is that the anti-solar sky is rendered
+// too warm and too bright. That trade is the honest limitation of a 2D sky LUT, and stating
+// which way it was taken matters more than the value.
+float bakeAzimuthDegrees;
+
+// The LUT has no altitude axis either. Everything is baked from one observer height, so the
+// result is correct at that altitude and progressively wrong away from it. This is a real
+// limitation of the technique rather than of this implementation, and it is worth reporting
+// as one: a strategy-game camera ranges over a large fraction of the atmosphere's thickness.
+float bakeAltitude;
+
+float3 observerUp;
+float3 observerEast;
+
+/// Folds downward rays up onto the horizon.
+///
+/// A baked sky is a *background*, drawn behind real terrain, so it must contain only sky.
+/// Stopping rays at the planet instead bakes in a hard dark edge at the horizon as seen from
+/// the bake altitude - and the real horizon moves with altitude, by 11 degrees between the
+/// bake height and the orbit benchmark, so that edge ends up sitting in open sky. It reads as
+/// a serrated dark line because it is a hard edge in a low-resolution map.
+///
+/// Clamping instead makes the lower hemisphere a smooth continuation of horizon colour, which
+/// is both what a skybox looks like and altitude-independent. Terrain covers it in practice.
+float3 clampToHorizon(float3 dir, float3 up, float3 fallback)
+{
+	float upDot = dot(dir, up);
+	if (upDot >= 0) { return dir; }
+
+	float3 horizontal = dir - up * upDot;
+	float lengthSq = dot(horizontal, horizontal);
+	// Exactly straight down projects to nothing; any horizontal direction will do there.
+	return lengthSq > 1e-8 ? horizontal * rsqrt(lengthSq) : fallback;
+}
+
+[numthreads(64, 1, 1)]
+void BakeSkyGradientRow (uint3 id : SV_DispatchThreadID)
+{
+	if (id.x >= width) { return; }
+
+	float3 pos = observerUp * (planetRadius + bakeAltitude);
+
+	// U axis: 0 = straight down, 0.5 = horizon, 1 = zenith. Matches the hand-authored
+	// gradient's layout exactly, so the two are interchangeable in the shader.
+	float viewElevation01 = width <= 1 ? 0.5 : id.x / (float)(width - 1);
+	float cosView = viewElevation01 * 2.0 - 1.0;
+	float sinView = sqrt(saturate(1.0 - cosView * cosView));
+
+	float3 north = normalize(cross(observerUp, observerEast));
+
+	// observerEast is the sun's azimuth by construction - the baker places the sun in the
+	// up/east plane - so this angle is measured from the sun.
+	float azimuth = radians(bakeAzimuthDegrees);
+	float3 horizontal = observerEast * cos(azimuth) + north * sin(azimuth);
+	float3 viewDir = normalize(observerUp * cosView + horizontal * sinView);
+
+	// Below the horizon the LUT stores horizon colour rather than the planet, for the same
+	// reason the cubemap does - see clampToHorizon.
+	viewDir = clampToHorizon(viewDir, observerUp, observerEast);
+
+	float3 col = 0;
+	float2 hitInfo = raySphere(0, atmosphereRadius, pos, viewDir);
+	float rayLength = hitInfo.y;
+
+	if (rayLength > 0)
+	{
+		float3 inPoint = pos + viewDir * hitInfo.x;
+		ScatteringResult result = raymarch(inPoint, viewDir, rayLength,
+			numScatteringSteps, TransmittanceLUT, planetRadius);
+		col = result.luminance;
+	}
+
+	Result[uint2(id.x, row)] = float4(col, 1);
+}
+
+// ---------------------------------------------------------------- cubemap
+
+// One cubemap face per dispatch. Unlike the gradient this keeps full directional detail -
+// azimuth variation, the Mie forward lobe, the sun's own glow - which is what a real painted
+// skybox would have and what the 2D LUT necessarily averages away.
+//
+// The face basis arrives from the CPU as three vectors rather than being derived from a face
+// index here. Cubemap face orientation is a well-known source of silently mirrored or rotated
+// results, and keeping it in C# means it can be verified against edge continuity rather than
+// trusted.
+RWTexture2D<float4> FaceResult;
+uint faceSize;
+float3 faceForward;
+float3 faceRight;
+float3 faceUp;
+
+[numthreads(8, 8, 1)]
+void BakeSkyCubemapFace (uint3 id : SV_DispatchThreadID)
+{
+	if (id.x >= faceSize || id.y >= faceSize) { return; }
+
+	float2 uv = (id.xy + 0.5) / faceSize * 2.0 - 1.0;
+	float3 viewDir = normalize(faceForward + faceRight * uv.x + faceUp * uv.y);
+
+	// Sky only: no planet occlusion baked in.
+	viewDir = clampToHorizon(viewDir, observerUp, observerEast);
+
+	float3 pos = observerUp * (planetRadius + bakeAltitude);
+
+	float2 hitInfo = raySphere(0, atmosphereRadius, pos, viewDir);
+	float rayLength = hitInfo.y;
+
+	float3 col = 0;
+	if (rayLength > 0)
+	{
+		float3 inPoint = pos + viewDir * hitInfo.x;
+		ScatteringResult result = raymarch(inPoint, viewDir, rayLength,
+			numScatteringSteps, TransmittanceLUT, planetRadius);
+		col = result.luminance;
+	}
+
+	FaceResult[id.xy] = float4(col, 1);
+}
