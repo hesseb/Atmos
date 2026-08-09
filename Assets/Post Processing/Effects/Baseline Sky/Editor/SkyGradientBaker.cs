@@ -27,7 +27,17 @@ static class SkyGradientBaker
 
 	// Offline, so there is no reason to be stingy. Well above the runtime sky's 256 steps.
 	const int ScatteringSteps = 512;
-	const int AzimuthSamples = 32;
+
+	/// <summary>
+	/// Horizontal direction the gradient is sampled along, measured from the sun.
+	///
+	/// 0 looks toward the sun. Averaging over azimuth instead was the first attempt and it
+	/// removed sunsets entirely: at low sun the sky is bright only sunward, the mean falls
+	/// below the tone map's pedestal at 0.155, and everything under that crushes to black. The
+	/// cost of sampling sunward is that the anti-solar sky comes out too warm - a limitation
+	/// of having no azimuth axis at all, not of this number.
+	/// </summary>
+	const float BakeAzimuthDegrees = 0f;
 
 	/// <summary>
 	/// Observer height above the surface, in world units. The LUT has no altitude axis, so
@@ -81,7 +91,7 @@ static class SkyGradientBaker
 		compute.SetTexture(kernel, "TransmittanceLUT", atmosphere.transmittanceLUT);
 		compute.SetInt("width", Width);
 		compute.SetInt("numScatteringSteps", ScatteringSteps);
-		compute.SetInt("numAzimuthSamples", AzimuthSamples);
+		compute.SetFloat("bakeAzimuthDegrees", BakeAzimuthDegrees);
 		compute.SetFloat("bakeAltitude", BakeAltitude);
 
 		// An arbitrary but fixed observer frame. Only the angle between the view and the sun
@@ -155,7 +165,7 @@ static class SkyGradientBaker
 		ConfigureImporter(BakedPath);
 
 		Debug.Log($"[BaselineSky] baked {Width}x{Height} sky gradient to {BakedPath}\n" +
-			$"  {ScatteringSteps} scattering steps, {AzimuthSamples} azimuth samples, " +
+			$"  {ScatteringSteps} scattering steps, sampled {BakeAzimuthDegrees} deg from the sun, " +
 			$"observer {BakeAltitude} above the surface\n" +
 			$"  radiance range {min:F4} .. {max:F4}\n" +
 			"  Azimuth is averaged out, so the Mie forward lobe is missing by construction - " +
