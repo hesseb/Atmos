@@ -865,3 +865,34 @@ The criteria are now stated in terms that mean something rather than in texels:
 Against the real measurement those give elevation error 5.03° and column offset 0.0000 →
 confident. Worth keeping as a lesson: a self-check built on an assumption that is *nearly*
 true reports failure on correct output, which costs more than having no check at all.
+
+### The real cubemap bug: planet occlusion baked into a background
+The remaining seam — serrated, only at mid zoom, gone near one particular altitude — was
+neither orientation nor sampling frame. **Both bakes stopped rays at the planet surface**, so
+they contained a hard dark edge at the horizon *as seen from the bake altitude of 12*.
+
+The real horizon moves with altitude, and by a lot:
+
+| camera altitude | horizon below local horizontal | mismatch vs bake |
+|---|---|---|
+| 4 | −13.1° | 9.1° |
+| 12 | −22.2° | 0° |
+| 30 (`orbit`) | −33.6° | 11.4° |
+| 220 (`altitude`) | −66.1° | 43.9° |
+
+Across the mismatch band the baked texture says *planet* while the scene says *sky*, putting
+a hard dark edge in open sky. That accounts for every symptom: serrated (a hard edge in a
+256² map, magnified), absent near altitude 12 (no mismatch there), and hidden at the extremes
+where terrain covers the band or it leaves the frame.
+
+**A baked sky is a background drawn behind real terrain, so it must contain only sky.**
+Downward rays are now folded up onto the horizon, making the lower hemisphere a smooth
+continuation of horizon colour — what a skybox actually looks like, and altitude-independent.
+Terrain covers it in practice. Applied to the gradient bake too, which had the same defect in
+its lower half.
+
+Cubemap also raised to 512² (~12 MB): it is magnified across the whole sky and the horizon
+band is where the gradient is steepest.
+
+Marching *through* the planet instead was not an option: `getScatteringValues` takes height as
+`|pos| − planetRadius`, so a negative height makes the density exponential blow up.

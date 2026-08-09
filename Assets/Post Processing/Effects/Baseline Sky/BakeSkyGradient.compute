@@ -34,6 +34,27 @@ float bakeAltitude;
 float3 observerUp;
 float3 observerEast;
 
+/// Folds downward rays up onto the horizon.
+///
+/// A baked sky is a *background*, drawn behind real terrain, so it must contain only sky.
+/// Stopping rays at the planet instead bakes in a hard dark edge at the horizon as seen from
+/// the bake altitude - and the real horizon moves with altitude, by 11 degrees between the
+/// bake height and the orbit benchmark, so that edge ends up sitting in open sky. It reads as
+/// a serrated dark line because it is a hard edge in a low-resolution map.
+///
+/// Clamping instead makes the lower hemisphere a smooth continuation of horizon colour, which
+/// is both what a skybox looks like and altitude-independent. Terrain covers it in practice.
+float3 clampToHorizon(float3 dir, float3 up, float3 fallback)
+{
+	float upDot = dot(dir, up);
+	if (upDot >= 0) { return dir; }
+
+	float3 horizontal = dir - up * upDot;
+	float lengthSq = dot(horizontal, horizontal);
+	// Exactly straight down projects to nothing; any horizontal direction will do there.
+	return lengthSq > 1e-8 ? horizontal * rsqrt(lengthSq) : fallback;
+}
+
 [numthreads(64, 1, 1)]
 void BakeSkyGradientRow (uint3 id : SV_DispatchThreadID)
 {
@@ -58,14 +79,12 @@ void BakeSkyGradientRow (uint3 id : SV_DispatchThreadID)
 		float3 horizontal = observerEast * cos(azimuth) + north * sin(azimuth);
 		float3 viewDir = normalize(observerUp * cosView + horizontal * sinView);
 
+		// Below the horizon the LUT stores horizon colour rather than the planet, for the
+		// same reason the cubemap does - see clampToHorizon.
+		viewDir = clampToHorizon(viewDir, observerUp, observerEast);
+
 		float2 hitInfo = raySphere(0, atmosphereRadius, pos, viewDir);
 		float rayLength = hitInfo.y;
-
-		// Stop at the planet surface. SkyRender.compute does not need this because terrain
-		// covers those pixels in screen space - a bake has nothing to hide behind, and
-		// marching through the planet would put nonsense in the lower half of the LUT.
-		float dstToPlanet = rayIntersectSphere(pos, viewDir, planetRadius);
-		if (dstToPlanet > 0) { rayLength = min(rayLength, dstToPlanet); }
 
 		if (rayLength > 0)
 		{
@@ -103,13 +122,13 @@ void BakeSkyCubemapFace (uint3 id : SV_DispatchThreadID)
 	float2 uv = (id.xy + 0.5) / faceSize * 2.0 - 1.0;
 	float3 viewDir = normalize(faceForward + faceRight * uv.x + faceUp * uv.y);
 
+	// Sky only: no planet occlusion baked in.
+	viewDir = clampToHorizon(viewDir, observerUp, observerEast);
+
 	float3 pos = observerUp * (planetRadius + bakeAltitude);
 
 	float2 hitInfo = raySphere(0, atmosphereRadius, pos, viewDir);
 	float rayLength = hitInfo.y;
-
-	float dstToPlanet = rayIntersectSphere(pos, viewDir, planetRadius);
-	if (dstToPlanet > 0) { rayLength = min(rayLength, dstToPlanet); }
 
 	float3 col = 0;
 	if (rayLength > 0)
