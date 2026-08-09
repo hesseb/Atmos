@@ -28,8 +28,11 @@ public class LookupProbe : MonoBehaviour
 	public CountryLabelData labelData;
 
 	[Header("Run")]
-	public bool runOnStart = true;
-	// Blocking GPU readback per country - fine for a one-shot diagnostic, never per-frame.
+	// Off by default: the sweeps issue a blocking GPU readback per country, ~460 of them
+	// between tests B and C, which stalls the pipeline on every entry to play mode. Run
+	// them from the context menu when the data pipeline changes - after regenerating the
+	// index map, or re-baking label anchors.
+	public bool runOnStart;
 	public bool runCapitalSweep = true;
 	public int maxMismatchesToList = 25;
 
