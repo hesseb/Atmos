@@ -906,3 +906,30 @@ assumption that was only nearly true.
 Consequence for the numbers already taken: the `smoke` timings stand — texture *content* does
 not change the cost of a texture fetch — but any RQ1 figure from `baseline-baked` or
 `baseline-cubemap` predates the fix and must be recaptured.
+
+---
+
+## Deferred to the optimization phase: depth rejection on the sky pass
+
+**Not done, deliberately.** Recorded here so it is picked up when optimizations get their own
+attention rather than being lost.
+
+The sky pass shades every pixel, including those terrain later covers. `PostProcessingManager`
+sets `depthTextureMode = Depth` unconditionally, which forces a depth prepass, and
+`CameraEvent.AfterDepthTexture` precedes `BeforeForwardOpaque` — so `_CameraDepthTexture` is
+already available where the sky is drawn, and rejecting covered pixels costs one sample.
+
+Expected saving scales with the terrain-to-sky ratio, so it is largest exactly where the sky
+pass is currently most wasteful: `framing/nadir` at sky fraction 0.00 spends the whole pass on
+pixels the terrain overwrites.
+
+**It must be applied to BOTH arms and measured as its own pair of profiles.** Applying it to
+the physically based path alone would be a measurement error, not an optimization — and the
+temptation is real, because the physically based sky is the one that looks like it needs
+optimizing. Applied symmetrically and reported with a number, it is exactly the "named,
+justified optimization against a named baseline" that RQ3 asks for and THESIS.md §6.1 requires.
+
+Related and also deferred: `SkyPass.Record` allocates a temporary RT and blits twice, measured
+at **0.041 ms**. A single-pass approach is impossible while the sky shaders composite against
+`_MainTex.a` (the star/moon brightness channel) with a non-linear blend, but that hack is
+flagged "TODO: make it good" in `DrawSky.shader` and replacing it would make one blit viable.
