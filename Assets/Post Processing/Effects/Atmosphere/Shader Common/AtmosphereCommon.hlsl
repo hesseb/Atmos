@@ -139,12 +139,14 @@ float3 getSunTransmittance(float3 pos, float3 sunDir) {
 // (1 - exp(-t)) / t, the analytic integral of a constant source attenuated across one step,
 // divided by the step length. Tends to 1 as t -> 0.
 //
-// This replaces `(S - S*T) / max(0.0001, extinction)`. That form is correct wherever
-// extinction is comfortably above the clamp, which it is at the shipped parameters (minimum
-// ~0.02), but it is not a rounding detail: with physically scaled heights the extinction at
-// the top of the atmosphere is ~1e-7, three orders below the clamp, and the clamped form then
-// underestimates in-scatter by a factor of ~1000 - per channel, so red fails before blue and
-// the result desaturates rather than simply darkening.
+// This replaces `(S - S*T) / max(0.0001, extinction)`, which was **already clamping** at the
+// shipped parameters: extinction falls below 1e-4 above h01 = 0.856 in red and 0.95 in blue,
+// so the clamp fires across the top 14% of the atmosphere and understates in-scatter there by
+// up to 5x. That was invisible only because the density there is ~1e-5 of sea level.
+//
+// It stops being invisible with physically scaled heights, where extinction at the top is
+// ~1e-7: three orders below the clamp, understating in-scatter by ~1000x. Per channel, so red
+// fails before blue and the result desaturates rather than simply darkening.
 //
 // Near zero the quotient itself is the problem: both terms vanish and float32 cancellation
 // leaves only a few significant digits. The series is exact to 4e-11 at the switchover.
