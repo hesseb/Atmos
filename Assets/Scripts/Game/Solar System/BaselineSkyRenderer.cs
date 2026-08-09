@@ -216,6 +216,9 @@ public class BaselineSkyRenderer : MonoBehaviour
 		Vector3 dirToSun = ObserverGeometry.DirectionToSun(ref sun);
 
 		material.SetVector("planetCentre", planetCentre);
+		// The cubemap variant needs a full observer frame, not just an up vector, so it can be
+		// sampled relative to the local horizon rather than to world space.
+		material.SetVector("planetAxis", planet != null ? planet.up : Vector3.up);
 		// Computed once per frame on the CPU rather than per pixel: it does not vary across
 		// the screen, and the whole point of the baseline is that it is cheap.
 		material.SetFloat("sunElevation01", ObserverGeometry.SunElevation01(

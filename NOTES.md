@@ -817,3 +817,29 @@ a sky, just with seams. The face bases are checked against the Direct3D referenc
 (verified exact), and the baker additionally **measures the discontinuity across the +Z/+Y
 seam both with and without a vertical row flip and takes whichever is smaller**, logging both
 numbers. If both are large the basis is wrong rather than the row order, and the log says so.
+
+### The cubemap seam was not an orientation bug
+Visible seams on `baseline-cubemap` turned out not to be face orientation at all.
+
+**A cubemap sampled by raw world direction has its horizon pinned to world +Y.** On a globe
+that only lines up with the real horizon at one point on the planet; everywhere else the
+baked horizon — a hard planet-occlusion edge — sits at an angle to the real one, and turning
+the camera sweeps across it. The gradient variants were unaffected because they derive view
+elevation from the observer's local up, which is correct anywhere.
+
+Fixed by sampling in the observer's frame: `up` from the camera and planet centre, plus a
+continuous horizontal basis from the planet's axis.
+
+Only the vertical axis has to match the bake. The **azimuth origin is deliberately not
+aligned** to the bake's: a static cubemap cannot track the sun's azimuth either, so matching
+it would be false precision. The requirement is continuity, verified orthonormal to 0.0 and
+continuous to 0.0 across latitude. It is singular at the poles, where the reference falls
+back and the azimuth jumps — no benchmark goes there, but a pole flyover would need a better
+basis.
+
+The first seam check was also worthless and is replaced: it compared the +Z/+Y seam in the
+read-back arrays *before* `SetPixels`, and a vertical flip applied consistently to every face
+leaves that comparison unchanged while still producing seams once assembled. The replacement
+uses ground truth — we choose the sun's elevation, so it must land on a computable texel of
+the +X face (~119 rows apart between the two hypotheses at 256²) — and now reports the verdict
+in a **dialog**, not just the Console.
