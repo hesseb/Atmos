@@ -1,0 +1,59 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c7958873092e1064eaa84681287a4d5e, type: 3}
+  m_Name: Camera Bookmarks
+  m_EditorClassIdentifier: Assembly-CSharp::CameraBookmarks
+  bookmarks:
+  - label: Slot 1
+    key: 122
+    assigned: 0
+    view:
+      coordinate:
+        longitude: 0
+        latitude: 0
+      altitude: 0
+      pitch: 0
+      heading: 0
+      fieldOfView: 0
+  - label: Slot 2
+    key: 120
+    assigned: 0
+    view:
+      coordinate:
+        longitude: 0
+        latitude: 0
+      altitude: 0
+      pitch: 0
+      heading: 0
+      fieldOfView: 0
+  - label: Slot 3
+    key: 99
+    assigned: 0
+    view:
+      coordinate:
+        longitude: 0
+        latitude: 0
+      altitude: 0
+      pitch: 0
+      heading: 0
+      fieldOfView: 0
+  - label: Slot 4
+    key: 118
+    assigned: 0
+    view:
+      coordinate:
+        longitude: 0
+        latitude: 0
+      altitude: 0
+      pitch: 0
+      heading: 0
+      fieldOfView: 0
