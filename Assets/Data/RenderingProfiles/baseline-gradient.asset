@@ -10,14 +10,15 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 13efd33617756b745aaee9745ba00065, type: 3}
-  m_Name: PBR
+  m_Name: baseline-gradient
   m_EditorClassIdentifier: Assembly-CSharp::PostProcessRendererProfile
-  id: pbr
-  description: 'Physically based: raymarched sky plus scattering-LUT aerial perspective.'
+  id: baseline-gradient
+  description: Cheap sky from a hand-authored gradient LUT, plus exponential distance
+    fog. The baseline the report's RQ2 is phrased against.
   effects:
   - effect: {fileID: 11400000, guid: 7526e0f14e0a0a7479aeb2e5d87ae0a3, type: 2}
-    enabled: 1
-  - effect: {fileID: 11400000, guid: 04fe8bd6952ff0c42bd708348a5b3dd1, type: 2}
     enabled: 0
+  - effect: {fileID: 11400000, guid: 04fe8bd6952ff0c42bd708348a5b3dd1, type: 2}
+    enabled: 1
   objects: []
-  sky: 1
+  sky: 2

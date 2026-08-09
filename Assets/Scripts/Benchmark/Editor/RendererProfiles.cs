@@ -12,10 +12,15 @@ using UnityEngine;
 /// The set is not just "physically based versus cheap". It is arranged so the cost of the
 /// sky pass can be decomposed rather than merely totalled:
 ///
-///   nullsky - noatmo        the pass structure alone: two full-screen blits and a temp RT
-///   baseline - nullsky      the cheap shading model
-///   pbr - nullsky           raymarched scattering + aerial perspective + LUT computes
-///   pbr - baseline          the headline RQ2 number
+///   nullsky - noatmo               the sky pass structure: two full-screen blits, temp RT
+///   nullsky-aerial - nullsky       the cheap aerial perspective pass
+///   baseline - nullsky-aerial      the cheap sky shading, and nothing else
+///   pbr - baseline                 the headline RQ2 number
+///
+/// The `nullsky-aerial` arm is not redundant. Subtracting plain `nullsky` from a baseline
+/// bundles the entire aerial perspective pass in with the sky shading and reports the sum as
+/// if it were the shading cost - measured at 0.162 ms when the shading alone is a fraction
+/// of that.
 ///
 /// and so the two authoring methods for the same runtime cost can be separated:
 ///
@@ -65,9 +70,18 @@ static class RendererProfiles
 			atmosphere, atmosphereOn: false, aerial, aerialOn: true,
 			PostProcessRendererProfile.SkyOverride.Cubemap));
 
-		Save(Build("nullsky", "Control, not a renderer: the sky pass with a passthrough " +
-			"fragment. Subtract from any sky to remove the cost of the pass structure.",
+		Save(Build("nullsky", "Control: the sky pass with a passthrough fragment and no aerial " +
+			"perspective. Subtract from noatmo to price the sky pass structure itself.",
 			atmosphere, atmosphereOn: false, aerial, aerialOn: false,
+			PostProcessRendererProfile.SkyOverride.Null));
+
+		// The structural twin of the baselines: same two passes, same draw call count, no sky
+		// shading. Without it, `baseline - nullsky` silently bundles the whole aerial
+		// perspective pass in with the sky shading and reports the sum as the shading cost.
+		Save(Build("nullsky-aerial", "Control: the sky pass with a passthrough fragment, plus " +
+			"cheap aerial perspective. Structurally identical to the baselines, so subtracting " +
+			"it isolates the sky shading alone.",
+			atmosphere, atmosphereOn: false, aerial, aerialOn: true,
 			PostProcessRendererProfile.SkyOverride.Null));
 
 		Save(Build("noatmo", "Control: no sky pass at all, and no aerial perspective. This is " +
