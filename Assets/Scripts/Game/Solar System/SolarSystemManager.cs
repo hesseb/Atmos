@@ -15,6 +15,9 @@ namespace SolarSystem
 		public float dayDurationMinutes;
 		public float monthDurationMinutes;
 		public float yearDurationMinutes;
+		// Scales all three cycles at once, so their relative rates stay correct.
+		// Driven by TimeController; negative values run time backwards.
+		public float timeMultiplier = 1f;
 
 		[Header("References")]
 		public Sun sun;
@@ -39,13 +42,16 @@ namespace SolarSystem
 
 			if (animate && Application.isPlaying)
 			{
-				dayT += 1 / (dayDurationMinutes * 60) * Time.deltaTime;
-				monthT += 1 / (monthDurationMinutes * 60) * Time.deltaTime;
-				yearT += 1 / (yearDurationMinutes * 60) * Time.deltaTime;
+				float step = timeMultiplier * Time.deltaTime;
+				dayT += 1 / (dayDurationMinutes * 60) * step;
+				monthT += 1 / (monthDurationMinutes * 60) * step;
+				yearT += 1 / (yearDurationMinutes * 60) * step;
 
-				dayT %= 1;
-				monthT %= 1;
-				yearT %= 1;
+				// Repeat rather than %, so a negative timeMultiplier wraps correctly
+				// instead of driving the values negative.
+				dayT = Mathf.Repeat(dayT, 1);
+				monthT = Mathf.Repeat(monthT, 1);
+				yearT = Mathf.Repeat(yearT, 1);
 			}
 
 			earth?.UpdateOrbit(yearT, dayT, geocentric);

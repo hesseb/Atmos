@@ -62,6 +62,28 @@ Orbit mode: `WASD`/arrows pan (great-circle, so speed is uniform at every latitu
 to the home view. Home is currently 36.76°N 1.12°W (southern Spain), altitude 40,
 pitch 70° — captured via the component's *Set Home To Current View* context menu.
 
+### Time controls (`TimeController` + `SolarTime`)
+Speed: `,` / `.` step through 0.1×…256×, `P` pauses. Presets, all relative to wherever
+the camera currently is: `1` sunrise, `2` noon, `3` sunset, `4` midnight, `5` golden hour
+(configurable elevation, default 5°). `F1` toggles the overlay. Same presets are on the
+component's context menu, so shots can be composed without entering play mode.
+
+The presets are **solved analytically, not searched**. In geocentric mode the sun
+direction is `Ry(360·(dayT+yearT)) · Rz(tilt) · (−earthPosNormalised)`, so sun elevation
+at a fixed observer is a pure sinusoid in `dayT` and inverts in closed form. Verified
+against brute-force evaluation of the real orbit code to 3×10⁻¹⁵, with every target
+elevation landing within 0.001° and the correct rising/setting branch. This means
+"sunset" is exactly 0° and descending, reproducibly, which is what the RQ1 comparison
+needs — twilight is where ozone and the Mie forward lobe do most of their visible work.
+
+`SolarTime` is pure maths with no scene state, so the harness can call it directly.
+`TrySolveDayT` returns false rather than guessing at polar day/night or at a pole, where
+elevation doesn't vary over the day at all.
+
+**Two things that must be off when measuring:** `TimeController.showOverlay` (IMGUI
+allocates and costs frame time) and `SolarSystemManager.animate` (pin the sun with
+`SetTimes` instead, or the sun moves between the two renderers' captures).
+
 ### Deliberately kept, despite looking deletable
 - **`Editor Helper/` the folder.** Only `BuildReadyTest.cs` was removed;
   `EditorShaderHelper.cs` sits beside it and `AtmosphereEffect.cs:394` uses it.
