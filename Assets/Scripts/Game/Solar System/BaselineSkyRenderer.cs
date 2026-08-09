@@ -144,6 +144,22 @@ public class BaselineSkyRenderer : MonoBehaviour
 		return true;
 	}
 
+	// Logged once per variant. An unassigned texture leaves the sampler bound to whatever was
+	// there before, so the sky renders as something plausible-looking and wrong - and the
+	// frame time is still *correct* for that variant, which makes it look like a valid
+	// measurement of a sky nobody authored.
+	Variant warnedFor = (Variant)(-1);
+
+	void WarnMissingTexture(string field)
+	{
+		if (warnedFor == variant) { return; }
+		warnedFor = variant;
+
+		Debug.LogWarning($"[BaselineSky] variant '{variant}' has no {field} assigned. The sky " +
+			"will be undefined, and any benchmark of this profile measures the pass but not " +
+			"a sky anyone authored.", this);
+	}
+
 	Material EnsureMaterial(ref Material material, Shader shader)
 	{
 		if (shader == null)
@@ -179,6 +195,7 @@ public class BaselineSkyRenderer : MonoBehaviour
 			material.DisableKeyword("SKY_GRADIENT");
 
 			if (skyCubemap != null) { material.SetTexture("SkyCubemap", skyCubemap); }
+			else { WarnMissingTexture("Sky Cubemap"); }
 		}
 		else
 		{
@@ -191,6 +208,7 @@ public class BaselineSkyRenderer : MonoBehaviour
 			// entirely attributable to the authoring method.
 			Texture2D gradient = variant == Variant.GradientBaked ? skyGradientBaked : skyGradient;
 			if (gradient != null) { material.SetTexture("SkyGradient", gradient); }
+			else { WarnMissingTexture(variant == Variant.GradientBaked ? "Sky Gradient Baked" : "Sky Gradient"); }
 		}
 		if (blueNoise != null) { material.SetTexture("BlueNoise", blueNoise); }
 

@@ -721,3 +721,43 @@ pass left behind.
 
 The bake includes `AtmosphereCommon.hlsl` and calls the same `raymarch()` the runtime sky
 does, so a difference between baked and physically based cannot be a difference in the bake.
+
+### First baseline measurement — and the premise does not hold
+`smoke`, editor, 2560x1440, RTX 4090, 6 profiles x 2 repeats. Plumbing verified:
+`nullsky - noatmo` is **exactly +2 draw calls**, all 12 passes share one pose hash, scene
+hashes group 425 / 427 / 428 exactly as the pass counts predict, and `run.json` records the
+*live* sky mode per profile. The three baseline variants land within **0.003 ms** of each
+other, which is the expected consequence of their sharing a code path.
+
+| | ms |
+|---|---|
+| sky pass structure (`nullsky − noatmo`) | +0.051 |
+| baseline shading + aerial (`baseline − nullsky`) | +0.162 |
+| **PBR over baseline** | **+0.073** |
+| whole sky + aerial (`pbr − noatmo`) | +0.286 |
+
+**The cheap baseline captures 74% of the physically based renderer's cost**, and the delta is
+7x the worst repeat spread (0.010 ms), so it is not noise.
+
+The reason is structural: Hillaire's method precomputes scattering into a 128x256 LUT, so at
+the pixel level the physically based sky is *also* just a texture fetch. Everything else -
+two full-screen blits, tone map, dither, star composite, the aerial pass - is common to both.
+The report's framing ("physically based versus a cheaper textured method") assumes a cost gap
+that this technique largely removes. That is a finding, not a problem, but RQ2's phrasing
+should account for it.
+
+Caveat: editor run, dirty tree, and `smoke` has only 200 measured frames per segment, so the
+1% low is suppressed (n < 300, working as designed). Re-run on the release build with a
+longer benchmark before quoting.
+
+### Two defects this run exposed
+1. **`baseline-cubemap` had no cubemap.** `skyCubemap: {fileID: 0}` - the plan called for
+   baking one and it was never implemented, so the variant sampled an unbound sampler. Its
+   *cost* is still a valid measurement of the code path, but the image is meaningless, so it
+   cannot be used for RQ1. The renderer now warns loudly instead of rendering something
+   plausible-looking and wrong.
+2. **The decomposition was mislabelled.** `nullsky` has no aerial perspective pass (427 draw
+   calls) while the baselines do (428), so `baseline − nullsky` bundles the entire aerial pass
+   in with the sky shading - 0.162 ms reported as "shading" when the shading alone is a
+   fraction of it. Added a `nullsky-aerial` control that is the structural twin of the
+   baselines, so `baseline − nullsky-aerial` isolates the sky shading and nothing else.

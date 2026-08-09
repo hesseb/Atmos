@@ -13,8 +13,12 @@ MonoBehaviour:
   m_Name: NoAtmo
   m_EditorClassIdentifier: Assembly-CSharp::PostProcessRendererProfile
   id: noatmo
-  description: 
+  description: 'Control: no sky pass at all, and no aerial perspective. This is an
+    ablation rather than a baseline - it renders a black sky.'
   effects:
   - effect: {fileID: 11400000, guid: 7526e0f14e0a0a7479aeb2e5d87ae0a3, type: 2}
     enabled: 0
+  - effect: {fileID: 11400000, guid: 04fe8bd6952ff0c42bd708348a5b3dd1, type: 2}
+    enabled: 0
   objects: []
+  sky: 1
