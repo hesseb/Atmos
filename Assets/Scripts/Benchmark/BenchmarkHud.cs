@@ -47,6 +47,14 @@ public class BenchmarkHud : MonoBehaviour
 	bool advanceQueue;
 	string lastMessage = "";
 
+	// Batch state, used only when All is selected. Each benchmark still writes its own run
+	// folder - they have different plans and frame counts - but they land inside one parent
+	// with a cross-benchmark summary written when the queue drains.
+	readonly List<BenchmarkWriter.BatchEntry> batchEntries = new List<BenchmarkWriter.BatchEntry>();
+	string batchFolder;
+	string savedOutputOverride;
+	int queueLengthAtStart;
+
 	GUIStyle overlayStyle;
 	Texture2D overlayBackground;
 	Color appliedBackgroundColour;
@@ -101,6 +109,17 @@ public class BenchmarkHud : MonoBehaviour
 				advanceQueue = false;
 				runner.Abort();
 				lastMessage = "aborted";
+
+				// Abort does not raise onCompleted, so the batch has to be closed here. The
+				// aborted run wrote nothing, but earlier ones in the batch did - summarising
+				// those is better than discarding them, as long as it is clear the batch is
+				// short.
+				if (batchFolder != null && queueLengthAtStart > batchEntries.Count)
+				{
+					Debug.LogWarning($"[Benchmark] batch aborted after {batchEntries.Count} of " +
+						$"{queueLengthAtStart} benchmark(s); the summary covers only those.", this);
+				}
+				FinishBatch();
 			}
 			return;
 		}
@@ -146,10 +165,30 @@ public class BenchmarkHud : MonoBehaviour
 		if (definitions.Count == 0) { lastMessage = "no benchmarks in availableBenchmarks"; return; }
 
 		queue.Clear();
+		batchEntries.Clear();
+		batchFolder = null;
 
-		if (selected == AllIndex) { queue.AddRange(definitions); }
-		else { queue.Add(definitions[Mathf.Clamp(selected, 0, definitions.Count - 1)]); }
+		if (selected == AllIndex)
+		{
+			queue.AddRange(definitions);
 
+			// One parent folder for the whole batch. Redirecting the runner's output root is
+			// what puts each run inside it; the override is restored when the batch ends so
+			// a later single run is unaffected.
+			savedOutputOverride = runner.outputRootOverride;
+			string root = string.IsNullOrEmpty(runner.outputRootOverride)
+				? BenchmarkWriter.DefaultOutputRoot()
+				: runner.outputRootOverride;
+
+			batchFolder = BenchmarkWriter.BeginBatch(root);
+			runner.outputRootOverride = batchFolder;
+		}
+		else
+		{
+			queue.Add(definitions[Mathf.Clamp(selected, 0, definitions.Count - 1)]);
+		}
+
+		queueLengthAtStart = queue.Count;
 		lastMessage = "";
 		StartNextInQueue();
 	}
@@ -175,12 +214,53 @@ public class BenchmarkHud : MonoBehaviour
 				"queued benchmark.", this);
 			lastMessage = $"skipped {next.id}";
 		}
+
+		// Queue drained without anything starting.
+		FinishBatch();
 	}
 
 	void HandleCompleted(BenchmarkRunner completed)
 	{
-		if (queue.Count > 0) { advanceQueue = true; }
-		else { lastMessage = "run complete"; }
+		if (batchFolder != null) { RecordBatchEntry(completed); }
+
+		if (queue.Count > 0) { advanceQueue = true; return; }
+
+		lastMessage = "run complete";
+		FinishBatch();
+	}
+
+	/// <summary>Copies the finished run's results - the runner clears them on its next
+	/// StartRun, which is the very next thing that happens in a batch.</summary>
+	void RecordBatchEntry(BenchmarkRunner completed)
+	{
+		var entry = new BenchmarkWriter.BatchEntry
+		{
+			benchmarkId = completed.benchmark != null ? completed.benchmark.id : "?",
+			runFolder = completed.RunFolder,
+			mode = completed.mode
+		};
+
+		foreach (BenchmarkWriter.PassResult pass in completed.PassResults) { entry.passes.Add(pass); }
+		batchEntries.Add(entry);
+	}
+
+	void FinishBatch()
+	{
+		if (batchFolder == null) { return; }
+
+		if (batchEntries.Count > 0)
+		{
+			BenchmarkWriter.WriteBatchSummary(batchFolder, batchEntries, runner.machineLabel);
+			Debug.Log($"[Benchmark] batch complete: {batchEntries.Count} benchmark(s) " +
+				$"summarised in {batchFolder}", this);
+			lastMessage = $"batch complete ({batchEntries.Count})";
+		}
+
+		// Restored even on abort, so a later single run does not silently write into the
+		// batch folder.
+		runner.outputRootOverride = savedOutputOverride;
+		batchFolder = null;
+		savedOutputOverride = null;
 	}
 
 	// ------------------------------------------------------------------ overlay
