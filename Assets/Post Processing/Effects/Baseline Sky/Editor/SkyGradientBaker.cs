@@ -167,7 +167,10 @@ static class SkyGradientBaker
 	// ------------------------------------------------------------------ cubemap
 
 	const string CubemapPath = Folder + "/SkyCubemap.asset";
-	const int CubemapSize = 256;
+	// 512 rather than 256: a cubemap is magnified across the whole sky, and the horizon band
+	// is where the gradient is steepest. 6 faces of RGBAHalf is about 12 MB, which is nothing
+	// against the 900 MB already in Assets/Data.
+	const int CubemapSize = 512;
 
 	/// <summary>
 	/// The sun elevation the cubemap is frozen at. A cubemap cannot track the sun - that is
@@ -232,6 +235,8 @@ static class SkyGradientBaker
 		Vector3 up = Vector3.up;
 		Vector3 east = Vector3.right;
 		compute.SetVector("observerUp", up);
+		// Needed as the degenerate fallback in clampToHorizon, for rays pointing straight down.
+		compute.SetVector("observerEast", east);
 
 		float radians = CubemapSunElevationDegrees * Mathf.Deg2Rad;
 		compute.SetVector("dirToSun", (up * Mathf.Sin(radians) + east * Mathf.Cos(radians)).normalized);
