@@ -1128,3 +1128,59 @@ decomposition, the fog painting over the sky, the stripped-counter false pass, a
 tone-map pedestal — but none of their numbers should be quoted.
 
 Findings go in this file for later rather than being acted on as if final.
+
+---
+
+## Atmosphere: aligning with Hillaire 2020
+
+### The "hardcoded to 1" is the Rayleigh *phase*, and why removing it looks broken
+`AtmosphereCommon.hlsl:158` sets `rayleighPhaseValue = 1`, with the correct call commented out
+on 157. A normalised phase averages 1/4π over the sphere, so this **inflates Rayleigh
+in-scatter by 4π ≈ 12.57×**. Re-enable it and the sky drops by that factor — which is exactly
+why it appears to be load-bearing.
+
+It cannot be compensated in σ. In-scatter is *linear* in σ_s but transmittance is *exponential*
+in σ_t, so scaling σ by 4π takes blue vertical optical depth from 0.75 to 9.4 and the planet
+disappears behind fog. **σ is structurally excluded.** The missing term is solar illuminance,
+which the implementation does not have at all — absolute scale is absorbed by a display-side
+`intensity` and a free `wavelengthScale`.
+
+Corroborating: Mie *does* get its correct phase, so Rayleigh is over-weighted relative to Mie
+by 12.57×, and `mieCoefficient` was raised to 0.38 to compete.
+
+### Measured facts, verified rather than assumed
+| quantity | value | reference |
+|---|---|---|
+| vertical optical depth (R,G,B) | 0.173, 0.420, 0.748 | Earth 0.046, 0.109, 0.265 — **2.8–3.9× too thick** |
+| `getSunTransmittance` sampling bias | optical depth **13.9% low** | right-Riemann; midpoint would be 0.5% |
+| minimum extinction over the column | **1.86e-05** | not 0.02 |
+| `max(1e-4, σ)` clamp fires from | **h01 = 0.856**, top 14% | red first, blue from 0.95 |
+| ozone positivity headroom | breaks at `ozoneStrength ≥ 0.69` | currently 0.4 — only 1.7× |
+| tone map usable band | [0.1185, 0.6449], factor **5.44** | at `whitePoint = 1` Reinhard is an exact identity |
+
+### Correction: stage 0f was not a strict no-op
+I committed the stable-integral change describing the clamp as inactive at shipped values,
+on the basis that minimum extinction was ~0.02. **It is 1.86e-05.** The clamp was already
+firing across the top 14% of the atmosphere and understating in-scatter there by up to 5×.
+
+The change is therefore a real behaviour change, confined to a region whose density is ~1e-5
+of sea level — which is why the sky looked identical. The claim should have been "no visible
+change", not "provably a no-op", and the distinction matters because the whole point of stage
+0 was that its steps were verifiable as inert.
+
+Two other numbers from the design analysis also failed checking and are corrected above: the
+minimum extinction, and the ozone headroom (0.69, not 1.15).
+
+### Validation harness
+`Testbed → Atmosphere → Validate` — a menu item rather than NUnit, matching the existing stats
+self-test, because a test asmdef cannot reference the predefined `Assembly-CSharp`.
+
+The split matters: `AtmosphereReference.cs` is a **C# mirror** of the shader's density, phase
+and tone-map functions, so properties can be checked at 10,000 sample points without a GPU.
+A mirror can diverge from what it mirrors, and exactly one check closes that gap — the
+transmittance LUT readback compares the shader's own output against this file's quadrature.
+If those two disagree, the mirror is stale and every other check is suspect.
+
+The LUT check is deliberately compared against **two** references: the exact closed form, and
+the 40-step right-Riemann sum the shader actually computes. Matching the Riemann value proves
+the shader implements the model; the gap to the closed form *is* the sampling bias, quantified.
