@@ -279,16 +279,24 @@ static class AtmosphereValidation
 		Vector3 tau = AtmosphereReference.VerticalOpticalDepth(a, 200000);
 		var exact = new Vector3(Mathf.Exp(-tau.x), Mathf.Exp(-tau.y), Mathf.Exp(-tau.z));
 
+		// The shader samples at the midpoint of each of 40 steps. It used to advance before
+		// sampling, a right-Riemann sum; both are reported so the improvement is visible as a
+		// number rather than asserted.
+		Vector3 tauMidpoint = AtmosphereReference.VerticalOpticalDepth(a, 40);
+		var midpoint = new Vector3(Mathf.Exp(-tauMidpoint.x), Mathf.Exp(-tauMidpoint.y), Mathf.Exp(-tauMidpoint.z));
+
 		Vector3 tauRiemann = AtmosphereReference.VerticalOpticalDepthRightRiemann(a, 40);
 		var riemann = new Vector3(Mathf.Exp(-tauRiemann.x), Mathf.Exp(-tauRiemann.y), Mathf.Exp(-tauRiemann.z));
 
-		report.Append($"- LUT texel (0,0)  = ({F(zenith.r)}, {F(zenith.g)}, {F(zenith.b)})\n")
-			.Append($"- 40-step right-Riemann = ({F(riemann.x)}, {F(riemann.y)}, {F(riemann.z)})  <- what the shader computes\n")
-			.Append($"- exact closed form     = ({F(exact.x)}, {F(exact.y)}, {F(exact.z)})\n")
-			.Append($"- sampling bias: optical depth low by {F(100f * (1f - tauRiemann.z / tau.z))}% in blue\n");
+		report.Append($"- LUT texel (0,0)   = ({F(zenith.r)}, {F(zenith.g)}, {F(zenith.b)})\n")
+			.Append($"- 40-step midpoint  = ({F(midpoint.x)}, {F(midpoint.y)}, {F(midpoint.z)})  <- what the shader computes\n")
+			.Append($"- exact closed form = ({F(exact.x)}, {F(exact.y)}, {F(exact.z)})\n")
+			.Append($"- 40-step right-Riemann = ({F(riemann.x)}, {F(riemann.y)}, {F(riemann.z)})  <- what it computed before\n")
+			.Append($"- quadrature error in blue: midpoint {F(100f * Mathf.Abs(1f - tauMidpoint.z / tau.z))}%, " +
+				$"right-Riemann {F(100f * Mathf.Abs(1f - tauRiemann.z / tau.z))}%\n");
 
 		int failures = Assert(report, "LUT zenith matches the shader's own quadrature",
-			Distance(zenith, riemann), 0.0, 2e-3);
+			Distance(zenith, midpoint), 0.0, 2e-3);
 
 		// Range check across the whole texture: transmittance is a fraction and cannot exceed 1.
 		Color[] all = ReadAll(a.transmittanceLUT);

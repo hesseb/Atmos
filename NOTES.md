@@ -1265,3 +1265,35 @@ dirty flag. That keeps 0b's benefit without its regression.
 Worth noting what this says about the harness: neither problem was visible in the image at a
 glance, and both were caught by a numeric check against a closed form within minutes of being
 introduced.
+
+### Stage 1b: geometry
+Four fixes, all with visible consequences.
+
+**Ground intersection in `raymarch`.** Nothing clipped the march at the planet, so a downward
+ray integrated the full atmosphere chord *through the planet's interior* — and because altitude
+is clamped at zero, those interior samples were evaluated at **sea-level density**. The planet
+was not an occluder but a solid block of maximum scattering. The earth-shadow test hid most of
+it by zeroing the sun term, which is why it never looked obviously wrong.
+
+The altitude clamp stays, but is now defensive rather than load-bearing: `getSunTransmittance`
+still follows Bruneton's convention of ignoring the ground and leaving occlusion to the
+caller's shadow test, and without the clamp those samples would take a negative altitude into
+`exp(-h/H)` and the density would explode rather than vanish.
+
+**Midpoint sampling in `getSunTransmittance`.** It advanced before sampling — a right-Riemann
+sum, so every sample landed where density was already below the interval average. Predicted
+effect: quadrature error in blue **13.88% → 0.354%** at the same 40 steps, sun transmittance
+dropping **9.6%** in blue. The sky should darken slightly and warm.
+
+**Aerial perspective ray length.** The slice's far distance is measured from the camera but the
+march starts at the atmosphere boundary, so the distance covered getting there has to come off.
+Invisible from inside the atmosphere where the two origins coincide — but the testbed camera
+reaches altitude 250, radius 400 against an atmosphere top of 259.5, so it spends real time
+outside, where the far endpoint over-extended by up to a whole atmosphere thickness.
+
+**`bodyRadius` 149.5 → 150**, matching `TerrainHeightSettings.worldRadius`. The atmosphere's
+ground sphere sat half a unit *inside* the terrain, so every altitude was biased and the
+ray-planet test could miss ground the depth buffer saw.
+
+This is also the first real exercise of the bake stamp: changing `bodyRadius` should make all
+three baked assets report `BAKE_STALE`.

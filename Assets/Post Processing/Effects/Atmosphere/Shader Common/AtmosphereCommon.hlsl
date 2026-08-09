@@ -50,10 +50,11 @@ ScatteringParameters getScatteringValues(float3 rayPos) {
 	// The upper clamp reproduces the previous saturate(): density stops decaying at the top of
 	// the atmosphere rather than continuing to zero.
 	//
-	// The lower clamp is the one that matters. It gives samples *inside the planet* sea-level
-	// density rather than none, and since nothing clips the march at the ground, a downward ray
-	// integrates the full chord through the planet's interior at maximum density. It stays only
-	// until the ground intersection lands.
+	// The lower clamp stays, but it is now defensive rather than load-bearing. `raymarch` stops
+	// at the ground, so the view march never samples below it; what still can is
+	// `getSunTransmittance`, which follows Bruneton's convention of ignoring the ground and
+	// leaving occlusion to the caller's shadow test. Without the clamp those samples would take
+	// a negative altitude into exp(-h/H) and the density would explode rather than vanish.
 	height = clamp(height, 0, atmosphereThickness);
 
 	float rayleighDensity = exp(-height / rayleighScaleHeight);
@@ -143,13 +144,13 @@ float3 getSunTransmittance(float3 pos, float3 sunDir) {
 	float3 opticalDepth = 0;
 
 	for (int i = 0; i < sunTransmittanceSteps; i ++) {
-		// Advancing before sampling makes this a right-Riemann sum, which for a decreasing
-		// density profile systematically understates optical depth - measured at 13.9% here.
-		// Left as is until the midpoint fix, so this change stays numerically identical.
-		pos += sunDir * stepSize;
-
-		ScatteringParameters scattering = getScatteringValues(pos);
-		opticalDepth += scattering.extinction;
+		// Midpoint. This advanced *before* sampling, which makes a right-Riemann sum: every
+		// sample lands where the density is already lower than the interval's average, so for
+		// a decreasing profile the optical depth is systematically understated - measured at
+		// 13.9% here, or sun transmittance ~10% too high in blue at ground level. Midpoint
+		// brings the same 40 steps to within 0.5%.
+		float3 samplePos = pos + sunDir * ((i + 0.5) * stepSize);
+		opticalDepth += getScatteringValues(samplePos).extinction;
 	}
 
 	// A `transmittance` accumulator used to be maintained alongside this and never returned.
@@ -186,6 +187,16 @@ float3 integralFactor(float3 opticalDepth, float3 transmittance) {
 ScatteringResult raymarch(float3 rayPos, float3 rayDir, float rayLength, int numSteps, sampler2D transmittanceLUT, float earthShadowRadius) {
 	float3 luminance = 0;
 	float3 transmittance = 1;
+
+	// Stop at the ground.
+	//
+	// Nothing clipped the march before, so a downward ray integrated the full atmosphere chord
+	// straight through the planet's interior - and because altitude is clamped at zero, those
+	// interior samples were evaluated at *sea-level* density. The planet was therefore not an
+	// occluder but a solid block of maximum scattering. The earth-shadow test hid most of it by
+	// zeroing the sun term, which is why it never looked obviously broken.
+	float dstToGround = rayIntersectSphere(rayPos, rayDir, planetRadius);
+	if (dstToGround > 0) { rayLength = min(rayLength, dstToGround); }
 
 	float stepSize = rayLength / numSteps;
 
