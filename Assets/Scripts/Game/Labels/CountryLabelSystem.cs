@@ -20,6 +20,8 @@ public class CountryLabelSystem : MonoBehaviour
 {
 	[Header("References")]
 	public Camera cam;
+	// Optional. Supplies which country is hovered, so its label can be emphasised.
+	public GlobePicker picker;
 	public CountryData countryData;
 	public CountryLabelData labelData;
 	public TerrainGeneration.TerrainHeightSettings heightSettings;
@@ -58,6 +60,16 @@ public class CountryLabelSystem : MonoBehaviour
 	// Labels whose anchor fell back to a centroid may sit outside their country.
 	public bool showFailedBakes = false;
 
+	[Header("Hover emphasis")]
+	// Idle labels sit back so the map reads first; the hovered one comes fully forward.
+	[Range(0f, 1f)] public float idleBrightness = 0.8f;
+	[Range(0f, 1f)] public float idleAlpha = 0.65f;
+	public Color hoverColour = Color.white;
+	public float hoverScaleMultiplier = 1.3f;
+	public float hoverTransitionDuration = 0.12f;
+	// Show the hovered country's name even when it is too small to pass the size filter.
+	public bool hoverOverridesSizeFilter = true;
+
 	[Header("Debug")]
 	public bool logInitTime = true;
 	// TMP's generated text reads correctly from its local -Z, so the object's forward has
@@ -70,10 +82,14 @@ public class CountryLabelSystem : MonoBehaviour
 		public TextMeshPro text;
 		public Transform transform;
 		public GameObject gameObject;
+		public int countryIndex;
 		public Vector3 anchorDirection;
 		public Vector3 worldPosition;
+		public float baseScale;
 		public float worldHeight;   // of the text, in world units
-		public float alpha;
+		public float hover;         // 0 idle, 1 fully emphasised
+		public Color appliedColour;
+		public float appliedScale;
 		public bool active;
 	}
 
@@ -96,6 +112,7 @@ public class CountryLabelSystem : MonoBehaviour
 		if (initialised) { return; }
 
 		if (cam == null) { cam = Camera.main; }
+		if (picker == null) { picker = GetComponent<GlobePicker>(); }
 		if (countryData == null || labelData == null || fontAsset == null)
 		{
 			Debug.LogWarning($"{nameof(CountryLabelSystem)}: assign countryData, labelData and " +
@@ -126,7 +143,11 @@ public class CountryLabelSystem : MonoBehaviour
 			if (entry.angularRadius <= 0f) { continue; }
 
 			Label label = CreateLabel(entry, material, radius);
-			if (label != null) { labels.Add(label); }
+			if (label != null)
+			{
+				label.countryIndex = i;
+				labels.Add(label);
+			}
 		}
 
 		initialised = true;
@@ -237,8 +258,10 @@ public class CountryLabelSystem : MonoBehaviour
 			gameObject = go,
 			anchorDirection = direction,
 			worldPosition = direction * radius,
+			baseScale = scale,
+			appliedScale = scale,
 			worldHeight = preferred.y * scale,
-			alpha = 0f,
+			appliedColour = new Color(0f, 0f, 0f, -1f), // forces the first write
 			active = true
 		};
 
@@ -275,11 +298,22 @@ public class CountryLabelSystem : MonoBehaviour
 			(Screen.height * 0.5f) / Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);
 
 		float fadeEnd = Mathf.Max(minPixelHeight * fadeBandFactor, minPixelHeight + 0.01f);
+		int hovered = picker != null ? picker.HoveredCountryIndex : -1;
+		float hoverStep = hoverTransitionDuration > 0f
+			? Time.unscaledDeltaTime / hoverTransitionDuration
+			: 1f;
+		Color idleColour = textColour * idleBrightness;
 		int visible = 0;
 
 		for (int i = 0; i < labels.Count; i++)
 		{
 			Label label = labels[i];
+
+			float hoverTarget = label.countryIndex == hovered ? 1f : 0f;
+			if (!Mathf.Approximately(label.hover, hoverTarget))
+			{
+				label.hover = Mathf.MoveTowards(label.hover, hoverTarget, hoverStep);
+			}
 
 			Vector3 toCamera = camPos - label.worldPosition;
 			float distance = toCamera.magnitude;
@@ -291,8 +325,12 @@ public class CountryLabelSystem : MonoBehaviour
 
 			float pixelHeight = label.worldHeight * pixelsPerUnitAtUnitDistance / distance;
 			float sizeFade = Mathf.InverseLerp(minPixelHeight, fadeEnd, pixelHeight);
+			// A hovered country's name is worth showing even if it is below the size
+			// threshold - the cursor is already saying which country is meant.
+			if (hoverOverridesSizeFilter) { sizeFade = Mathf.Max(sizeFade, label.hover); }
 
-			float alpha = horizonFade * sizeFade;
+			// Idle labels sit back; the hovered one comes to full opacity.
+			float alpha = horizonFade * sizeFade * Mathf.Lerp(idleAlpha, 1f, label.hover);
 
 			// Hysteresis, so a label sitting exactly on a threshold doesn't flicker.
 			if (label.active && alpha < 0.005f) { SetLabelActive(label, false); }
@@ -301,15 +339,31 @@ public class CountryLabelSystem : MonoBehaviour
 			if (!label.active) { continue; }
 
 			visible++;
-			// TMP_Text.alpha dirties the vertex data, so only write it when it moved.
-			if (Mathf.Abs(alpha - label.alpha) > 0.002f)
+
+			Color target = Color.Lerp(idleColour, hoverColour, label.hover);
+			target.a = alpha;
+			// TMP_Text.color dirties the vertex colours, so only write it when it moved.
+			if (ColourDiffers(target, label.appliedColour))
 			{
-				label.alpha = alpha;
-				label.text.alpha = alpha;
+				label.appliedColour = target;
+				label.text.color = target;
+			}
+
+			float scale = label.baseScale * Mathf.Lerp(1f, hoverScaleMultiplier, label.hover);
+			if (!Mathf.Approximately(scale, label.appliedScale))
+			{
+				label.appliedScale = scale;
+				label.transform.localScale = Vector3.one * scale;
 			}
 		}
 
 		VisibleCount = visible;
+	}
+
+	static bool ColourDiffers(Color a, Color b)
+	{
+		return Mathf.Abs(a.r - b.r) > 0.002f || Mathf.Abs(a.g - b.g) > 0.002f
+			|| Mathf.Abs(a.b - b.b) > 0.002f || Mathf.Abs(a.a - b.a) > 0.002f;
 	}
 
 	static void SetLabelActive(Label label, bool active)
