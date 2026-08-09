@@ -92,6 +92,7 @@ public class AtmosphereEffect : PostProcessingEffect
 	bool settingsUpToDate;
 
 	ShaderValues sharedAtmosphereValues;
+	public Light Light => light;
 	public event System.Action onSettingsUpdated;
 	CommandBuffer drawSkyCommand;
 	Material drawSkyMaterial;
@@ -199,7 +200,7 @@ public class AtmosphereEffect : PostProcessingEffect
 		}
 	}
 
-	ShaderValues GetShaderValues()
+	public ShaderValues GetShaderValues()
 	{
 		ShaderValues values = new ShaderValues();
 		// Size values

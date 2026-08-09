@@ -1,0 +1,63 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a55096bb366784a42b405a2dc2c669ad, type: 3}
+  m_Name: CloudEffect
+  m_EditorClassIdentifier: Assembly-CSharp::CloudEffect
+  enabled: 1
+  shader: {fileID: 4800000, guid: 3137cba470a128b45b7135500bef6daa, type: 3}
+  atmosphereEffect: {fileID: 11400000, guid: 7526e0f14e0a0a7479aeb2e5d87ae0a3, type: 2}
+  noiseCompute: {fileID: 7200000, guid: 393cf142aa4937a43b2299ebe96a45be, type: 3}
+  weatherMapCompute: {fileID: 7200000, guid: d1be803023c2a5d45b199ab864d397e1, type: 3}
+  cloudBaseAltitude: 3
+  cloudTopAltitude: 15
+  cloudScale: 9.13
+  densityMultiplier: 300
+  densityOffset: 0
+  shapeNoiseWeights: {x: 1, y: 0.5, z: 0.25, w: 0.125}
+  detailNoiseScale: 0.38
+  detailNoiseWeight: 1
+  detailNoiseWeights: {x: 1, y: 0.5, z: 0.25}
+  heightGradientMin: 1
+  heightGradientMax: 0.46
+  lightAbsorptionThroughCloud: 1
+  lightAbsorptionTowardSun: 1
+  darknessThreshold: 0.321
+  forwardScattering: 0
+  backScattering: 0
+  baseBrightness: 0.958
+  phaseFactor: 0
+  timeScale: 0.01
+  baseSpeed: 0.3
+  detailSpeed: 0.0001
+  shapeOffset: {x: 0, y: 0, z: 0}
+  detailOffset: {x: 0, y: 0, z: 0}
+  numStepsLight: 5
+  maxSteps: 64
+  minStepSize: 0.001
+  rayOffsetStrength: 1
+  blueNoise: {fileID: 2800000, guid: f94aa116956069842b6a2820258a64f0, type: 3}
+  weatherMapScale: 1
+  weatherMapWeight: 0
+  heightOffset: {x: 0, y: 0}
+  weatherTestParams: {x: 0, y: 1, z: 1, w: 0}
+  shapeSettings:
+  - {fileID: 11400000, guid: 6bba380baa87ab243bbc6b37581068db, type: 2}
+  - {fileID: 11400000, guid: aa5cfc31e5f7e7e49a7c738155ae3fb8, type: 2}
+  - {fileID: 11400000, guid: b1df25635fdaf9d41a130165dc8caf1c, type: 2}
+  - {fileID: 11400000, guid: 955378e9dcb62004988064b3eea31507, type: 2}
+  detailSettings:
+  - {fileID: 11400000, guid: e10ca6e1f1dba434ea63c6611008bbc7, type: 2}
+  - {fileID: 11400000, guid: da828b9bb04d9784b8ea46b62445cf4a, type: 2}
+  - {fileID: 11400000, guid: c8cc7475b09e30a4495ed0407562d6d3, type: 2}
+  weatherSettings: {fileID: 11400000, guid: b9ee85e7bb01f5e459ccb2150933d0b1, type: 2}
+  shapeResolution: 0
+  detailResolution: 32
