@@ -164,6 +164,14 @@ static class SkyGradientBaker
 		AssetDatabase.ImportAsset(BakedPath, ImportAssetOptions.ForceUpdate);
 		ConfigureImporter(BakedPath);
 
+		// Stores raw radiance, so it stales against the atmosphere's parameters - not the tone
+		// map, which is applied at runtime.
+		SkyBakeStampWriter.Record(BakedPath, SkyBakeStamp.Recipe.Atmosphere, FindAtmosphere(), null,
+			new SkyBakeStamp.Inputs().Add("bakeAltitude", BakeAltitude)
+				.Add("bakeAzimuthDegrees", BakeAzimuthDegrees)
+				.Add("bakeScatteringSteps", ScatteringSteps)
+				.Add("bakeWidth", Width).Add("bakeHeight", Height));
+
 		Debug.Log($"[BaselineSky] baked {Width}x{Height} sky gradient to {BakedPath}\n" +
 			$"  {ScatteringSteps} scattering steps, sampled {BakeAzimuthDegrees} deg from the sun, " +
 			$"observer {BakeAltitude} above the surface\n" +
@@ -332,6 +340,12 @@ static class SkyGradientBaker
 		AssetDatabase.DeleteAsset(CubemapPath);
 		AssetDatabase.CreateAsset(cubemap, CubemapPath);
 		AssetDatabase.SaveAssets();
+
+		SkyBakeStampWriter.Record(CubemapPath, SkyBakeStamp.Recipe.Atmosphere, FindAtmosphere(), null,
+			new SkyBakeStamp.Inputs().Add("bakeAltitude", BakeAltitude)
+				.Add("bakeSunElevationDegrees", CubemapSunElevationDegrees)
+				.Add("bakeScatteringSteps", ScatteringSteps)
+				.Add("bakeCubemapSize", CubemapSize));
 
 		// Shown as a dialog rather than only logged: the orientation verdict is the one piece
 		// of evidence that says whether the bake is trustworthy, and it is no use sitting in a
