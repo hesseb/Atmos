@@ -22,4 +22,102 @@ MonoBehaviour:
   simulatedFps: 60
   monthT: 0.404
   yearT: 0.288
-  segments: []
+  segments:
+  - label: 
+    kind: 1
+    frames: 300
+    settleFramesOverride: 0
+    from:
+      source: 0
+      inlineView:
+        coordinate:
+          longitude: 0
+          latitude: 0
+        altitude: 0
+        pitch: 0
+        heading: 0
+        roll: 0
+        fieldOfView: 0
+      bookmarkAsset: {fileID: 0}
+      bookmarkLabel: 
+      bookmarkIndex: 0
+    to:
+      source: 0
+      inlineView:
+        coordinate:
+          longitude: 0
+          latitude: 0
+        altitude: 0
+        pitch: 0
+        heading: 0
+        roll: 0
+        fieldOfView: 0
+      bookmarkAsset: {fileID: 0}
+      bookmarkLabel: 
+      bookmarkIndex: 0
+    ease: 0
+    sweepDegrees: 0
+    sweepAxis: 0
+    sunFrom:
+      mode: 0
+      dayT: 0
+      elevationDegrees: 0
+      rising: 0
+      highest: 0
+    sunTo:
+      mode: 0
+      dayT: 0
+      elevationDegrees: 0
+      rising: 0
+      highest: 0
+    screenshotFirstAndLast: 0
+    screenshotFrames: 
+  - label: 
+    kind: 2
+    frames: 300
+    settleFramesOverride: 0
+    from:
+      source: 0
+      inlineView:
+        coordinate:
+          longitude: 0
+          latitude: 0
+        altitude: 0
+        pitch: 0
+        heading: 0
+        roll: 0
+        fieldOfView: 0
+      bookmarkAsset: {fileID: 0}
+      bookmarkLabel: 
+      bookmarkIndex: 0
+    to:
+      source: 0
+      inlineView:
+        coordinate:
+          longitude: 0
+          latitude: 0
+        altitude: 0
+        pitch: 0
+        heading: 0
+        roll: 0
+        fieldOfView: 0
+      bookmarkAsset: {fileID: 0}
+      bookmarkLabel: 
+      bookmarkIndex: 0
+    ease: 0
+    sweepDegrees: 360
+    sweepAxis: 0
+    sunFrom:
+      mode: 0
+      dayT: 0
+      elevationDegrees: 0
+      rising: 0
+      highest: 0
+    sunTo:
+      mode: 0
+      dayT: 0
+      elevationDegrees: 0
+      rising: 0
+      highest: 0
+    screenshotFirstAndLast: 0
+    screenshotFrames: 

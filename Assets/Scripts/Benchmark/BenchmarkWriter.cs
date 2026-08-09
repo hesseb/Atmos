@@ -4,6 +4,11 @@ using System.IO;
 using System.Text;
 using UnityEngine;
 
+// The project defines its own `Path` in the global namespace - a polygon path, in
+// Assets/Scripts/Types/Shape.cs - and a global-namespace type shadows a using-imported
+// one, so plain `Path` here resolves to that struct rather than System.IO.Path. Alias it.
+using IOPath = System.IO.Path;
+
 /// <summary>
 /// Writes a completed run to disk: per-frame CSV, per-segment statistics, run metadata and
 /// a human-readable summary.
@@ -105,7 +110,7 @@ public static class BenchmarkWriter
 	public static string DefaultOutputRoot()
 	{
 		string folder = Application.isEditor ? "Results" : "BenchmarkResults";
-		return Path.GetFullPath(Path.Combine(Application.dataPath, "..", folder));
+		return IOPath.GetFullPath(IOPath.Combine(Application.dataPath, "..", folder));
 	}
 
 	/// <summary>Writes a run. Returns the run folder, or null on failure.</summary>
@@ -120,22 +125,22 @@ public static class BenchmarkWriter
 
 			string stamp = System.DateTime.Now.ToString("yyyyMMdd-HHmmss", Ci);
 			string shortCommit = string.IsNullOrEmpty(commit) ? "nogit" : commit;
-			string runFolder = Path.Combine(outputRoot,
+			string runFolder = IOPath.Combine(outputRoot,
 				$"{stamp}_{Sanitise(runner.Plan.definition.id)}_{shortCommit}");
-			string passFolder = Path.Combine(runFolder, Sanitise(passId));
+			string passFolder = IOPath.Combine(runFolder, Sanitise(passId));
 
 			Directory.CreateDirectory(passFolder);
 
-			File.WriteAllText(Path.Combine(runFolder, "plan.csv"), runner.Plan.ToCsv());
-			File.WriteAllText(Path.Combine(passFolder, "frames.csv"), BuildFramesCsv(runner));
+			File.WriteAllText(IOPath.Combine(runFolder, "plan.csv"), runner.Plan.ToCsv());
+			File.WriteAllText(IOPath.Combine(passFolder, "frames.csv"), BuildFramesCsv(runner));
 
 			SegmentStats[] segments = ComputeSegments(runner);
-			File.WriteAllText(Path.Combine(passFolder, "segments.csv"), BuildSegmentsCsv(runner, segments));
+			File.WriteAllText(IOPath.Combine(passFolder, "segments.csv"), BuildSegmentsCsv(runner, segments));
 
 			RunMetadata metadata = BuildMetadata(runner, commit, branch, dirty, machineLabel,
-				Path.GetFileName(runFolder));
-			File.WriteAllText(Path.Combine(runFolder, "run.json"), JsonUtility.ToJson(metadata, true));
-			File.WriteAllText(Path.Combine(runFolder, "summary.md"),
+				IOPath.GetFileName(runFolder));
+			File.WriteAllText(IOPath.Combine(runFolder, "run.json"), JsonUtility.ToJson(metadata, true));
+			File.WriteAllText(IOPath.Combine(runFolder, "summary.md"),
 				BuildSummary(runner, metadata, segments, passId));
 
 			return runFolder;
@@ -150,7 +155,7 @@ public static class BenchmarkWriter
 	static string Sanitise(string value)
 	{
 		if (string.IsNullOrEmpty(value)) { return "unnamed"; }
-		foreach (char c in Path.GetInvalidFileNameChars()) { value = value.Replace(c, '-'); }
+		foreach (char c in IOPath.GetInvalidFileNameChars()) { value = value.Replace(c, '-'); }
 		return value.Replace(' ', '-');
 	}
 
@@ -558,7 +563,7 @@ public static class GitInfo
 #if UNITY_EDITOR
 		try
 		{
-			string root = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
+			string root = IOPath.GetFullPath(IOPath.Combine(Application.dataPath, ".."));
 			commit = Run(root, "rev-parse --short HEAD") ?? "unknown";
 			branch = Run(root, "rev-parse --abbrev-ref HEAD") ?? "unknown";
 			dirty = !string.IsNullOrEmpty(Run(root, "status --porcelain"));
