@@ -420,3 +420,32 @@ timing unavailable).
 > the end-of-frame reader never runs, `FrameCursor` never advances, and the run hangs
 > forever rather than failing. The runner now detects batch mode and refuses to start —
 > this was the single most likely way to wedge a scripted run.
+
+### In-application benchmark control (`BenchmarkHud`)
+Additional to the command line, not a replacement — scripted runs want
+`-benchmark ... -quitWhenDone`, driving it by hand wants to see the selection and press a
+key. Both go through the same `BenchmarkRunner`.
+
+| key | action |
+|---|---|
+| `F2` | cycle benchmark, wrapping through **All** past the last entry |
+| `F3` | cycle mode (Timing → Capture → SelfCheck) |
+| `F4` | run the current selection |
+| `Esc` | abort a run in progress, clearing any queue |
+| `F6` | hide/show the overlay |
+
+Sits bottom-left so it does not fight the time overlay top-left. Shows the selected
+benchmark, mode, profile list and the **size of the run** — total frames × passes × queued
+runs — computed by `BenchmarkPlan.EstimateLength`, which mirrors `Build`'s assembly without
+resolving views or solving sun positions. Validated against all seven runs on disk
+(daycycle 2078, altitude 2066, orbit 2681): exact match.
+
+**The overlay hides itself while a run is in progress.** IMGUI draws into the same
+backbuffer as everything else, so it would appear in every captured screenshot and add its
+own draw calls to the counters being recorded. `showProgressDuringRun` opts back in for
+debugging, and is ignored in Capture mode regardless.
+
+**All** queues every available benchmark as separate runs — they have different plans, so
+they cannot share one, and each gets its own output folder. If `StartRun` refuses one (most
+likely a capture run over a benchmark marking no frames), the queue logs it and skips to the
+next rather than stalling on the bad entry.
