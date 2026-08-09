@@ -35,17 +35,24 @@ public class CountryHighlight : MonoBehaviour
 
 	[Header("Appearance")]
 	// Bright core.
-	public Color colour = new Color(1f, 0.96f, 0.80f, 1f);
+	public Color colour = DefaultColour;
 	// Darker surround. A single warm line is nearly invisible over pale desert, so the
 	// halo is what guarantees an edge against whatever terrain is underneath.
-	public Color haloColour = new Color(0.10f, 0.05f, 0.02f, 0.85f);
+	public Color haloColour = DefaultHaloColour;
 	// Total line width in pixels of screen height, halo included.
-	public float widthPixels = 7f;
-	// Fraction of the half-width held at the core colour before the halo takes over.
-	[Range(0.05f, 1f)] public float coreFraction = 0.38f;
-	// How much of the outer edge fades to transparent. Higher = softer, glowier.
-	[Range(0.05f, 1f)] public float rimSoftness = 0.55f;
+	public float widthPixels = DefaultWidthPixels;
+	// Fraction of the width held at the core colour before the halo takes over. Below
+	// about 0.5 the bright core thins to nothing and only the dark halo is left.
+	[Range(0.2f, 1f)] public float coreFraction = DefaultCoreFraction;
+	// Softness of the core-to-halo transition. Higher = softer, glowier.
+	[Range(0.05f, 1f)] public float edgeSoftness = DefaultEdgeSoftness;
 	public float fadeInDuration = 0.12f;
+
+	static Color DefaultColour => new Color(1f, 0.97f, 0.85f, 1f);
+	static Color DefaultHaloColour => new Color(0.06f, 0.03f, 0f, 0.7f);
+	const float DefaultWidthPixels = 8f;
+	const float DefaultCoreFraction = 0.55f;
+	const float DefaultEdgeSoftness = 0.4f;
 	[Range(3, 24)] public int joinResolution = 8;
 	public bool drawJoins = true;
 
@@ -265,9 +272,9 @@ public class CountryHighlight : MonoBehaviour
 		material.SetColor("haloColour", halo);
 		material.SetFloat("width", width);
 		material.SetFloat("globeRadius", radius);
-		material.SetFloat("coreFraction", coreFraction);
+		material.SetFloat("coreFraction", Mathf.Clamp(coreFraction, 0.02f, 1f));
 		// smoothstep(edge, edge, x) is degenerate, so keep the two edges apart.
-		material.SetFloat("rimSoftness", Mathf.Clamp(rimSoftness, 0.05f, 0.99f));
+		material.SetFloat("edgeSoftness", Mathf.Clamp(edgeSoftness, 0.05f, 0.99f));
 
 		// Height texture is created during loading, so it can't be bound once at init.
 		// A zero multiplier keeps the glow at sea level if it isn't available.
@@ -299,5 +306,23 @@ public class CountryHighlight : MonoBehaviour
 		if (obj == null) { return; }
 		if (Application.isPlaying) { Destroy(obj); }
 		else { DestroyImmediate(obj); }
+	}
+
+	/// <summary>
+	/// Reapplies the appearance defaults without touching the reference fields.
+	///
+	/// Unity keeps serialized values when a script's defaults change, so an instance
+	/// placed in the scene before a retune keeps the old numbers - which is how a width
+	/// tuned for one shading model ends up driving a different one. Component > Reset
+	/// would fix that too, but would also clear countryData and the shaders.
+	/// </summary>
+	[ContextMenu("Reset Appearance")]
+	void ResetAppearance()
+	{
+		colour = DefaultColour;
+		haloColour = DefaultHaloColour;
+		widthPixels = DefaultWidthPixels;
+		coreFraction = DefaultCoreFraction;
+		edgeSoftness = DefaultEdgeSoftness;
 	}
 }

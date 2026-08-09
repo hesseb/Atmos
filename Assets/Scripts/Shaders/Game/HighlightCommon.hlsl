@@ -13,10 +13,10 @@ struct LineSegment {
 StructuredBuffer<LineSegment> lineSegments;
 
 float width;
-float4 colour;      // bright core
-float4 haloColour;  // darker surround, for contrast against pale terrain
-float coreFraction; // fraction of the half-width that stays core colour
-float rimSoftness;  // how much of the outer edge fades to transparent
+float4 colour;       // bright core
+float4 haloColour;   // darker surround, for contrast against pale terrain
+float coreFraction;  // 0..1 of the half-width held at core colour
+float edgeSoftness;  // how soft the core-to-halo transition is
 float globeRadius;
 
 // Terrain height, so the glow sits on the ground rather than at sea level.
@@ -46,16 +46,24 @@ float3 raiseToTerrain(float3 p)
 
 // t: 0 at the centre of the line, 1 at its outer edge.
 //
-// A bright core inside a darker halo, rather than one flat colour fading out. A single
-// warm line is nearly invisible over pale desert; the halo guarantees an edge against
-// whatever is underneath, while the soft outer falloff is what reads as glow.
+// A bright core with a darker halo fading out around it, rather than one flat colour. A
+// single warm line is nearly invisible over pale desert; the halo guarantees an edge
+// against whatever is underneath, while its falloff is what reads as glow.
+//
+// coreFraction is a fraction of the HALF-width, so the bright core is
+// width * coreFraction pixels across. Keep it above ~0.5 or the core thins out to
+// nothing and all that remains is a dark smudge.
 float4 shadeHighlight(float t)
 {
-	float core = 1 - smoothstep(coreFraction * 0.55, max(coreFraction, 0.001), t);
-	float coverage = 1 - smoothstep(1.0 - max(rimSoftness, 0.001), 1.0, t);
+	float coreEnd = max(coreFraction, 0.02);
+	float coreStart = coreEnd * (1 - saturate(edgeSoftness));
+
+	float core = 1 - smoothstep(coreStart, coreEnd, t);
+	// Halo runs from the core edge out to the rim, fading as it goes.
+	float rim = 1 - smoothstep(coreEnd, 1.0, t);
 
 	float3 rgb = lerp(haloColour.rgb, colour.rgb, core);
-	float alpha = coverage * lerp(haloColour.a, colour.a, core);
+	float alpha = lerp(haloColour.a * rim, colour.a, core);
 	return float4(rgb, alpha);
 }
 
