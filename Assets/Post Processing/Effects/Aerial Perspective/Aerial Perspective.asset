@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 525e1fc8609902f4bbd51e748162a673, type: 3}
   m_Name: Aerial Perspective
   m_EditorClassIdentifier: 
-  enabled: 1
+  enabled: 0
   shader: {fileID: 4800000, guid: 937eeb7ba66d6714c9d356b024b5b501, type: 3}
   depthMinMax: {x: 6.79, y: 39.6}
   strength: 0.05
