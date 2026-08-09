@@ -41,11 +41,16 @@ public class TimeController : MonoBehaviour
 	[Header("Overlay")]
 	public bool showOverlay = true;
 	public KeyCode toggleOverlayKey = KeyCode.F1;
+	public int overlayFontSize = 18;
+	public Color overlayTextColour = Color.white;
+	public Color overlayBackgroundColour = new Color(0f, 0f, 0f, 0.66f);
 
 	public bool inputEnabled = true;
 
 	string lastAction = "";
 	GUIStyle overlayStyle;
+	Texture2D overlayBackground;
+	Color appliedBackgroundColour;
 
 	EarthOrbit Earth => solarSystem != null ? solarSystem.earth : null;
 
@@ -186,10 +191,28 @@ public class TimeController : MonoBehaviour
 	{
 		if (!showOverlay || solarSystem == null || Earth == null) { return; }
 
+		// Built from a bare GUIStyle rather than GUI.skin.label: the editor skin's label
+		// is dark text intended for a light background, and a style copied from it can
+		// also lose an overridden colour across a domain reload. Colour and size are
+		// re-applied every frame so the overlay never silently reverts to black.
 		if (overlayStyle == null)
 		{
-			overlayStyle = new GUIStyle(GUI.skin.label) { fontSize = 14, richText = false };
-			overlayStyle.normal.textColor = Color.white;
+			overlayStyle = new GUIStyle { richText = false, wordWrap = false };
+			overlayStyle.padding = new RectOffset(12, 12, 10, 10);
+		}
+		overlayStyle.fontSize = Mathf.Max(1, overlayFontSize);
+		overlayStyle.normal.textColor = overlayTextColour;
+
+		// Only rebuilt when the colour actually changes - OnGUI runs several times a frame.
+		if (overlayBackground == null || appliedBackgroundColour != overlayBackgroundColour)
+		{
+			if (overlayBackground == null)
+			{
+				overlayBackground = new Texture2D(1, 1) { hideFlags = HideFlags.HideAndDontSave };
+			}
+			overlayBackground.SetPixel(0, 0, overlayBackgroundColour);
+			overlayBackground.Apply();
+			appliedBackgroundColour = overlayBackgroundColour;
 		}
 
 		string state = solarSystem.animate ? $"{CurrentSpeed:0.##}x" : "paused";
@@ -200,8 +223,14 @@ public class TimeController : MonoBehaviour
 			$", . speed   P pause   F1 hide" +
 			(string.IsNullOrEmpty(lastAction) ? "" : $"\n{lastAction}");
 
-		GUI.Box(new Rect(10, 10, 380, 96), GUIContent.none);
-		GUI.Label(new Rect(18, 14, 372, 92), text, overlayStyle);
+		// Size to the content so the panel tracks the font size and the optional last
+		// action line, rather than clipping at a hardcoded rect.
+		GUIContent content = new GUIContent(text);
+		Vector2 size = overlayStyle.CalcSize(content);
+		Rect rect = new Rect(10f, 10f, size.x, size.y);
+
+		GUI.DrawTexture(rect, overlayBackground);
+		GUI.Label(rect, content, overlayStyle);
 	}
 
 	// Edit-mode access, for composing a shot without entering play mode.
@@ -227,12 +256,23 @@ public class TimeController : MonoBehaviour
 		if (observer == null && Camera.main != null) { observer = Camera.main.transform; }
 	}
 
+	void OnDestroy()
+	{
+		if (overlayBackground != null)
+		{
+			if (Application.isPlaying) { Destroy(overlayBackground); }
+			else { DestroyImmediate(overlayBackground); }
+			overlayBackground = null;
+		}
+	}
+
 	void OnValidate()
 	{
 		if (speedSteps != null && speedSteps.Length > 0)
 		{
 			speedIndex = Mathf.Clamp(speedIndex, 0, speedSteps.Length - 1);
 		}
+		overlayFontSize = Mathf.Clamp(overlayFontSize, 8, 48);
 		if (Application.isPlaying) { ApplySpeed(); }
 	}
 }
