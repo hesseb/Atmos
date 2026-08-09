@@ -15,39 +15,39 @@ MonoBehaviour:
   entries:
   - assetPath: Assets/Post Processing/Effects/Baseline Sky/Textures/SkyGradientBaked.exr
     recipe: 0
-    hash: 0x996bb2541e4a2272
-    bakedUtc: 2026-08-09 23:18:11Z
-    inputs: 'bodyRadius=149.5
+    hash: 0x8f6e5d9c42cbb60b
+    bakedUtc: 2026-08-09 23:45:37Z
+    inputs: 'bodyRadius=150
 
       atmosphereThickness=110
 
-      wavelengthsRGB.x=639.5
+      wavelengthsRGB.x=680
 
-      wavelengthsRGB.y=526
+      wavelengthsRGB.y=550
 
-      wavelengthsRGB.z=441.8
+      wavelengthsRGB.z=440
 
-      wavelengthScale=748.5
+      wavelengthScale=593.483
 
-      rayleighDensityAvg=0.086
+      rayleighDensityAvg=0.08
 
-      mieCoefficient=0.38
+      mieCoefficient=0.3996
 
-      mieDensityAvg=0.08
+      mieDensityAvg=0.012
 
-      mieAbsorption=0.11
+      mieAbsorption=0.44
 
-      ozonePeakDensityAltitude=0.12
+      ozonePeakDensityAltitude=0.25
 
-      ozoneDensityFalloff=3.7
+      ozoneDensityFalloff=6.66667
 
-      ozoneStrength=0.4
+      ozoneStrength=1
 
-      ozoneAbsorption.x=-3
+      ozoneAbsorption.x=0.65
 
-      ozoneAbsorption.y=3.12
+      ozoneAbsorption.y=1.881
 
-      ozoneAbsorption.z=0.02
+      ozoneAbsorption.z=0.085
 
       transmittanceLUTSize.x=128
 
@@ -66,39 +66,39 @@ MonoBehaviour:
 '
   - assetPath: Assets/Post Processing/Effects/Baseline Sky/Textures/SkyCubemap.asset
     recipe: 0
-    hash: 0x996bb2541e4a2272
-    bakedUtc: 2026-08-09 23:18:16Z
-    inputs: 'bodyRadius=149.5
+    hash: 0x8f6e5d9c42cbb60b
+    bakedUtc: 2026-08-09 23:45:42Z
+    inputs: 'bodyRadius=150
 
       atmosphereThickness=110
 
-      wavelengthsRGB.x=639.5
+      wavelengthsRGB.x=680
 
-      wavelengthsRGB.y=526
+      wavelengthsRGB.y=550
 
-      wavelengthsRGB.z=441.8
+      wavelengthsRGB.z=440
 
-      wavelengthScale=748.5
+      wavelengthScale=593.483
 
-      rayleighDensityAvg=0.086
+      rayleighDensityAvg=0.08
 
-      mieCoefficient=0.38
+      mieCoefficient=0.3996
 
-      mieDensityAvg=0.08
+      mieDensityAvg=0.012
 
-      mieAbsorption=0.11
+      mieAbsorption=0.44
 
-      ozonePeakDensityAltitude=0.12
+      ozonePeakDensityAltitude=0.25
 
-      ozoneDensityFalloff=3.7
+      ozoneDensityFalloff=6.66667
 
-      ozoneStrength=0.4
+      ozoneStrength=1
 
-      ozoneAbsorption.x=-3
+      ozoneAbsorption.x=0.65
 
-      ozoneAbsorption.y=3.12
+      ozoneAbsorption.y=1.881
 
-      ozoneAbsorption.z=0.02
+      ozoneAbsorption.z=0.085
 
       transmittanceLUTSize.x=128
 
@@ -116,7 +116,7 @@ MonoBehaviour:
   - assetPath: Assets/Post Processing/Effects/Baseline Sky/Textures/SkyGradient.exr
     recipe: 1
     hash: 0x841d28f4205ac2ec
-    bakedUtc: 2026-08-09 23:18:23Z
+    bakedUtc: 2026-08-09 23:45:49Z
     inputs: 'intensity=1.31
 
       contrast=1.45

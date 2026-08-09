@@ -1342,3 +1342,58 @@ So high-altitude and horizon views may band or shimmer. That is 1d — non-unifo
 and the requirement is itself an RQ3 finding: *physical scale heights force non-uniform
 sampling*. Left separate deliberately so the visual change from the constants can be judged on
 its own before the sampling changes underneath it.
+
+---
+
+## Why the physical constants cost the sunsets — a geometry result, not a tuning one
+
+Stage 1c landed exactly as predicted (optical depth now 1.04–1.43× Earth's, down from
+2.8–3.9×; LUT zenith 0.9376/0.8653/0.7607). The sky is bluer and sunrises and sunsets are much
+less warm until the sun is nearly on the horizon. Two separate causes, and the second is the
+important one.
+
+**The bluer cast is the negative ozone leaving.** Red's vertical ozone optical depth was
+**−0.0274** — a *negative* optical depth is a gain, so the ozone term was amplifying red. With
+it at a physical +0.0097, manufactured warmth disappears and the balance shifts blue.
+
+**The weak sunsets are the planet being too small, and no coefficient can fix it.** A red
+sunset requires blue to be extinguished along a long slant path. The amplification of the
+horizon path over the zenith path (Chapman, 90°) is `sqrt(pi*R/2H)`:
+
+| | radius | horizon air mass | blue optical depth at horizon | blue transmitted |
+|---|---|---|---|---|
+| Earth | 6371 km | **35.4×** | 9.37 | 0.00009 — blue is gone |
+| this testbed | 136 km | **5.2×** | 1.43 | 0.24 — blue still dominant |
+
+Slant paths are **6.8× shorter** than Earth's. At the horizon this atmosphere still transmits
+a quarter of its blue, so the sun cannot redden until it is geometrically very low.
+
+### This reframes the inherited implementation
+The two deviations that looked most like carelessness were **compensations for exactly this**:
+
+- coefficients ~3× Earth's — pushing zenith optical depth up so the short slant path still
+  extinguishes something
+- `ozoneAbsorption.x = -3` — manufacturing the red the geometry cannot produce
+
+Lague's tuning was internally coherent as an artistic response to a planet that cannot support
+Earth-calibrated constants. That is a much more interesting finding than "the constants were
+wrong", and it is RQ3-shaped: *what has to change when a physically based atmosphere model
+meets a world that is not Earth-sized.*
+
+### The trade, stated plainly
+On a small planet you can match Earth's **zenith** optical depth or its **horizon** optical
+depth, not both. Matching the horizon needs zenith optical depth ~1.80, i.e. **6.5×** Hillaire's
+— close to what the inherited implementation was doing. Matching the zenith is what the
+physical constants do, and it costs the sunset.
+
+Options, none taken yet:
+1. Keep physical constants, report the limitation. Current state.
+2. Earth-proportion the geometry — needs `atmosphereThickness` ~2.4 world units, which puts
+   every benchmark camera altitude (4–220 units, i.e. 170–9300 km under that mapping) in deep
+   space. Rejected earlier for exactly this reason.
+3. Calibrate coefficients to match Earth's horizon rather than its zenith, stated as a
+   deliberate adaptation with the trade recorded.
+
+**Deferred until after stages 2 and 3.** The Rayleigh phase is precisely what creates the
+angular structure of a sunset, and multiple scattering is what fills the twilight band — judging
+sunset appearance before either has landed would be premature.
