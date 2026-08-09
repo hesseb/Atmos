@@ -623,3 +623,29 @@ One frame per run where the timing stream did not deliver exactly one new timing
 across all ten runs, so it is a property of the instrumentation rather than of any benchmark.
 One frame in 400–2400 is not material, but it should be explained before the report rather
 than left as an unexamined warning.
+
+### `TIMING_ATTRIBUTION_ANOMALIES:1` explained and fixed
+It was a false positive on the **priming call**, and it fired on every run ever recorded.
+
+`FrameSampler.Capture` counts a timing as fresh by comparing `cpuTimePresentCalled` against
+`lastSeenPresentTime`. On the first call that baseline is still −1, so the comparison is
+skipped and *every* timing already sitting in the buffer counts as fresh — `fresh > 1`, one
+anomaly, every run.
+
+Verified rather than assumed: the release `orbit` run has **2681 rows and zero frames with
+`timing_valid = 0`**, so nothing was ever mis-attributed. The `fresh > 1` check is now
+guarded on a baseline existing.
+
+Worth stating as a principle: a warning that fires on every run is worse than no warning,
+because it teaches the reader to skip the field that is supposed to mean something. The
+existing results remain valid — the flag was noise, and the frame data behind it was correct.
+
+### `FrameProbe` is retained, not retired
+Originally scoped as a temporary diagnostic. Keeping it, for two reasons:
+- It is inert. `runOnStart: 0` in the scene and `Update` returns immediately while Idle, so
+  it costs one branch per frame and only runs from its context menu.
+- Its findings in this file are marked "do not re-derive" — but after a Unity upgrade they
+  *would* need re-deriving, and this is the tool that derives them.
+
+Removing it would also mean deleting a live component from `Game.unity` by hand, which is a
+worse trade than keeping an inert script.
