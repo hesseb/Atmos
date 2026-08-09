@@ -192,10 +192,32 @@ static class ExampleBenchmarks
 		return def;
 	}
 
+	/// <summary>
+	/// Writes the definition, overwriting an existing asset **in place**.
+	///
+	/// Not delete-and-recreate: AssetDatabase.CreateAsset mints a fresh GUID, so every
+	/// reference to the old asset - the Benchmark field on each BenchmarkRunner, most
+	/// obviously - would silently become None the next time this menu item is used. Since
+	/// the whole point of the generator is to be re-run as the set evolves, that would break
+	/// the scene on almost every invocation.
+	/// </summary>
 	static void Save(BenchmarkDefinition def)
 	{
 		string path = $"{Folder}/{def.id}.asset";
-		AssetDatabase.DeleteAsset(path);
+
+		// CopySerialized copies m_Name too, and a freshly created instance has none - which
+		// would blank the asset's name. Match what CreateAsset would have set.
+		def.name = def.id;
+
+		var existing = AssetDatabase.LoadAssetAtPath<BenchmarkDefinition>(path);
+		if (existing != null)
+		{
+			EditorUtility.CopySerialized(def, existing);
+			EditorUtility.SetDirty(existing);
+			Object.DestroyImmediate(def);   // the temporary instance, never persisted
+			return;
+		}
+
 		AssetDatabase.CreateAsset(def, path);
 	}
 
