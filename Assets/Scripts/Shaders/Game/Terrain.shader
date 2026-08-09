@@ -41,6 +41,10 @@ Shader "Custom/Terrain"
 			#pragma vertex vert
 			#pragma fragment frag
 			#pragma multi_compile_fwdbase
+			// Country hover fill. A keyword rather than a branch so the extra texture
+			// fetch is compiled out entirely when the country UI is off - this shader is
+			// in the path the thesis measures.
+			#pragma multi_compile __ COUNTRY_HIGHLIGHT_ON
 
 			#include "UnityCG.cginc"
 			#include "UnityLightingCommon.cginc"
@@ -48,6 +52,15 @@ Shader "Custom/Terrain"
 
 			#include "Assets/Scripts/Shader Common/GeoMath.hlsl"
 			#include "Assets/Scripts/Shader Common/Triplanar.hlsl"
+
+			#if defined(COUNTRY_HIGHLIGHT_ON)
+				// Set as globals by CountryHighlight, so deliberately NOT declared in
+				// Properties - a material entry would shadow the global.
+				sampler2D _CountryIndices;
+				float _HighlightCountryIndex;
+				float4 _HighlightFillColour;    // rgb tint, a strength
+				float _HighlightFillBrightness;
+			#endif
 
 			struct appdata
 			{
@@ -161,6 +174,23 @@ Shader "Custom/Terrain"
 
 				// ---- Interpolate between night and day for final colour ----
 				float3 finalTerrainCol = lerp(nightCol, terrainCol, nightT);
+
+				#if defined(COUNTRY_HIGHLIGHT_ON)
+					if (_HighlightCountryIndex >= 0)
+					{
+						// Explicit mip 0 and a point-filtered texture: interpolating two
+						// country indices would decode to a third, unrelated country.
+						float encoded = tex2Dlod(_CountryIndices, float4(texCoord, 0, 0)).r;
+						float index = floor(encoded * 255.0) - 1;
+
+						if (abs(index - _HighlightCountryIndex) < 0.5)
+						{
+							float3 lit = finalTerrainCol * _HighlightFillColour.rgb * _HighlightFillBrightness;
+							finalTerrainCol = lerp(finalTerrainCol, lit, _HighlightFillColour.a);
+						}
+					}
+				#endif
+
 				return float4(finalTerrainCol, 1);
 			}
 			ENDCG

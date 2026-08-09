@@ -98,6 +98,105 @@ elevation doesn't vary over the day at all.
 allocates and costs frame time) and `SolarSystemManager.animate` (pin the sun with
 `SetTimes` instead, or the sun moves between the two renderers' captures).
 
+---
+
+## 2026-08-09 — Country hover highlight and name labels
+
+Branch `country-ui`. Grand-strategy presentation features, not thesis-critical rendering,
+but they matter for the strategy-game framing and will appear in report screenshots.
+
+**All three components live on `Game/World/Country Interaction`, so disabling that one
+GameObject turns the whole country UI off** — required for measurement runs, since all
+three update every frame.
+
+### Hover highlight
+`GlobePicker` → analytic ray/sphere against the globe (there are no colliders anywhere),
+then `WorldLookup`'s country-index query. `CountryHighlight` builds line geometry for the
+hovered country from `Country.shape` and draws it at constant screen-space width.
+
+The baked outline mesh **could not be reused**: `Outline Meshes.bytes` is 24 *spatially*
+grouped meshes and the country each border belonged to is discarded during generation, so
+there was nothing to tint. Highlighting had to build its own geometry.
+
+Three things that are load-bearing and non-obvious:
+- Segments are built in **3D**, which makes the antimeridian a non-issue — ±179.9° become
+  nearby points. A lon/lat-space builder would draw a stripe across the map.
+- Drawn `ZTest Always`, because terrain spans 150–153.5 and no fixed radius avoids
+  mountains. The cost is that the far side would ghost through the planet, so both shaders
+  **cull per segment in the vertex shader** (`dot(p, camPos) > R²`), testing the
+  *sea-level* points since that test assumes `|p| = R`.
+- The glow is displaced to terrain height. Measured from the baked mesh: 25.5% of its
+  337k vertices sit above r=150.05, up to 153.17. Left at sea level it drifts by
+  `dr/tan(elevation)` — 1.3 units looking straight down, ~20 at a grazing angle.
+
+The hovered country's **terrain is also brightened**, in `Terrain.shader`, reusing the
+`texCoord` it already computes. Behind a `COUNTRY_HIGHLIGHT_ON` keyword rather than a
+branch, so the extra texture fetch is compiled out when the country UI is off — that
+shader is in the path the thesis measures, so the off state has to be genuinely free. The
+keyword toggles once on enable/disable, not per hover (swapping variants on every cursor
+move risks a hitch); index `-1` is the "nothing highlighted" state. Both the keyword and
+the globals outlive the component, so they are cleared on disable and destroy.
+
+Note the fill is applied *before* the atmosphere's tone mapping, so it reads more subtly
+at low sun angles than at midday.
+
+### Labels
+`CountryLabelData` holds a baked **pole of inaccessibility** per country plus the angular
+radius of the inscribed circle there. A centroid is not sufficient — for a concave country
+it lands outside the shape entirely, which would put Chile's label in Argentina.
+
+Baked in 3D unit vectors (removes the antimeridian seam *and* the pole singularity),
+largest polygon chosen by true spherical area (not point count — coastline detail varies
+wildly, which is what keeps the USA's label off Alaska), gnomonic projection so planar
+point-in-polygon is valid, scored by **great-circle** distance because gnomonic distorts
+scale by 1/cos²θ radially.
+
+`CountryLabelSystem` renders world-space TMP at those anchors, sized from the angular
+radius, faded by projected on-screen size and by a horizon test. Uses TMP's
+**Distance Field Overlay** shader — the plain one declares `ZTest [unity_GUIZTestMode]`,
+a global set by Canvas rendering, and there is no Canvas in this scene.
+
+Idle labels are dimmed and semi-transparent so the map reads first; the hovered country's
+label grows, goes fully opaque and turns white, and ignores the size filter since the
+cursor has already established which country is meant. Colour and scale are only written
+when they change, since `TMP_Text.color` dirties vertex colours.
+
+`flipFacing` is on: TMP's glyphs read correctly from their local −Z, so the object's
+forward points into the globe. Determined by looking at it, not by reasoning about TMP's
+winding.
+
+### Validation
+`LookupProbe` (on `World Lookup`) has three tests, run from its context menu.
+**`runOnStart` is off by default** — the sweeps issue ~460 blocking GPU readbacks. Re-run
+them after regenerating the index map or re-baking anchors.
+
+Results: index map 8192×4096 R8_UNorm Point in Gamma space; capital sweep 188/192 = 97.9%
+of on-land samples (misses are Nicosia and Jerusalem, disputed borders); anchor
+cross-check **100% of map-resolvable countries**.
+
+Nine countries — Vatican, San Marino, Anguilla, Bermuda and similar — are smaller than one
+texel of the index map (0.0439°, ~4.9 km at the equator). They cannot be hovered and their
+labels would be 0.03–0.16 world units wide against Russia's 94, so the size filter never
+shows them. Not fixable without a higher-resolution index map, and not worth it.
+
+### Cost to record in the thesis
+- `Country Data.asset` is **9 MB and was not previously loaded by `Game.unity`** — the
+  country UI adds it to scene load time and memory for a scene the thesis measures.
+- `Terrain.shader` gained a `COUNTRY_HIGHLIGHT_ON` variant, doubling its variant count.
+  The off state costs nothing at runtime (the fetch is compiled out), but the extra
+  variant is a compile-time and build-size cost worth stating if shader counts come up.
+- **Measurement runs should disable `Game/World/Country Interaction`.** That clears the
+  terrain keyword and stops all three per-frame updates in one go.
+
+### A trap worth remembering
+Unity keeps serialized values when a script's defaults change, so retuning a default never
+reaches a component already in the scene. This bit the highlight (a width tuned for one
+shading model driving another, leaving a 1px hairline). `CountryHighlight` now has a
+**Reset Appearance** context menu that reapplies appearance defaults without clearing
+references, which `Component > Reset` would.
+
+---
+
 ### Deliberately kept, despite looking deletable
 - **`Editor Helper/` the folder.** Only `BuildReadyTest.cs` was removed;
   `EditorShaderHelper.cs` sits beside it and `AtmosphereEffect.cs:394` uses it.

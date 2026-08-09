@@ -1,0 +1,1703 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 051a1976482a27f488f037dabb528363, type: 3}
+  m_Name: Country Label Data
+  m_EditorClassIdentifier: Assembly-CSharp::CountryLabelData
+  source: {fileID: 11400000, guid: 1bd34af60df8cb04197d7f07dc9ddf72, type: 2}
+  entries:
+  - alpha3Code: ABW
+    displayName: Aruba
+    anchor:
+      longitude: -1.2218487
+      latitude: 0.21899825
+    angularRadius: 0.0006252173
+    bakeFailed: 0
+  - alpha3Code: AFG
+    displayName: Afghanistan
+    anchor:
+      longitude: 1.1612303
+      latitude: 0.5962706
+    angularRadius: 0.047518525
+    bakeFailed: 0
+  - alpha3Code: AGO
+    displayName: Angola
+    anchor:
+      longitude: 0.3115616
+      latitude: -0.21959949
+    angularRadius: 0.07063254
+    bakeFailed: 0
+  - alpha3Code: AIA
+    displayName: Anguilla
+    anchor:
+      longitude: -1.0999211
+      latitude: 0.31839678
+    angularRadius: 0.00045050748
+    bakeFailed: 0
+  - alpha3Code: ALB
+    displayName: Albania
+    anchor:
+      longitude: 0.35123166
+      latitude: 0.7089046
+    angularRadius: 0.009430313
+    bakeFailed: 0
+  - alpha3Code: ALD
+    displayName: "\xC5land"
+    anchor:
+      longitude: 0.34958357
+      latitude: 1.0519166
+    angularRadius: 0.001381068
+    bakeFailed: 0
+  - alpha3Code: AND
+    displayName: Andorra
+    anchor:
+      longitude: 0.026975708
+      latitude: 0.7425435
+    angularRadius: 0.0015958131
+    bakeFailed: 0
+  - alpha3Code: ARE
+    displayName: U.A.E.
+    anchor:
+      longitude: 0.9510507
+      latitude: 0.40964797
+    angularRadius: 0.01339005
+    bakeFailed: 0
+  - alpha3Code: ARG
+    displayName: Argentina
+    anchor:
+      longitude: -1.1153903
+      latitude: -0.5300008
+    angularRadius: 0.089504
+    bakeFailed: 0
+  - alpha3Code: ARM
+    displayName: Armenia
+    anchor:
+      longitude: 0.7761931
+      latitude: 0.7085258
+    angularRadius: 0.009988944
+    bakeFailed: 0
+  - alpha3Code: ASM
+    displayName: American Samoa
+    anchor:
+      longitude: -2.980008
+      latitude: -0.24992661
+    angularRadius: 0.0005905794
+    bakeFailed: 0
+  - alpha3Code: ATA
+    displayName: Antarctica
+    anchor:
+      longitude: 1.8419285
+      latitude: -1.3504529
+    angularRadius: 0.17863154
+    bakeFailed: 0
+  - alpha3Code: ATC
+    displayName: A.C.Is.
+    anchor:
+      longitude: 2.1569242
+      latitude: -0.2169416
+    angularRadius: 0.00008870613
+    bakeFailed: 0
+  - alpha3Code: ATF
+    displayName: Fr. S.A.L.
+    anchor:
+      longitude: 1.2071488
+      latitude: -0.8607956
+    angularRadius: 0.0036539645
+    bakeFailed: 0
+  - alpha3Code: ATG
+    displayName: Antigua and Barb.
+    anchor:
+      longitude: -1.0784869
+      latitude: 0.2980854
+    angularRadius: 0.0013009241
+    bakeFailed: 0
+  - alpha3Code: AUS
+    displayName: Australia
+    anchor:
+      longitude: 2.313748
+      latitude: -0.40555602
+    angularRadius: 0.14567631
+    bakeFailed: 0
+  - alpha3Code: AUT
+    displayName: Austria
+    anchor:
+      longitude: 0.2562045
+      latitude: 0.8307742
+    angularRadius: 0.017418247
+    bakeFailed: 0
+  - alpha3Code: AZE
+    displayName: Azerbaijan
+    anchor:
+      longitude: 0.8232662
+      latitude: 0.70467687
+    angularRadius: 0.015022231
+    bakeFailed: 0
+  - alpha3Code: BDI
+    displayName: Burundi
+    anchor:
+      longitude: 0.5206935
+      latitude: -0.05932775
+    angularRadius: 0.010801083
+    bakeFailed: 0
+  - alpha3Code: BEL
+    displayName: Belgium
+    anchor:
+      longitude: 0.08177326
+      latitude: 0.8861335
+    angularRadius: 0.0105913635
+    bakeFailed: 0
+  - alpha3Code: BEN
+    displayName: Benin
+    anchor:
+      longitude: 0.04186804
+      latitude: 0.18145634
+    angularRadius: 0.019220848
+    bakeFailed: 0
+  - alpha3Code: BFA
+    displayName: Burkina Faso
+    anchor:
+      longitude: -0.016458252
+      latitude: 0.22355215
+    angularRadius: 0.030687263
+    bakeFailed: 0
+  - alpha3Code: BGD
+    displayName: Bangladesh
+    anchor:
+      longitude: 1.5670195
+      latitude: 0.42425334
+    angularRadius: 0.016758988
+    bakeFailed: 0
+  - alpha3Code: BGR
+    displayName: Bulgaria
+    anchor:
+      longitude: 0.438488
+      latitude: 0.74302304
+    angularRadius: 0.019438876
+    bakeFailed: 0
+  - alpha3Code: BHR
+    displayName: Bahrain
+    anchor:
+      longitude: 0.8821475
+      latitude: 0.45343325
+    angularRadius: 0.0011288992
+    bakeFailed: 0
+  - alpha3Code: BHS
+    displayName: Bahamas
+    anchor:
+      longitude: -1.3614078
+      latitude: 0.43025813
+    angularRadius: 0.0035714714
+    bakeFailed: 0
+  - alpha3Code: BIH
+    displayName: Bosnia and Herz.
+    anchor:
+      longitude: 0.3126758
+      latitude: 0.7714678
+    angularRadius: 0.01528187
+    bakeFailed: 0
+  - alpha3Code: BLM
+    displayName: "St-Barth\xE9lemy"
+    anchor:
+      longitude: -1.0967832
+      latitude: 0.31232882
+    angularRadius: 0.0003377419
+    bakeFailed: 0
+  - alpha3Code: BLR
+    displayName: Belarus
+    anchor:
+      longitude: 0.49581522
+      latitude: 0.93184215
+    angularRadius: 0.03050411
+    bakeFailed: 0
+  - alpha3Code: BLZ
+    displayName: Belize
+    anchor:
+      longitude: -1.5486743
+      latitude: 0.2957727
+    angularRadius: 0.007729867
+    bakeFailed: 0
+  - alpha3Code: BMU
+    displayName: Bermuda
+    anchor:
+      longitude: -1.1299525
+      latitude: 0.5639372
+    angularRadius: 0.0003004813
+    bakeFailed: 0
+  - alpha3Code: BOL
+    displayName: Bolivia
+    anchor:
+      longitude: -1.1278224
+      latitude: -0.29035673
+    angularRadius: 0.07079283
+    bakeFailed: 0
+  - alpha3Code: BRA
+    displayName: Brazil
+    anchor:
+      longitude: -0.85633826
+      latitude: -0.21709718
+    angularRadius: 0.17063142
+    bakeFailed: 0
+  - alpha3Code: BRB
+    displayName: Barbados
+    anchor:
+      longitude: -1.0394921
+      latitude: 0.22971156
+    angularRadius: 0.0013137081
+    bakeFailed: 0
+  - alpha3Code: BRN
+    displayName: Brunei
+    anchor:
+      longitude: 1.9992559
+      latitude: 0.07775371
+    angularRadius: 0.00417188
+    bakeFailed: 0
+  - alpha3Code: BTN
+    displayName: Bhutan
+    anchor:
+      longitude: 1.5700889
+      latitude: 0.47985178
+    angularRadius: 0.011893276
+    bakeFailed: 0
+  - alpha3Code: BWA
+    displayName: Botswana
+    anchor:
+      longitude: 0.42333218
+      latitude: -0.3840467
+    angularRadius: 0.053017903
+    bakeFailed: 0
+  - alpha3Code: CAF
+    displayName: C.A.R.
+    anchor:
+      longitude: 0.37854332
+      latitude: 0.12169041
+    angularRadius: 0.04422609
+    bakeFailed: 0
+  - alpha3Code: CAN
+    displayName: Canada
+    anchor:
+      longitude: -1.9794236
+      latitude: 1.0110911
+    angularRadius: 0.1558505
+    bakeFailed: 0
+  - alpha3Code: CHE
+    displayName: Switzerland
+    anchor:
+      longitude: 0.13295771
+      latitude: 0.81729394
+    angularRadius: 0.011010124
+    bakeFailed: 0
+  - alpha3Code: CHL
+    displayName: Chile
+    anchor:
+      longitude: -1.2054102
+      latitude: -0.4083297
+    angularRadius: 0.021457026
+    bakeFailed: 0
+  - alpha3Code: CHN
+    displayName: China
+    anchor:
+      longitude: 1.8873707
+      latitude: 0.56666183
+    angularRadius: 0.16519797
+    bakeFailed: 0
+  - alpha3Code: CIV
+    displayName: "C\xF4te d'Ivoire"
+    anchor:
+      longitude: -0.09584817
+      latitude: 0.13154957
+    angularRadius: 0.04077504
+    bakeFailed: 0
+  - alpha3Code: CMR
+    displayName: Cameroon
+    anchor:
+      longitude: 0.21713951
+      latitude: 0.079164
+    angularRadius: 0.039115317
+    bakeFailed: 0
+  - alpha3Code: COD
+    displayName: Dem. Rep. Congo
+    anchor:
+      longitude: 0.40668833
+      latitude: -0.026597435
+    angularRadius: 0.09824171
+    bakeFailed: 0
+  - alpha3Code: COG
+    displayName: Congo
+    anchor:
+      longitude: 0.27816576
+      latitude: 0.0014161249
+    angularRadius: 0.02791847
+    bakeFailed: 0
+  - alpha3Code: COK
+    displayName: Cook Islands
+    anchor:
+      longitude: -2.7887263
+      latitude: -0.37031537
+    angularRadius: 0.00051770784
+    bakeFailed: 0
+  - alpha3Code: COL
+    displayName: Colombia
+    anchor:
+      longitude: -1.2791004
+      latitude: 0.059012473
+    angularRadius: 0.066658705
+    bakeFailed: 0
+  - alpha3Code: COM
+    displayName: Comoros
+    anchor:
+      longitude: 0.7563094
+      latitude: -0.20478825
+    angularRadius: 0.0016146139
+    bakeFailed: 0
+  - alpha3Code: CPV
+    displayName: Cabo Verde
+    anchor:
+      longitude: -0.41221634
+      latitude: 0.26264146
+    angularRadius: 0.0020461134
+    bakeFailed: 0
+  - alpha3Code: CRI
+    displayName: Costa Rica
+    anchor:
+      longitude: -1.4670012
+      latitude: 0.17618479
+    angularRadius: 0.011409556
+    bakeFailed: 0
+  - alpha3Code: CUB
+    displayName: Cuba
+    anchor:
+      longitude: -1.334092
+      latitude: 0.35952
+    angularRadius: 0.010968358
+    bakeFailed: 0
+  - alpha3Code: CUW
+    displayName: "Cura\xE7ao"
+    anchor:
+      longitude: -1.2017939
+      latitude: 0.21158019
+    angularRadius: 0.0007735606
+    bakeFailed: 0
+  - alpha3Code: CYM
+    displayName: Cayman Islands
+    anchor:
+      longitude: -1.418521
+      latitude: 0.33720556
+    angularRadius: 0.00059802
+    bakeFailed: 0
+  - alpha3Code: CYN
+    displayName: Northern Cyprus
+    anchor:
+      longitude: 0.58818305
+      latitude: 0.61441153
+    angularRadius: 0.0029142455
+    bakeFailed: 0
+  - alpha3Code: CYP
+    displayName: Cyprus
+    anchor:
+      longitude: 0.57101256
+      latitude: 0.6089285
+    angularRadius: 0.0040404405
+    bakeFailed: 0
+  - alpha3Code: CZE
+    displayName: Czechia
+    anchor:
+      longitude: 0.2507788
+      latitude: 0.8702229
+    angularRadius: 0.01656581
+    bakeFailed: 0
+  - alpha3Code: DEU
+    displayName: Germany
+    anchor:
+      longitude: 0.17363442
+      latitude: 0.90146375
+    angularRadius: 0.03323516
+    bakeFailed: 0
+  - alpha3Code: DJI
+    displayName: Djibouti
+    anchor:
+      longitude: 0.7358753
+      latitude: 0.19877961
+    angularRadius: 0.006757656
+    bakeFailed: 0
+  - alpha3Code: DMA
+    displayName: Dominica
+    anchor:
+      longitude: -1.070987
+      latitude: 0.27040082
+    angularRadius: 0.0015196436
+    bakeFailed: 0
+  - alpha3Code: DNK
+    displayName: Denmark
+    anchor:
+      longitude: 0.1586653
+      latitude: 0.97828245
+    angularRadius: 0.008734669
+    bakeFailed: 0
+  - alpha3Code: DOM
+    displayName: Dominican Republic
+    anchor:
+      longitude: -1.236943
+      latitude: 0.3328999
+    angularRadius: 0.012840121
+    bakeFailed: 0
+  - alpha3Code: DZA
+    displayName: Algeria
+    anchor:
+      longitude: 0.050162308
+      latitude: 0.4768954
+    angularRadius: 0.10397276
+    bakeFailed: 0
+  - alpha3Code: ECU
+    displayName: Ecuador
+    anchor:
+      longitude: -1.3657544
+      latitude: -0.02099467
+    angularRadius: 0.031575784
+    bakeFailed: 0
+  - alpha3Code: EGY
+    displayName: Egypt
+    anchor:
+      longitude: 0.5137491
+      latitude: 0.45384505
+    angularRadius: 0.06987561
+    bakeFailed: 0
+  - alpha3Code: ERI
+    displayName: Eritrea
+    anchor:
+      longitude: 0.6642057
+      latitude: 0.27895364
+    angularRadius: 0.01990041
+    bakeFailed: 0
+  - alpha3Code: ESP
+    displayName: Spain
+    anchor:
+      longitude: -0.06369141
+      latitude: 0.6878598
+    angularRadius: 0.044751454
+    bakeFailed: 0
+  - alpha3Code: EST
+    displayName: Estonia
+    anchor:
+      longitude: 0.45220217
+      latitude: 1.0257171
+    angularRadius: 0.013754567
+    bakeFailed: 0
+  - alpha3Code: ETH
+    displayName: Ethiopia
+    anchor:
+      longitude: 0.6765229
+      latitude: 0.14243937
+    angularRadius: 0.071771994
+    bakeFailed: 0
+  - alpha3Code: FIN
+    displayName: Finland
+    anchor:
+      longitude: 0.45672297
+      latitude: 1.09127
+    angularRadius: 0.033136357
+    bakeFailed: 0
+  - alpha3Code: FJI
+    displayName: Fiji
+    anchor:
+      longitude: 3.106197
+      latitude: -0.31111774
+    angularRadius: 0.0075407624
+    bakeFailed: 0
+  - alpha3Code: FLK
+    displayName: Falkland Islands
+    anchor:
+      longitude: -1.0243098
+      latitude: -0.9022604
+    angularRadius: 0.003996757
+    bakeFailed: 0
+  - alpha3Code: FRA
+    displayName: France
+    anchor:
+      longitude: 0.04232523
+      latitude: 0.8239962
+    angularRadius: 0.045432437
+    bakeFailed: 0
+  - alpha3Code: FRO
+    displayName: Faeroe Islands
+    anchor:
+      longitude: -0.12081196
+      latitude: 1.0857091
+    angularRadius: 0.0014010759
+    bakeFailed: 0
+  - alpha3Code: FSM
+    displayName: Micronesia
+    anchor:
+      longitude: 2.7617984
+      latitude: 0.12007866
+    angularRadius: 0.0012918708
+    bakeFailed: 0
+  - alpha3Code: GAB
+    displayName: Gabon
+    anchor:
+      longitude: 0.19925937
+      latitude: -0.01116583
+    angularRadius: 0.02863525
+    bakeFailed: 0
+  - alpha3Code: GBR
+    displayName: United Kingdom
+    anchor:
+      longitude: -0.015470383
+      latitude: 0.9087355
+    angularRadius: 0.017595299
+    bakeFailed: 0
+  - alpha3Code: GEO
+    displayName: Georgia
+    anchor:
+      longitude: 0.74429643
+      latitude: 0.7387092
+    angularRadius: 0.012909566
+    bakeFailed: 0
+  - alpha3Code: GGY
+    displayName: Guernsey
+    anchor:
+      longitude: -0.04490559
+      latitude: 0.8633091
+    angularRadius: 0.00047493906
+    bakeFailed: 0
+  - alpha3Code: GHA
+    displayName: Ghana
+    anchor:
+      longitude: -0.021512464
+      latitude: 0.122016236
+    angularRadius: 0.030170051
+    bakeFailed: 0
+  - alpha3Code: GIN
+    displayName: Guinea
+    anchor:
+      longitude: -0.17463237
+      latitude: 0.18627842
+    angularRadius: 0.023655752
+    bakeFailed: 0
+  - alpha3Code: GMB
+    displayName: Gambia
+    anchor:
+      longitude: -0.26139474
+      latitude: 0.23812263
+    angularRadius: 0.0024105883
+    bakeFailed: 0
+  - alpha3Code: GNB
+    displayName: Guinea-Bissau
+    anchor:
+      longitude: -0.25386196
+      latitude: 0.211749
+    angularRadius: 0.009507887
+    bakeFailed: 0
+  - alpha3Code: GNQ
+    displayName: Equatorial Guinea
+    anchor:
+      longitude: 0.18757674
+      latitude: 0.02765152
+    angularRadius: 0.010169672
+    bakeFailed: 0
+  - alpha3Code: GRC
+    displayName: Greece
+    anchor:
+      longitude: 0.37702423
+      latitude: 0.6937994
+    angularRadius: 0.014160275
+    bakeFailed: 0
+  - alpha3Code: GRD
+    displayName: Grenada
+    anchor:
+      longitude: -1.0766089
+      latitude: 0.21117459
+    angularRadius: 0.0010737301
+    bakeFailed: 0
+  - alpha3Code: GRL
+    displayName: Greenland
+    anchor:
+      longitude: -0.70748293
+      latitude: 1.3273455
+    angularRadius: 0.07426311
+    bakeFailed: 0
+  - alpha3Code: GTM
+    displayName: Guatemala
+    anchor:
+      longitude: -1.5793452
+      latitude: 0.2617612
+    angularRadius: 0.018737173
+    bakeFailed: 0
+  - alpha3Code: GUM
+    displayName: Guam
+    anchor:
+      longitude: 2.5257022
+      latitude: 0.23383127
+    angularRadius: 0.0010620822
+    bakeFailed: 0
+  - alpha3Code: GUY
+    displayName: Guyana
+    anchor:
+      longitude: -1.0238066
+      latitude: 0.048077326
+    angularRadius: 0.020859763
+    bakeFailed: 0
+  - alpha3Code: HKG
+    displayName: Hong Kong
+    anchor:
+      longitude: 1.9925357
+      latitude: 0.3919233
+    angularRadius: 0.0019082888
+    bakeFailed: 0
+  - alpha3Code: HMD
+    displayName: H.M.Is.
+    anchor:
+      longitude: 1.2833412
+      latitude: -0.9268261
+    angularRadius: 0.0014158506
+    bakeFailed: 0
+  - alpha3Code: HND
+    displayName: Honduras
+    anchor:
+      longitude: -1.5211018
+      latitude: 0.25719053
+    angularRadius: 0.018376237
+    bakeFailed: 0
+  - alpha3Code: HRV
+    displayName: Croatia
+    anchor:
+      longitude: 0.28732356
+      latitude: 0.7990216
+    angularRadius: 0.009874918
+    bakeFailed: 0
+  - alpha3Code: HTI
+    displayName: Haiti
+    anchor:
+      longitude: -1.2609247
+      latitude: 0.3354377
+    angularRadius: 0.008293621
+    bakeFailed: 0
+  - alpha3Code: HUN
+    displayName: Hungary
+    anchor:
+      longitude: 0.346194
+      latitude: 0.8228423
+    angularRadius: 0.017211694
+    bakeFailed: 0
+  - alpha3Code: IDN
+    displayName: Indonesia
+    anchor:
+      longitude: 1.992466
+      latitude: -0.016835956
+    angularRadius: 0.039535273
+    bakeFailed: 0
+  - alpha3Code: IMN
+    displayName: Isle of Man
+    anchor:
+      longitude: -0.079831466
+      latitude: 0.9458133
+    angularRadius: 0.0012761153
+    bakeFailed: 0
+  - alpha3Code: IND
+    displayName: India
+    anchor:
+      longitude: 1.3862385
+      latitude: 0.39120817
+    angularRadius: 0.10258986
+    bakeFailed: 0
+  - alpha3Code: IOA
+    displayName: Indian Ocean Ter.
+    anchor:
+      longitude: 1.8444084
+      latitude: -0.18313251
+    angularRadius: 0.00077204045
+    bakeFailed: 0
+  - alpha3Code: IOT
+    displayName: I.O.T.
+    anchor:
+      longitude: 1.2649525
+      latitude: -0.1269358
+    angularRadius: 0.00032174902
+    bakeFailed: 0
+  - alpha3Code: IRL
+    displayName: Ireland
+    anchor:
+      longitude: -0.13116872
+      latitude: 0.9262328
+    angularRadius: 0.014986478
+    bakeFailed: 0
+  - alpha3Code: IRN
+    displayName: Iran
+    anchor:
+      longitude: 0.9615868
+      latitude: 0.5611113
+    angularRadius: 0.08190019
+    bakeFailed: 0
+  - alpha3Code: IRQ
+    displayName: Iraq
+    anchor:
+      longitude: 0.7510267
+      latitude: 0.57783836
+    angularRadius: 0.03756021
+    bakeFailed: 0
+  - alpha3Code: ISL
+    displayName: Iceland
+    anchor:
+      longitude: -0.330535
+      latitude: 1.1290064
+    angularRadius: 0.0190182
+    bakeFailed: 0
+  - alpha3Code: ISR
+    displayName: Israel
+    anchor:
+      longitude: 0.6083293
+      latitude: 0.5401181
+    angularRadius: 0.0070922812
+    bakeFailed: 0
+  - alpha3Code: ITA
+    displayName: Italy
+    anchor:
+      longitude: 0.18466596
+      latitude: 0.78748155
+    angularRadius: 0.020286068
+    bakeFailed: 0
+  - alpha3Code: JAM
+    displayName: Jamaica
+    anchor:
+      longitude: -1.3495388
+      latitude: 0.31672603
+    angularRadius: 0.0054738126
+    bakeFailed: 0
+  - alpha3Code: JEY
+    displayName: Jersey
+    anchor:
+      longitude: -0.03731934
+      latitude: 0.85911196
+    angularRadius: 0.00062972255
+    bakeFailed: 0
+  - alpha3Code: JOR
+    displayName: Jordan
+    anchor:
+      longitude: 0.634929
+      latitude: 0.5358849
+    angularRadius: 0.015686078
+    bakeFailed: 0
+  - alpha3Code: JPN
+    displayName: Japan
+    anchor:
+      longitude: 2.4207923
+      latitude: 0.63202554
+    angularRadius: 0.018060053
+    bakeFailed: 0
+  - alpha3Code: KAS
+    displayName: Kashmir
+    anchor:
+      longitude: 1.3464658
+      latitude: 0.6171982
+    angularRadius: 0.0029881564
+    bakeFailed: 0
+  - alpha3Code: KAZ
+    displayName: Kazakhstan
+    anchor:
+      longitude: 1.216018
+      latitude: 0.8430681
+    angularRadius: 0.09865288
+    bakeFailed: 0
+  - alpha3Code: KEN
+    displayName: Kenya
+    anchor:
+      longitude: 0.66051537
+      latitude: 0.0073980475
+    angularRadius: 0.054568786
+    bakeFailed: 0
+  - alpha3Code: KGZ
+    displayName: Kyrgyzstan
+    anchor:
+      longitude: 1.3054568
+      latitude: 0.7277625
+    angularRadius: 0.020956695
+    bakeFailed: 0
+  - alpha3Code: KHM
+    displayName: Cambodia
+    anchor:
+      longitude: 1.8232893
+      latitude: 0.2205489
+    angularRadius: 0.029381229
+    bakeFailed: 0
+  - alpha3Code: KIR
+    displayName: Kiribati
+    anchor:
+      longitude: -2.746918
+      latitude: 0.031969275
+    angularRadius: 0.00088285643
+    bakeFailed: 0
+  - alpha3Code: KNA
+    displayName: St.K.N.
+    anchor:
+      longitude: -1.0959558
+      latitude: 0.3029414
+    angularRadius: 0.0006579519
+    bakeFailed: 0
+  - alpha3Code: KOR
+    displayName: South Korea
+    anchor:
+      longitude: 2.2346053
+      latitude: 0.6323523
+    angularRadius: 0.019120814
+    bakeFailed: 0
+  - alpha3Code: KOS
+    displayName: Kosovo
+    anchor:
+      longitude: 0.3644065
+      latitude: 0.7429482
+    angularRadius: 0.0072997804
+    bakeFailed: 0
+  - alpha3Code: KWT
+    displayName: Kuwait
+    anchor:
+      longitude: 0.82839227
+      latitude: 0.51862943
+    angularRadius: 0.006535261
+    bakeFailed: 0
+  - alpha3Code: LAO
+    displayName: Laos
+    anchor:
+      longitude: 1.7902919
+      latitude: 0.34360495
+    angularRadius: 0.022546174
+    bakeFailed: 0
+  - alpha3Code: LBN
+    displayName: Lebanon
+    anchor:
+      longitude: 0.6295504
+      latitude: 0.59707236
+    angularRadius: 0.0053611826
+    bakeFailed: 0
+  - alpha3Code: LBR
+    displayName: Liberia
+    anchor:
+      longitude: -0.17762192
+      latitude: 0.12163405
+    angularRadius: 0.014595574
+    bakeFailed: 0
+  - alpha3Code: LBY
+    displayName: Libya
+    anchor:
+      longitude: 0.35365212
+      latitude: 0.4563195
+    angularRadius: 0.07383207
+    bakeFailed: 0
+  - alpha3Code: LCA
+    displayName: Saint Lucia
+    anchor:
+      longitude: -1.0643269
+      latitude: 0.24215505
+    angularRadius: 0.0014992616
+    bakeFailed: 0
+  - alpha3Code: LIE
+    displayName: Liechtenstein
+    anchor:
+      longitude: 0.16657628
+      latitude: 0.822199
+    angularRadius: 0.0007583677
+    bakeFailed: 0
+  - alpha3Code: LKA
+    displayName: Sri Lanka
+    anchor:
+      longitude: 1.4110951
+      latitude: 0.124076195
+    angularRadius: 0.017512051
+    bakeFailed: 0
+  - alpha3Code: LSO
+    displayName: Lesotho
+    anchor:
+      longitude: 0.4957824
+      latitude: -0.51388115
+    angularRadius: 0.012044894
+    bakeFailed: 0
+  - alpha3Code: LTU
+    displayName: Lithuania
+    anchor:
+      longitude: 0.42446378
+      latitude: 0.96532893
+    angularRadius: 0.016776761
+    bakeFailed: 0
+  - alpha3Code: LUX
+    displayName: Luxembourg
+    anchor:
+      longitude: 0.107193604
+      latitude: 0.8674758
+    angularRadius: 0.0031265267
+    bakeFailed: 0
+  - alpha3Code: LVA
+    displayName: Latvia
+    anchor:
+      longitude: 0.45689872
+      latitude: 0.9914397
+    angularRadius: 0.013092953
+    bakeFailed: 0
+  - alpha3Code: MAC
+    displayName: Macao
+    anchor:
+      longitude: 1.9810754
+      latitude: 0.3879009
+    angularRadius: 0.00031470685
+    bakeFailed: 0
+  - alpha3Code: MAF
+    displayName: St-Martin
+    anchor:
+      longitude: -1.1005169
+      latitude: 0.3157631
+    angularRadius: 0.00040004242
+    bakeFailed: 0
+  - alpha3Code: MAR
+    displayName: Morocco
+    anchor:
+      longitude: -0.1167546
+      latitude: 0.5549697
+    angularRadius: 0.03461548
+    bakeFailed: 0
+  - alpha3Code: MCO
+    displayName: Monaco
+    anchor:
+      longitude: 0.1293047
+      latitude: 0.7636739
+    angularRadius: 0.00022607394
+    bakeFailed: 0
+  - alpha3Code: MDA
+    displayName: Moldova
+    anchor:
+      longitude: 0.49479604
+      latitude: 0.8302835
+    angularRadius: 0.00912326
+    bakeFailed: 0
+  - alpha3Code: MDG
+    displayName: Madagascar
+    anchor:
+      longitude: 0.81509036
+      latitude: -0.3192439
+    angularRadius: 0.04158725
+    bakeFailed: 0
+  - alpha3Code: MDV
+    displayName: Maldives
+    anchor:
+      longitude: 1.2812923
+      latitude: 0.056961153
+    angularRadius: 0.000442392
+    bakeFailed: 0
+  - alpha3Code: MEX
+    displayName: Mexico
+    anchor:
+      longitude: -1.7781703
+      latitude: 0.41355947
+    angularRadius: 0.065005146
+    bakeFailed: 0
+  - alpha3Code: MHL
+    displayName: Marshall Islands
+    anchor:
+      longitude: 2.986696
+      latitude: 0.12416061
+    angularRadius: 0.00023971075
+    bakeFailed: 0
+  - alpha3Code: MKD
+    displayName: Macedonia
+    anchor:
+      longitude: 0.3725615
+      latitude: 0.72440374
+    angularRadius: 0.010329243
+    bakeFailed: 0
+  - alpha3Code: MLI
+    displayName: Mali
+    anchor:
+      longitude: -0.03382585
+      latitude: 0.32397306
+    angularRadius: 0.064416155
+    bakeFailed: 0
+  - alpha3Code: MLT
+    displayName: Malta
+    anchor:
+      longitude: 0.25169665
+      latitude: 0.62658197
+    angularRadius: 0.0009756623
+    bakeFailed: 0
+  - alpha3Code: MMR
+    displayName: Myanmar
+    anchor:
+      longitude: 1.6751868
+      latitude: 0.37788132
+    angularRadius: 0.04691744
+    bakeFailed: 0
+  - alpha3Code: MNE
+    displayName: Montenegro
+    anchor:
+      longitude: 0.33393276
+      latitude: 0.7473681
+    angularRadius: 0.0074310103
+    bakeFailed: 0
+  - alpha3Code: MNG
+    displayName: Mongolia
+    anchor:
+      longitude: 1.8271096
+      latitude: 0.804428
+    angularRadius: 0.071279064
+    bakeFailed: 0
+  - alpha3Code: MNP
+    displayName: N. Mariana Is.
+    anchor:
+      longitude: 2.5437393
+      latitude: 0.2651212
+    angularRadius: 0.0006491133
+    bakeFailed: 0
+  - alpha3Code: MOZ
+    displayName: Mozambique
+    anchor:
+      longitude: 0.66610146
+      latitude: -0.24377568
+    angularRadius: 0.041035857
+    bakeFailed: 0
+  - alpha3Code: MRT
+    displayName: Mauritania
+    anchor:
+      longitude: -0.17129382
+      latitude: 0.33661276
+    angularRadius: 0.06337828
+    bakeFailed: 0
+  - alpha3Code: MSR
+    displayName: Montserrat
+    anchor:
+      longitude: -1.0853478
+      latitude: 0.2920871
+    angularRadius: 0.0006141292
+    bakeFailed: 0
+  - alpha3Code: MUS
+    displayName: Mauritius
+    anchor:
+      longitude: 1.0044758
+      latitude: -0.35461608
+    angularRadius: 0.0029701
+    bakeFailed: 0
+  - alpha3Code: MWI
+    displayName: Malawi
+    anchor:
+      longitude: 0.5891026
+      latitude: -0.2341368
+    angularRadius: 0.013750233
+    bakeFailed: 0
+  - alpha3Code: MYS
+    displayName: Malaysia
+    anchor:
+      longitude: 1.9857945
+      latitude: 0.043437008
+    angularRadius: 0.017874267
+    bakeFailed: 0
+  - alpha3Code: NAM
+    displayName: Namibia
+    anchor:
+      longitude: 0.29821107
+      latitude: -0.35751626
+    angularRadius: 0.053903576
+    bakeFailed: 0
+  - alpha3Code: NCL
+    displayName: New Caledonia
+    anchor:
+      longitude: 2.8812299
+      latitude: -0.36731446
+    angularRadius: 0.004580488
+    bakeFailed: 0
+  - alpha3Code: NER
+    displayName: Niger
+    anchor:
+      longitude: 0.1801432
+      latitude: 0.30650035
+    angularRadius: 0.073746964
+    bakeFailed: 0
+  - alpha3Code: NFK
+    displayName: Norfolk Island
+    anchor:
+      longitude: 2.931561
+      latitude: -0.5070739
+    angularRadius: 0.00034526698
+    bakeFailed: 0
+  - alpha3Code: NGA
+    displayName: Nigeria
+    anchor:
+      longitude: 0.12730473
+      latitude: 0.16404024
+    angularRadius: 0.06296934
+    bakeFailed: 0
+  - alpha3Code: NIC
+    displayName: Nicaragua
+    anchor:
+      longitude: -1.4870019
+      latitude: 0.2190072
+    angularRadius: 0.024611643
+    bakeFailed: 0
+  - alpha3Code: NIU
+    displayName: Niue
+    anchor:
+      longitude: -2.9646897
+      latitude: -0.33240804
+    angularRadius: 0.0010675198
+    bakeFailed: 0
+  - alpha3Code: NLD
+    displayName: Netherlands
+    anchor:
+      longitude: 0.09867112
+      latitude: 0.9152143
+    angularRadius: 0.011070158
+    bakeFailed: 0
+  - alpha3Code: NOR
+    displayName: Norway
+    anchor:
+      longitude: 0.17416367
+      latitude: 1.0688401
+    angularRadius: 0.019948278
+    bakeFailed: 0
+  - alpha3Code: NPL
+    displayName: Nepal
+    anchor:
+      longitude: 1.4318346
+      latitude: 0.50571865
+    angularRadius: 0.017380562
+    bakeFailed: 0
+  - alpha3Code: NRU
+    displayName: Nauru
+    anchor:
+      longitude: 2.9135184
+      latitude: -0.009017753
+    angularRadius: 0.00039488377
+    bakeFailed: 0
+  - alpha3Code: NZL
+    displayName: New Zealand
+    anchor:
+      longitude: 2.956172
+      latitude: -0.78638
+    angularRadius: 0.019377487
+    bakeFailed: 0
+  - alpha3Code: OMN
+    displayName: Oman
+    anchor:
+      longitude: 1.0025369
+      latitude: 0.3861204
+    angularRadius: 0.02915719
+    bakeFailed: 0
+  - alpha3Code: PAK
+    displayName: Pakistan
+    anchor:
+      longitude: 1.1711913
+      latitude: 0.48417595
+    angularRadius: 0.039197538
+    bakeFailed: 0
+  - alpha3Code: PAN
+    displayName: Panama
+    anchor:
+      longitude: -1.412316
+      latitude: 0.1458342
+    angularRadius: 0.008336631
+    bakeFailed: 0
+  - alpha3Code: PCN
+    displayName: Pitcairn Islands
+    anchor:
+      longitude: -2.2396336
+      latitude: -0.42504907
+    angularRadius: 0.0003889295
+    bakeFailed: 0
+  - alpha3Code: PER
+    displayName: Peru
+    anchor:
+      longitude: -1.2752134
+      latitude: -0.22639152
+    angularRadius: 0.053675193
+    bakeFailed: 0
+  - alpha3Code: PHL
+    displayName: Philippines
+    anchor:
+      longitude: 2.118711
+      latitude: 0.29571193
+    angularRadius: 0.01639584
+    bakeFailed: 0
+  - alpha3Code: PLW
+    displayName: Palau
+    anchor:
+      longitude: 2.3488271
+      latitude: 0.13123812
+    angularRadius: 0.0009844312
+    bakeFailed: 0
+  - alpha3Code: PNG
+    displayName: Papua New Guinea
+    anchor:
+      longitude: 2.4959512
+      latitude: -0.096697405
+    angularRadius: 0.035313502
+    bakeFailed: 0
+  - alpha3Code: POL
+    displayName: Poland
+    anchor:
+      longitude: 0.34171587
+      latitude: 0.9105711
+    angularRadius: 0.038463626
+    bakeFailed: 0
+  - alpha3Code: PRI
+    displayName: Puerto Rico
+    anchor:
+      longitude: -1.1674461
+      latitude: 0.31818923
+    angularRadius: 0.0046834336
+    bakeFailed: 0
+  - alpha3Code: PRK
+    displayName: North Korea
+    anchor:
+      longitude: 2.2058883
+      latitude: 0.69851977
+    angularRadius: 0.01626808
+    bakeFailed: 0
+  - alpha3Code: PRT
+    displayName: Portugal
+    anchor:
+      longitude: -0.13549238
+      latitude: 0.70915663
+    angularRadius: 0.0123646045
+    bakeFailed: 0
+  - alpha3Code: PRY
+    displayName: Paraguay
+    anchor:
+      longitude: -1.0498682
+      latitude: -0.37730315
+    angularRadius: 0.03584156
+    bakeFailed: 0
+  - alpha3Code: PSX
+    displayName: Palestine
+    anchor:
+      longitude: 0.6154449
+      latitude: 0.5616536
+    angularRadius: 0.0042264285
+    bakeFailed: 0
+  - alpha3Code: PYF
+    displayName: French Polynesia
+    anchor:
+      longitude: -2.608907
+      latitude: -0.30766544
+    angularRadius: 0.002146546
+    bakeFailed: 0
+  - alpha3Code: QAT
+    displayName: Qatar
+    anchor:
+      longitude: 0.8936497
+      latitude: 0.43815735
+    angularRadius: 0.006293429
+    bakeFailed: 0
+  - alpha3Code: ROU
+    displayName: Romania
+    anchor:
+      longitude: 0.4358015
+      latitude: 0.79863155
+    angularRadius: 0.034204017
+    bakeFailed: 0
+  - alpha3Code: RUS
+    displayName: Russia
+    anchor:
+      longitude: 1.8883059
+      latitude: 1.0799217
+    angularRadius: 0.19115643
+    bakeFailed: 0
+  - alpha3Code: RWA
+    displayName: Rwanda
+    anchor:
+      longitude: 0.5176335
+      latitude: -0.03365361
+    angularRadius: 0.008597493
+    bakeFailed: 0
+  - alpha3Code: SAH
+    displayName: Western Sahara
+    anchor:
+      longitude: -0.23927139
+      latitude: 0.38286704
+    angularRadius: 0.010503459
+    bakeFailed: 0
+  - alpha3Code: SAU
+    displayName: Saudi Arabia
+    anchor:
+      longitude: 0.7824784
+      latitude: 0.41057536
+    angularRadius: 0.09322771
+    bakeFailed: 0
+  - alpha3Code: SDN
+    displayName: Sudan
+    anchor:
+      longitude: 0.5151634
+      latitude: 0.29140273
+    angularRadius: 0.092485495
+    bakeFailed: 0
+  - alpha3Code: SSD
+    displayName: South Sudan
+    anchor:
+      longitude: 0.53170043
+      latitude: 0.124075584
+    angularRadius: 0.04597386
+    bakeFailed: 0
+  - alpha3Code: SEN
+    displayName: Senegal
+    anchor:
+      longitude: -0.26092562
+      latitude: 0.26535526
+    angularRadius: 0.02441711
+    bakeFailed: 0
+  - alpha3Code: SGP
+    displayName: Singapore
+    anchor:
+      longitude: 1.8119076
+      latitude: 0.023700021
+    angularRadius: 0.0014911088
+    bakeFailed: 0
+  - alpha3Code: SGS
+    displayName: S.G. & Is.
+    anchor:
+      longitude: -0.64357615
+      latitude: -0.94626117
+    angularRadius: 0.002128369
+    bakeFailed: 0
+  - alpha3Code: SHN
+    displayName: Saint Helena
+    anchor:
+      longitude: -0.09964086
+      latitude: -0.27852628
+    angularRadius: 0.0007053179
+    bakeFailed: 0
+  - alpha3Code: SLB
+    displayName: Solomon Islands
+    anchor:
+      longitude: 2.7975922
+      latitude: -0.16791001
+    angularRadius: 0.0034832202
+    bakeFailed: 0
+  - alpha3Code: SLE
+    displayName: Sierra Leone
+    anchor:
+      longitude: -0.20556419
+      latitude: 0.15130422
+    angularRadius: 0.019270403
+    bakeFailed: 0
+  - alpha3Code: SLV
+    displayName: El Salvador
+    anchor:
+      longitude: -1.557983
+      latitude: 0.2427626
+    angularRadius: 0.007488322
+    bakeFailed: 0
+  - alpha3Code: SMR
+    displayName: San Marino
+    anchor:
+      longitude: 0.2173327
+      latitude: 0.7667772
+    angularRadius: 0.0005936092
+    bakeFailed: 0
+  - alpha3Code: SOL
+    displayName: Somaliland
+    anchor:
+      longitude: 0.82380277
+      latitude: 0.16496426
+    angularRadius: 0.025077436
+    bakeFailed: 0
+  - alpha3Code: SOM
+    displayName: Somalia
+    anchor:
+      longitude: 0.7509035
+      latitude: 0.04465988
+    angularRadius: 0.030458175
+    bakeFailed: 0
+  - alpha3Code: SPM
+    displayName: St. P.M.
+    anchor:
+      longitude: -0.98285615
+      latitude: 0.8178528
+    angularRadius: 0.0006064055
+    bakeFailed: 0
+  - alpha3Code: SRB
+    displayName: Serbia
+    anchor:
+      longitude: 0.36227003
+      latitude: 0.7697355
+    angularRadius: 0.014697317
+    bakeFailed: 0
+  - alpha3Code: STP
+    displayName: S.T.P.
+    anchor:
+      longitude: 0.115278184
+      latitude: 0.004337882
+    angularRadius: 0.00209389
+    bakeFailed: 0
+  - alpha3Code: SUR
+    displayName: Suriname
+    anchor:
+      longitude: -0.9761001
+      latitude: 0.0706915
+    angularRadius: 0.026680347
+    bakeFailed: 0
+  - alpha3Code: SVK
+    displayName: Slovakia
+    anchor:
+      longitude: 0.33086106
+      latitude: 0.85060316
+    angularRadius: 0.011518742
+    bakeFailed: 0
+  - alpha3Code: SVN
+    displayName: Slovenia
+    anchor:
+      longitude: 0.26155356
+      latitude: 0.80460745
+    angularRadius: 0.007324235
+    bakeFailed: 0
+  - alpha3Code: SWE
+    displayName: Sweden
+    anchor:
+      longitude: 0.30894363
+      latitude: 1.1301485
+    angularRadius: 0.025571441
+    bakeFailed: 0
+  - alpha3Code: SWZ
+    displayName: Eswatini
+    anchor:
+      longitude: 0.54899126
+      latitude: -0.46318933
+    angularRadius: 0.009722845
+    bakeFailed: 0
+  - alpha3Code: SXM
+    displayName: Sint Maarten
+    anchor:
+      longitude: -1.1001956
+      latitude: 0.3149785
+    angularRadius: 0.0003840481
+    bakeFailed: 0
+  - alpha3Code: SYC
+    displayName: Seychelles
+    anchor:
+      longitude: 0.96767783
+      latitude: -0.08059588
+    angularRadius: 0.0007228217
+    bakeFailed: 0
+  - alpha3Code: SYR
+    displayName: Syria
+    anchor:
+      longitude: 0.66934985
+      latitude: 0.61235034
+    angularRadius: 0.028672697
+    bakeFailed: 0
+  - alpha3Code: TCA
+    displayName: T.C. Is.
+    anchor:
+      longitude: -1.2531445
+      latitude: 0.38084358
+    angularRadius: 0.0005272309
+    bakeFailed: 0
+  - alpha3Code: TCD
+    displayName: Chad
+    anchor:
+      longitude: 0.34040353
+      latitude: 0.30393612
+    angularRadius: 0.06611289
+    bakeFailed: 0
+  - alpha3Code: TGO
+    displayName: Togo
+    anchor:
+      longitude: 0.018255327
+      latitude: 0.154092
+    angularRadius: 0.009593241
+    bakeFailed: 0
+  - alpha3Code: THA
+    displayName: Thailand
+    anchor:
+      longitude: 1.7687638
+      latitude: 0.27005023
+    angularRadius: 0.035247818
+    bakeFailed: 0
+  - alpha3Code: TJK
+    displayName: Tajikistan
+    anchor:
+      longitude: 1.2685616
+      latitude: 0.66794896
+    angularRadius: 0.016372839
+    bakeFailed: 0
+  - alpha3Code: TKM
+    displayName: Turkmenistan
+    anchor:
+      longitude: 1.0286701
+      latitude: 0.69184345
+    angularRadius: 0.034133434
+    bakeFailed: 0
+  - alpha3Code: TLS
+    displayName: Timor-Leste
+    anchor:
+      longitude: 2.190053
+      latitude: -0.15526755
+    angularRadius: 0.0058232616
+    bakeFailed: 0
+  - alpha3Code: TON
+    displayName: Tonga
+    anchor:
+      longitude: -3.0585196
+      latitude: -0.36928293
+    angularRadius: 0.00069053395
+    bakeFailed: 0
+  - alpha3Code: TTO
+    displayName: Tr.T.
+    anchor:
+      longitude: -1.0689859
+      latitude: 0.18003938
+    angularRadius: 0.00417188
+    bakeFailed: 0
+  - alpha3Code: TUN
+    displayName: Tunisia
+    anchor:
+      longitude: 0.16802095
+      latitude: 0.6152322
+    angularRadius: 0.01759191
+    bakeFailed: 0
+  - alpha3Code: TUR
+    displayName: Turkey
+    anchor:
+      longitude: 0.5910221
+      latitude: 0.6867572
+    angularRadius: 0.045665443
+    bakeFailed: 0
+  - alpha3Code: TWN
+    displayName: Taiwan
+    anchor:
+      longitude: 2.1084392
+      latitude: 0.41026285
+    angularRadius: 0.010739467
+    bakeFailed: 0
+  - alpha3Code: TZA
+    displayName: Tanzania
+    anchor:
+      longitude: 0.596935
+      latitude: -0.097692266
+    angularRadius: 0.068127096
+    bakeFailed: 0
+  - alpha3Code: UGA
+    displayName: Uganda
+    anchor:
+      longitude: 0.576325
+      latitude: 0.035028152
+    angularRadius: 0.030531457
+    bakeFailed: 0
+  - alpha3Code: UKR
+    displayName: Ukraine
+    anchor:
+      longitude: 0.56487226
+      latitude: 0.8619108
+    angularRadius: 0.038536407
+    bakeFailed: 0
+  - alpha3Code: URY
+    displayName: Uruguay
+    anchor:
+      longitude: -0.9762684
+      latitude: -0.5754383
+    angularRadius: 0.031467985
+    bakeFailed: 0
+  - alpha3Code: USA
+    displayName: United States
+    anchor:
+      longitude: -1.7115229
+      latitude: 0.68391705
+    angularRadius: 0.17103846
+    bakeFailed: 0
+  - alpha3Code: UZB
+    displayName: Uzbekistan
+    anchor:
+      longitude: 1.1245856
+      latitude: 0.71352726
+    angularRadius: 0.028435007
+    bakeFailed: 0
+  - alpha3Code: VAT
+    displayName: Vatican
+    anchor:
+      longitude: 0.21700983
+      latitude: 0.7313221
+    angularRadius: 0.000065816894
+    bakeFailed: 0
+  - alpha3Code: VCT
+    displayName: St. Vin. and Gren.
+    anchor:
+      longitude: -1.0681741
+      latitude: 0.23111014
+    angularRadius: 0.0012123812
+    bakeFailed: 0
+  - alpha3Code: VEN
+    displayName: Venezuela
+    anchor:
+      longitude: -1.1214412
+      latitude: 0.12562545
+    angularRadius: 0.051655192
+    bakeFailed: 0
+  - alpha3Code: VGB
+    displayName: British Virgin Is.
+    anchor:
+      longitude: -1.1279914
+      latitude: 0.32153055
+    angularRadius: 0.0003694343
+    bakeFailed: 0
+  - alpha3Code: VIR
+    displayName: U.S. Virgin Is.
+    anchor:
+      longitude: -1.1305853
+      latitude: 0.30975634
+    angularRadius: 0.00075998175
+    bakeFailed: 0
+  - alpha3Code: VNM
+    displayName: Vietnam
+    anchor:
+      longitude: 1.8384254
+      latitude: 0.3789207
+    angularRadius: 0.0220327
+    bakeFailed: 0
+  - alpha3Code: VUT
+    displayName: Vanuatu
+    anchor:
+      longitude: 2.9138148
+      latitude: -0.268133
+    angularRadius: 0.0037505617
+    bakeFailed: 0
+  - alpha3Code: WLF
+    displayName: Wallis and Futuna
+    anchor:
+      longitude: -3.1091359
+      latitude: -0.24936105
+    angularRadius: 0.00048734498
+    bakeFailed: 0
+  - alpha3Code: WSM
+    displayName: Samoa
+    anchor:
+      longitude: -3.0094643
+      latitude: -0.23792654
+    angularRadius: 0.0027332408
+    bakeFailed: 0
+  - alpha3Code: YEM
+    displayName: Yemen
+    anchor:
+      longitude: 0.785916
+      latitude: 0.26701537
+    angularRadius: 0.035818268
+    bakeFailed: 0
+  - alpha3Code: ZAF
+    displayName: South Africa
+    anchor:
+      longitude: 0.40433744
+      latitude: -0.5328868
+    angularRadius: 0.06050982
+    bakeFailed: 0
+  - alpha3Code: ZMB
+    displayName: Zambia
+    anchor:
+      longitude: 0.45702797
+      latitude: -0.25666147
+    angularRadius: 0.04813318
+    bakeFailed: 0
+  - alpha3Code: ZWE
+    displayName: Zimbabwe
+    anchor:
+      longitude: 0.52253
+      latitude: -0.33138654
+    angularRadius: 0.04557788
+    bakeFailed: 0
