@@ -79,6 +79,9 @@ public class TestbedCamera : MonoBehaviour
 	// "Set Home To Current View" context menu to capture it.
 	public CameraView homeView = DefaultHomeView;
 	public KeyCode resetKey = KeyCode.Backspace;
+	// Enter play mode at the home view rather than wherever the scene happened to be
+	// saved, so the demo always opens on the same shot.
+	public bool startAtHomeView = true;
 
 	[Header("Bookmarks")]
 	// Key-bound saved views (Z X C V by default). Lives in an asset rather than on this
@@ -114,6 +117,15 @@ public class TestbedCamera : MonoBehaviour
 		if (cam == null) { cam = GetComponentInChildren<Camera>(); }
 		ApplyOptics();
 		ApplyPose();
+	}
+
+	void Start()
+	{
+		// Deliberately in Start, not OnEnable. LoadingManager deactivates and re-activates
+		// the Game root during the world bootstrap, so OnEnable can fire more than once,
+		// and a later re-enable should not yank the camera back to home. Start runs before
+		// the first frame is drawn, so there is no flash of the serialized position.
+		if (startAtHomeView) { ResetView(); }
 	}
 
 	void Update()

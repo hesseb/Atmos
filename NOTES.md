@@ -61,6 +61,13 @@ Orbit mode: `WASD`/arrows pan (great-circle, so speed is uniform at every latitu
 `Shift` fast, `Alt` slow, `Space`/`Ctrl` up-down. `Tab` toggles mode, `Backspace` resets
 to the home view. Home is currently 36.76°N 1.12°W (southern Spain), altitude 40,
 pitch 70° — captured via the component's *Set Home To Current View* context menu.
+`startAtHomeView` (default on) makes play mode open on that same view, so the demo
+always starts from a known shot regardless of where the scene was last saved.
+
+A view is `(lon, lat, altitude, heading, pitch, roll)` — a complete pose, so anything
+captured in either mode restores exactly. Pitch runs −90 (zenith) through 0 (horizon)
+to +90 (nadir); `F` tilts up past the horizon so the sky can be framed without
+dropping into free-fly.
 
 **Bookmarks:** `Z` `X` `C` `V` jump to saved views; `Shift`+key overwrites that slot with
 the current view. They live in a `CameraBookmarks` ScriptableObject asset, *not* on the
