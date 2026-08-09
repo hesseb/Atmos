@@ -29,12 +29,20 @@ Branch `testbed-strip`, off `main` at `31efe80`. Full plan:
 - **No camera smoothing.** Every pose is a pure function of the state fields, so a given
   view is reproducible between runs. Reproducibility beats feel here.
 
-### Done (committed)
+### Status: **milestone 1 complete.** Verified running by AH.
+
 | Commit | Stage | What |
 |---|---|---|
 | `149cafd` | 0 | THESIS.md, START.md, CLAUDE.md |
 | `8e4cdde` | 1–2 | Decoupled `RenderSettingsController` and `LoadingManager` from `Menu/` |
 | `87029c9` | 3–4 | `TestbedCamera`; boot to `Playing`; raised camera cull distance |
+| `9a5ce2f`, `1b164e7` | 4 | Home view + reset key (Backspace) |
+| `bd8ca9d` | 5, 8 | Decoupled `LoadingManager` from globe map, `SolarSystemManager` from `GameController` |
+| `e7764ae` | 5–8 | Deleted the gameplay cluster — 443 files, 77,660 lines |
+
+**Result:** scene is 21 GameObjects across 3 roots (`Game`, `Loading Manager`,
+`Editor Only`), down from 337 across 7. 335 C# files, down from 403. Exactly one
+camera, one audio listener, one light.
 
 Two hidden compile edges pointed from keep-code into `Menu/` and had to be cut before
 anything could be deleted: `struct Settings` is declared inside `Menu/SettingsMenu.cs`
@@ -47,11 +55,33 @@ dead — no relocation needed.
 deletion, and this runs at execution order `-1100` where an NRE aborts the entire world
 bootstrap behind one misleading error.
 
-### Next: in the Unity Editor
-Stages 5–8 are deletions, and scene objects must go before their scripts — a script
-deleted while a scene reference survives becomes a silent missing-script component that
-does not break the compile. Order per the plan file. Immediate step is installing
-`TestbedCamera` on the `Camera Controller` object and removing `GameCamera` from it.
+### Camera controls
+Orbit mode: `WASD`/arrows pan (great-circle, so speed is uniform at every latitude),
+`Q`/`E` heading, `R`/`F` pitch, scroll to zoom. Free-fly: `WASD` + hold RMB to look,
+`Shift` fast, `Alt` slow, `Space`/`Ctrl` up-down. `Tab` toggles mode, `Backspace` resets
+to the home view. Home is currently 36.76°N 1.12°W (southern Spain), altitude 40,
+pitch 70° — captured via the component's *Set Home To Current View* context menu.
+
+### Deliberately kept, despite looking deletable
+- **`Editor Helper/` the folder.** Only `BuildReadyTest.cs` was removed;
+  `EditorShaderHelper.cs` sits beside it and `AtmosphereEffect.cs:394` uses it.
+- **`WorldLookup`** — idles after `Init`, but is the only way to query terrain height at
+  a coordinate, which the harness needs to place a camera a fixed distance above ground.
+  `GetTerrainInfoImmediate` does a blocking `GetData`; call it from setup, never per-frame.
+- **`PlaceholderWorld`** (`Editor Only / Test Earth`) — deactivates itself on play, and is
+  the only thing showing where the planet is in the Scene view before terrain loads.
+- **`Country Outlines`** — kept for now as a second, structurally different mesh workload
+  to measure against. Drop it if it turns out to be noise.
+
+### Remaining tidy-ups (all optional, none blocking)
+- `Assets/Graphics/{Boat Test, Flags, Game Icon}` — verified to have no external
+  references. ~3.9 MB. `Game Icon` is wired into Player Settings as the app icon, so
+  clear that field first if removing it.
+- `Assets/Scenes/Game.unity` still holds two orphaned serialized values on
+  `SolarSystemManager` (`player`, `fastForwardDayDuration`). Unity drops them on the next
+  scene save.
+- `activeInputHandler` is still `2` (Both). Leave it unless the Input System package is
+  being removed, which requires setting it to `0` and restarting the Editor *first*.
 
 ### Open questions
 - Whether the visual comparison stays informal or becomes a real user study. `2afc-wiki`
