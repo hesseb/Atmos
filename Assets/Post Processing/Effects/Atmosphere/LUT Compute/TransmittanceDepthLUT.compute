@@ -11,14 +11,18 @@ uint height;
 void CreateTransmittanceLUT (uint2 id : SV_DispatchThreadID)
 {
 	float2 uv = id / float2(width - 1, height - 1);
-	float elevation = planetRadius + atmosphereThickness * uv.y;
 
-	float3 inPoint = float3(0, elevation, 0);
+	// Through the shared inverse mapping, so what is written here and what
+	// sampleTransmittanceLUT reads can never disagree.
+	float radius, cosZenith;
+	transmittanceLutParams(uv, radius, cosZenith);
 
-	float y = -2 * uv.x + 1;
-	float x = sin(acos(y));
-	float3 dir = float3(x, y, 0);
-	
+	float3 inPoint = float3(0, radius, 0);
+
+	// sqrt(1 - c^2) is sin(acos(c)) without the round trip through two transcendentals.
+	float sinZenith = sqrt(saturate(1 - cosZenith * cosZenith));
+	float3 dir = float3(sinZenith, cosZenith, 0);
+
 	float3 transmittance = getSunTransmittance(inPoint, dir);
 
 	TransmittanceLUT[id.xy] = transmittance;

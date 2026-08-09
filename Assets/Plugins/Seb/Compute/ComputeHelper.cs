@@ -25,7 +25,11 @@ public static class ComputeHelper
 		Vector3Int threadGroupSizes = GetThreadGroupSizes(cs, kernelIndex);
 		int numGroupsX = Mathf.CeilToInt(numIterationsX / (float)threadGroupSizes.x);
 		int numGroupsY = Mathf.CeilToInt(numIterationsY / (float)threadGroupSizes.y);
-		int numGroupsZ = Mathf.CeilToInt(numIterationsZ / (float)threadGroupSizes.y);
+		// .z, not .y. This read .y, which is a no-op for every compute in the project today -
+		// the 3D one has y == z, and the 2D ones dispatch a single z-iteration - so it has
+		// never mis-dispatched anything. It would silently under-dispatch the first compute
+		// added with numthreads(x, y, z) where y != z and more than one z-iteration.
+		int numGroupsZ = Mathf.CeilToInt(numIterationsZ / (float)threadGroupSizes.z);
 		cs.Dispatch(kernelIndex, numGroupsX, numGroupsY, numGroupsZ);
 	}
 

@@ -1,12 +1,11 @@
 // Some variables and functions shared between the atmosphere shader and LUT compute shaders
 // Thanks to: https://sebh.github.io/publications/egsr2020.pdf
 
-static const float PI = 3.14159265359;
+// Declares atmosphereThickness / atmosphereRadius / planetRadius and the single definition of
+// the transmittance LUT's parameterisation, shared with DrawSky.shader.
+#include "TransmittanceCommon.hlsl"
 
-// Size parameters
-float atmosphereThickness;
-float atmosphereRadius;
-float planetRadius;
+static const float PI = 3.14159265359;
 
 // Rayleigh, mie, and ozone parameters
 float3 rayleighCoefficients;
@@ -137,13 +136,27 @@ float3 getSunTransmittance(float3 pos, float3 sunDir) {
 	return exp(-(opticalDepth / atmosphereThickness * stepSize));
 }
 
-float3 getSunTransmittanceLUT(sampler2D lut, float3 pos, float3 dir) {
-	float dstFromCentre = length(pos);
-	float height = dstFromCentre - planetRadius;
-	float height01 = saturate(height / atmosphereThickness);
+// (1 - exp(-t)) / t, the analytic integral of a constant source attenuated across one step,
+// divided by the step length. Tends to 1 as t -> 0.
+//
+// This replaces `(S - S*T) / max(0.0001, extinction)`. That form is correct wherever
+// extinction is comfortably above the clamp, which it is at the shipped parameters (minimum
+// ~0.02), but it is not a rounding detail: with physically scaled heights the extinction at
+// the top of the atmosphere is ~1e-7, three orders below the clamp, and the clamped form then
+// underestimates in-scatter by a factor of ~1000 - per channel, so red fails before blue and
+// the result desaturates rather than simply darkening.
+//
+// Near zero the quotient itself is the problem: both terms vanish and float32 cancellation
+// leaves only a few significant digits. The series is exact to 4e-11 at the switchover.
+float3 integralFactor(float3 opticalDepth, float3 transmittance) {
+	float3 nearZero = step(abs(opticalDepth), 1e-3);
 
-	float uvX = 1 - (dot(pos / dstFromCentre, dir) * 0.5 + 0.5);
-	return tex2Dlod(lut, float4(uvX, height01, 0, 0)).rgb;
+	// The +nearZero only keeps the discarded branch from dividing by zero; where this branch
+	// is used the denominator is at least 1e-3.
+	float3 quotient = (1.0 - transmittance) / (opticalDepth + nearZero);
+	float3 series = 1.0 - opticalDepth * (0.5 - opticalDepth * (1.0 / 6.0));
+
+	return lerp(quotient, series, nearZero);
 }
 
 ScatteringResult raymarch(float3 rayPos, float3 rayDir, float rayLength, int numSteps, sampler2D transmittanceLUT, float earthShadowRadius) {
@@ -168,11 +181,12 @@ ScatteringResult raymarch(float3 rayPos, float3 rayDir, float rayLength, int num
 		ScatteringParameters scattering = getScatteringValues(rayPos);
 
 		// The proportion of light transmitted along the ray from the current sample point to the previous one
-		float3 sampleTransmittance = exp(-scattering.extinction * scaledStepSize);
+		float3 opticalDepth = scattering.extinction * scaledStepSize;
+		float3 sampleTransmittance = exp(-opticalDepth);
 		
 		// The proportion of light that reaches this point from the sun
 		// float3 sunTransmittance = getSunTransmittance(rayPos, dirToSun);
-		float3 sunTransmittance = getSunTransmittanceLUT(transmittanceLUT, rayPos, dirToSun);
+		float3 sunTransmittance = sampleTransmittanceLUT(transmittanceLUT, rayPos, dirToSun);
 
 		// Earth shadow
 		if (rayIntersectSphere(rayPos, dirToSun, earthShadowRadius) > 0) {
@@ -183,10 +197,11 @@ ScatteringResult raymarch(float3 rayPos, float3 rayDir, float rayLength, int num
 		// Amount of light scattered in towards the camera at current sample point
 		float3 inScattering = (scattering.rayleigh * rayleighPhaseValue + scattering.mie * miePhase) * sunTransmittance;
 
-		// Increase the luminance by the in-scattered light
-		// Note, the simple way of doing that would be like this: luminance += inScattering * transmittance * scaledStepSize;
-		// The two lines below do essentially the same thing, but converge quicker with lower step counts
-		float3 scatteringIntegral = (inScattering - inScattering * sampleTransmittance) / max(0.0001, scattering.extinction);
+		// Increase the luminance by the in-scattered light.
+		// The simple way would be: luminance += inScattering * transmittance * scaledStepSize;
+		// This integrates the step analytically instead, which converges at far lower step
+		// counts. Same closed form as Hillaire 2020.
+		float3 scatteringIntegral = inScattering * scaledStepSize * integralFactor(opticalDepth, sampleTransmittance);
 		luminance += scatteringIntegral*transmittance;
 		
 
