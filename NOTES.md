@@ -483,3 +483,25 @@ four holds from one position varying only pitch.
 An aborted batch still writes a summary covering the runs that completed, with a warning
 saying how many of how many it covers. The output-root redirect is restored on every exit
 path, so a later single run never writes into a stale batch folder.
+
+### Default resolution raised to 1440p
+There were two separate sources of 1080p, and both are now 2560x1440:
+
+- **Player Settings** — `defaultScreenWidth/Height` 2560x1440, `defaultIsNativeResolution: 0`
+  (it was 1, which ignored the default and used the display's native size), and
+  `fullscreenMode` 2 → **3 (Windowed)**. That last one is required: MaximizedWindow and
+  FullScreenWindow both ignore the requested size and take the display's, so an exact,
+  known pixel count is only achievable windowed. `resizableWindow` stays 0, so the window
+  cannot be dragged to a different size mid-session.
+- **`BenchmarkRunner.targetResolution`** — scene value and C# default both 2560x1440, so
+  pressing run no longer resizes the window from 1440p down to 1080p.
+
+1440p is **1.78x** the pixels of 1080p. The atmosphere is five full-screen passes, so its
+cost scales roughly with pixel count — results at the two resolutions are not comparable.
+No loss here: every run on disk so far is an editor run, explicitly non-authoritative.
+`-resolution WxH` still overrides for scripted runs, and the requested *and actual*
+resolution are both recorded in `run.json` with a `matched` flag.
+
+> If the display is smaller than 2560x1440 the window will not fit. Either lower
+> `defaultScreenWidth/Height`, or set `fullscreenMode` back to 1/2 and accept the display's
+> own resolution as the measurement resolution.
