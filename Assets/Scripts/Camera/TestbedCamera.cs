@@ -77,6 +77,14 @@ public class TestbedCamera : MonoBehaviour
 	public CameraView homeView = DefaultHomeView;
 	public KeyCode resetKey = KeyCode.Backspace;
 
+	[Header("Bookmarks")]
+	// Key-bound saved views (Z X C V by default). Lives in an asset rather than on this
+	// component so captures made during play mode survive exiting it.
+	public CameraBookmarks bookmarks;
+	// Hold this while pressing a bookmark key to overwrite that slot with the current
+	// view. Set to None to capture on a bare press (not recommended - easy to clobber).
+	public KeyCode captureModifier = KeyCode.LeftShift;
+
 	const float defaultWorldRadius = 150f;
 	bool warnedMissingHeightSettings;
 
@@ -119,6 +127,8 @@ public class TestbedCamera : MonoBehaviour
 		{
 			SetMode(mode == Mode.Orbit ? Mode.FreeFly : Mode.Orbit);
 		}
+
+		if (HandleBookmarkInput()) { return; }
 
 		if (mode == Mode.Orbit) { ReadOrbitInput(); }
 		else { ReadFreeFlyInput(); }
@@ -343,6 +353,56 @@ public class TestbedCamera : MonoBehaviour
 	public void ResetView()
 	{
 		SetView(homeView);
+	}
+
+	/// <summary>
+	/// Bookmark keys: press to jump, hold <see cref="captureModifier"/> to overwrite.
+	/// Returns true if a key was consumed, so movement input is skipped that frame.
+	/// </summary>
+	bool HandleBookmarkInput()
+	{
+		if (bookmarks == null) { return false; }
+
+		for (int i = 0; i < bookmarks.Count; i++)
+		{
+			KeyCode key = bookmarks.KeyAt(i);
+			if (key == KeyCode.None || !Input.GetKeyDown(key)) { continue; }
+
+			bool capturing = captureModifier == KeyCode.None || Input.GetKey(captureModifier);
+			if (capturing)
+			{
+				bookmarks.Capture(i, GetView());
+				Debug.Log($"Saved camera bookmark '{bookmarks.LabelAt(i)}' ({key}): " +
+					$"{coordinate.latitude:0.00}, {coordinate.longitude:0.00} " +
+					$"alt {altitude:0.0} pitch {pitch:0.0} heading {heading:0.0}", this);
+			}
+			else if (bookmarks.TryGetView(i, out CameraView view))
+			{
+				SetView(view);
+			}
+			else
+			{
+				// Empty slot. Say so rather than silently doing nothing - otherwise it
+				// looks like the binding is broken.
+				Debug.Log($"Camera bookmark '{bookmarks.LabelAt(i)}' ({key}) is empty. " +
+					$"Hold {captureModifier} and press {key} to save the current view.", this);
+			}
+			return true;
+		}
+		return false;
+	}
+
+	public bool JumpToBookmark(int index)
+	{
+		if (bookmarks == null || !bookmarks.TryGetView(index, out CameraView view)) { return false; }
+
+		SetView(view);
+		return true;
+	}
+
+	public void CaptureBookmark(int index)
+	{
+		if (bookmarks != null) { bookmarks.Capture(index, GetView()); }
 	}
 
 	public CameraView GetView()

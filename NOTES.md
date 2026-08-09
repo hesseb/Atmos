@@ -62,6 +62,13 @@ Orbit mode: `WASD`/arrows pan (great-circle, so speed is uniform at every latitu
 to the home view. Home is currently 36.76°N 1.12°W (southern Spain), altitude 40,
 pitch 70° — captured via the component's *Set Home To Current View* context menu.
 
+**Bookmarks:** `Z` `X` `C` `V` jump to saved views; `Shift`+key overwrites that slot with
+the current view. They live in a `CameraBookmarks` ScriptableObject asset, *not* on the
+component — Unity discards play-mode changes to scene components but keeps them for
+assets, so a view captured while flying survives exiting play mode. Press `Ctrl+S` after
+capturing to flush the asset to disk. Empty slots log a hint rather than silently doing
+nothing. The same asset is the natural home for the harness's fixed camera paths.
+
 ### Time controls (`TimeController` + `SolarTime`)
 Speed: `,` / `.` step through 0.1×…256×, `P` pauses. Presets, all relative to wherever
 the camera currently is: `1` sunrise, `2` noon, `3` sunset, `4` midnight, `5` golden hour
