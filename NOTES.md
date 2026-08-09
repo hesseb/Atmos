@@ -1184,3 +1184,33 @@ If those two disagree, the mirror is stale and every other check is suspect.
 The LUT check is deliberately compared against **two** references: the exact closed form, and
 the 40-step right-Riemann sum the shader actually computes. Matching the Riemann value proves
 the shader implements the model; the gap to the closed form *is* the sampling bias, quantified.
+
+### First validation run — the harness found its own bug, and the shader passed
+Every predicted value came back within rounding, and the check that matters most passed
+cleanly: **the LUT readback agrees with the C# mirror to 6.3e-06**, which is what establishes
+that the mirror is a faithful transcription and therefore that the other checks mean something.
+
+Confirmed against the shipped atmosphere:
+
+| | measured |
+|---|---|
+| vertical optical depth | (0.173, 0.420, 0.748) — **3.73 / 3.87 / 2.82× Earth's** |
+| sampling bias | optical depth **13.83% low** |
+| ozone headroom | negative extinction at `ozoneStrength ≥ 0.70`, currently 0.40 |
+| tone map band | [0.1185, 0.6449], factor **5.44** |
+| sun disc | **4.31×** in angle, **18.59×** in solid angle |
+| phase normalisation | Rayleigh and Cornette–Shanks both integrate to 1 within 3.4e-08 |
+| Cornette–Shanks at g=0 vs Rayleigh | identical to **0** |
+
+The single FAIL was mine. `VerticalOpticalDepth` accumulated 200,000 terms of ~4e-3 into a
+**float** running total that reaches ~78, so every addition truncated in the same direction and
+the sum came out systematically low — 0.70812 against the closed form's 0.70853, forty times
+the tolerance. Reproduced the exact figure by simulating float32 accumulation, then fixed by
+accumulating in double. A useful reminder that a validation harness needs validating too: had
+the tolerance been looser this would have silently passed and quietly poisoned every optical
+depth number in the report.
+
+Two display bugs the run exposed: the minimum extinction printed as `0.0000` under `F4` when
+the value that matters is 1.9e-05, and the sun's reference angle rendered as `0,2667` from a
+raw interpolation — the sv-SE decimal comma leaking into the report despite this project having
+been bitten by that before.

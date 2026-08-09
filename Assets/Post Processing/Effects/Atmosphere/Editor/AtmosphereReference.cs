@@ -71,15 +71,22 @@ static class AtmosphereReference
 	/// </summary>
 	public static Vector3 VerticalOpticalDepth(AtmosphereEffect a, int steps, bool rayleighOnly = false)
 	{
-		Vector3 total = Vector3.zero;
-		float dh = a.atmosphereThickness / steps;
+		// Accumulated in double. At 200k steps a float sum reaches ~78 while each term is
+		// ~4e-3, so every addition truncates in the same direction and the running total ends
+		// systematically low - 0.70811 against a true 0.70853, which is 40x the tolerance this
+		// is checked at. The physics is fine; the accumulator was not.
+		double r = 0, g = 0, b = 0;
+		double dh = a.atmosphereThickness / (double)steps;
 
 		for (int i = 0; i < steps; i++)
 		{
-			float h = (i + 0.5f) * dh;
-			total += (rayleighOnly ? RayleighExtinction(a, h) : Extinction(a, h)) * dh;
+			float h = (float)((i + 0.5) * dh);
+			Vector3 e = rayleighOnly ? RayleighExtinction(a, h) : Extinction(a, h);
+			r += e.x * dh; g += e.y * dh; b += e.z * dh;
 		}
-		return total / a.atmosphereThickness;
+
+		double norm = a.atmosphereThickness;
+		return new Vector3((float)(r / norm), (float)(g / norm), (float)(b / norm));
 	}
 
 	/// <summary>
@@ -89,14 +96,17 @@ static class AtmosphereReference
 	/// </summary>
 	public static Vector3 VerticalOpticalDepthRightRiemann(AtmosphereEffect a, int steps)
 	{
-		Vector3 total = Vector3.zero;
-		float dh = a.atmosphereThickness / steps;
+		double r = 0, g = 0, b = 0;
+		double dh = a.atmosphereThickness / (double)steps;
 
 		for (int i = 1; i <= steps; i++)
 		{
-			total += Extinction(a, i * dh) * dh;
+			Vector3 e = Extinction(a, (float)(i * dh));
+			r += e.x * dh; g += e.y * dh; b += e.z * dh;
 		}
-		return total / a.atmosphereThickness;
+
+		double norm = a.atmosphereThickness;
+		return new Vector3((float)(r / norm), (float)(g / norm), (float)(b / norm));
 	}
 
 	// ------------------------------------------------------------------ phases

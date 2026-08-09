@@ -149,7 +149,11 @@ static class AtmosphereValidation
 			}
 		}
 
-		report.Append($"- minimum extinction {F(worst)} in {"RGB"[channel]} at altitude {F(worstHeight)}\n");
+		// Scientific notation: the minimum is ~1.9e-05, which "F4" renders as a useless 0.0000
+		// - and that number matters, because it is below the 1e-4 the old integral clamped at.
+		report.Append($"- minimum extinction {E(worst)} in {"RGB"[channel]} at altitude {F(worstHeight)}\n")
+			.Append($"- for reference the old `max(1e-4, sigma)` clamp fired wherever extinction " +
+				$"fell below {E(1e-4f)}\n");
 
 		// Also report how much headroom the ozone slider has, since that is the live hazard.
 		float breakingStrength = FindOzoneStrengthThatBreaks(a);
@@ -238,7 +242,9 @@ static class AtmosphereValidation
 		const float realAngularRadius = 0.2667f;
 		float ratio = a.sunDiscSize / realAngularRadius;
 
-		report.Append($"- configured {F(a.sunDiscSize)} deg against the sun's {realAngularRadius} deg\n")
+		// F(), not raw interpolation: this machine is sv-SE, where a bare float renders as
+		// "0,2667" and the report picks up a decimal comma.
+		report.Append($"- configured {F(a.sunDiscSize)} deg against the sun's {F(realAngularRadius)} deg\n")
 			.Append($"- {F(ratio)}x in angle, {F(ratio * ratio)}x in solid angle\n");
 
 		return Mathf.Abs(ratio - 1f) < 0.05f
@@ -366,6 +372,7 @@ static class AtmosphereValidation
 	static int Warn(StringBuilder report, string what) { report.Append("- warn: ").Append(what).Append('\n'); return 0; }
 
 	static string F(float v) => v.ToString("F4", Ci);
+	static string E(float v) => v.ToString("E3", Ci);
 
 	static AtmosphereEffect FindAtmosphere()
 	{
