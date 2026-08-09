@@ -246,27 +246,36 @@ public class AtmosphereEffect : PostProcessingEffect
 		values.floats.Add(("planetRadius", bodyRadius));
 		values.floats.Add(("terrestrialClipDst", bodyRadius));
 
+		// The shader now works in absolute altitude and per-world-unit coefficients, so the
+		// inspector's normalised fields are converted here rather than inside the march.
+		//
+		// The inspector fields are still fractions of the atmosphere thickness. Expressing
+		// them in kilometres is part of adopting physical constants; converting here first
+		// keeps this step numerically identical, which is what makes it checkable.
+		float thickness = atmosphereThickness;
+
 		// Rayleigh values
-		values.floats.Add(("rayleighDensityAvg", rayleighDensityAvg));
+		values.floats.Add(("rayleighScaleHeight", rayleighDensityAvg * thickness));
 		// Arbitrary scale to give nicer range of reasonable values for the scattering constant
 		// Strength of (rayleigh) scattering is dependent on wavelength (~ 1/wavelength^4)
 		Vector3 inverseWavelengths = new Vector3(1 / wavelengthsRGB.x, 1 / wavelengthsRGB.y, 1 / wavelengthsRGB.z);
 		Vector3 rayleigh = Pow(inverseWavelengths * wavelengthScale, 4);
-		values.vectors.Add(("rayleighCoefficients", rayleigh));
+		values.vectors.Add(("rayleighCoefficients", rayleigh / thickness));
 
 		// Mirror into the serialized debug field only when it has actually changed. Writing it
 		// unconditionally from here marked the asset dirty on every settings update.
 		if (rayleighCoefficients != rayleigh) { rayleighCoefficients = rayleigh; }
 
 		// Mie values
-		values.floats.Add(("mieDensityAvg", mieDensityAvg));
-		values.floats.Add(("mieCoefficient", mieCoefficient));
-		values.floats.Add(("mieAbsorption", mieAbsorption));//
+		values.floats.Add(("mieScaleHeight", mieDensityAvg * thickness));
+		values.floats.Add(("mieCoefficient", mieCoefficient / thickness));
+		values.floats.Add(("mieAbsorption", mieAbsorption / thickness));
 
-		// Ozone values
-		values.floats.Add(("ozonePeakDensityAltitude", ozonePeakDensityAltitude));
-		values.floats.Add(("ozoneDensityFalloff", ozoneDensityFalloff));
-		values.vectors.Add(("ozoneAbsorption", ozoneAbsorption * ozoneStrength * 0.1f));
+		// Ozone values. The tent was `1 - |peak01 - h01| * falloff` in normalised altitude, so
+		// its half-width in world units is thickness / falloff.
+		values.floats.Add(("ozonePeakAltitude", ozonePeakDensityAltitude * thickness));
+		values.floats.Add(("ozoneHalfWidth", thickness / Mathf.Max(1e-4f, ozoneDensityFalloff)));
+		values.vectors.Add(("ozoneAbsorption", ozoneAbsorption * ozoneStrength * 0.1f / thickness));
 
 		return values;
 	}

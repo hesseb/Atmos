@@ -34,41 +34,41 @@ static class AtmosphereReference
 	}
 
 	/// <summary>
-	/// Extinction at an altitude in world units. Mirrors `getScatteringValues`, including its
-	/// normalisation of altitude by the whole atmosphere thickness rather than by a scale
-	/// height in metres.
+	/// Extinction per world unit at an altitude in world units. Mirrors `getScatteringValues`.
+	///
+	/// The shader takes scale heights and coefficients already converted to world units, so
+	/// this applies the same conversion the effect does on the way to the GPU.
 	/// </summary>
 	public static Vector3 Extinction(AtmosphereEffect a, float height)
 	{
-		float h01 = Mathf.Clamp01(height / a.atmosphereThickness);
+		float h = Mathf.Clamp(height, 0f, a.atmosphereThickness);
 
-		float rayleighDensity = Mathf.Exp(-h01 / a.rayleighDensityAvg);
-		float mieDensity = Mathf.Exp(-h01 / a.mieDensityAvg);
-		float ozoneDensity = Mathf.Clamp01(1f - Mathf.Abs(a.ozonePeakDensityAltitude - h01) * a.ozoneDensityFalloff);
+		float rayleighDensity = Mathf.Exp(-h / (a.rayleighDensityAvg * a.atmosphereThickness));
+		float mieDensity = Mathf.Exp(-h / (a.mieDensityAvg * a.atmosphereThickness));
 
-		Vector3 rayleigh = RayleighCoefficients(a) * rayleighDensity;
-		float mie = a.mieCoefficient * mieDensity;
+		float ozonePeak = a.ozonePeakDensityAltitude * a.atmosphereThickness;
+		float ozoneHalfWidth = a.atmosphereThickness / Mathf.Max(1e-4f, a.ozoneDensityFalloff);
+		float ozoneDensity = Mathf.Clamp01(1f - Mathf.Abs(h - ozonePeak) / ozoneHalfWidth);
+
+		Vector3 rayleigh = RayleighCoefficients(a) * (rayleighDensity / a.atmosphereThickness);
+		float mie = a.mieCoefficient * mieDensity / a.atmosphereThickness;
 
 		return new Vector3(mie, mie, mie)
-			+ Vector3.one * (a.mieAbsorption * mieDensity)
+			+ Vector3.one * (a.mieAbsorption * mieDensity / a.atmosphereThickness)
 			+ rayleigh
-			+ OzoneAbsorption(a) * ozoneDensity;
+			+ OzoneAbsorption(a) * (ozoneDensity / a.atmosphereThickness);
 	}
 
 	/// <summary>Rayleigh extinction alone, for cross-checking against the beta*H closed form.</summary>
 	public static Vector3 RayleighExtinction(AtmosphereEffect a, float height)
 	{
-		float h01 = Mathf.Clamp01(height / a.atmosphereThickness);
-		return RayleighCoefficients(a) * Mathf.Exp(-h01 / a.rayleighDensityAvg);
+		float h = Mathf.Clamp(height, 0f, a.atmosphereThickness);
+		float scaleHeight = a.rayleighDensityAvg * a.atmosphereThickness;
+		return RayleighCoefficients(a) * (Mathf.Exp(-h / scaleHeight) / a.atmosphereThickness);
 	}
 
-	/// <summary>
-	/// Optical depth for a vertical path from the surface to the top of the atmosphere.
-	///
-	/// Divided by `atmosphereThickness` because the shader's march scales every step that way
-	/// (`scaledStepSize = stepSize / atmosphereThickness`), which makes the coefficients
-	/// inverse-atmosphere-thicknesses rather than inverse world units.
-	/// </summary>
+	/// <summary>Optical depth for a vertical path from the surface to the top of the
+	/// atmosphere, by midpoint quadrature.</summary>
 	public static Vector3 VerticalOpticalDepth(AtmosphereEffect a, int steps, bool rayleighOnly = false)
 	{
 		// Accumulated in double. At 200k steps a float sum reaches ~78 while each term is
@@ -85,8 +85,9 @@ static class AtmosphereReference
 			r += e.x * dh; g += e.y * dh; b += e.z * dh;
 		}
 
-		double norm = a.atmosphereThickness;
-		return new Vector3((float)(r / norm), (float)(g / norm), (float)(b / norm));
+		// No division by thickness: Extinction is now per world unit, so the sum of
+		// sigma * dh IS the optical depth.
+		return new Vector3((float)r, (float)g, (float)b);
 	}
 
 	/// <summary>
@@ -105,8 +106,9 @@ static class AtmosphereReference
 			r += e.x * dh; g += e.y * dh; b += e.z * dh;
 		}
 
-		double norm = a.atmosphereThickness;
-		return new Vector3((float)(r / norm), (float)(g / norm), (float)(b / norm));
+		// No division by thickness: Extinction is now per world unit, so the sum of
+		// sigma * dh IS the optical depth.
+		return new Vector3((float)r, (float)g, (float)b);
 	}
 
 	// ------------------------------------------------------------------ phases

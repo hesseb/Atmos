@@ -149,11 +149,11 @@ static class AtmosphereValidation
 			}
 		}
 
-		// Scientific notation: the minimum is ~1.9e-05, which "F4" renders as a useless 0.0000
-		// - and that number matters, because it is below the 1e-4 the old integral clamped at.
-		report.Append($"- minimum extinction {E(worst)} in {"RGB"[channel]} at altitude {F(worstHeight)}\n")
-			.Append($"- for reference the old `max(1e-4, sigma)` clamp fired wherever extinction " +
-				$"fell below {E(1e-4f)}\n");
+		// Scientific notation: the value is tiny and "F4" renders it as a useless 0.0000.
+		// Units are per world unit now, so this is 1/thickness of what it was before the
+		// density model moved to absolute altitude - the physics is unchanged.
+		report.Append($"- minimum extinction {E(worst)} per world unit, in {"RGB"[channel]} " +
+			$"at altitude {F(worstHeight)}\n");
 
 		// Also report how much headroom the ozone slider has, since that is the live hazard.
 		float breakingStrength = FindOzoneStrengthThatBreaks(a);

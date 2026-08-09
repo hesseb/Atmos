@@ -7,14 +7,18 @@
 
 static const float PI = 3.14159265359;
 
-// Rayleigh, mie, and ozone parameters
+// Rayleigh, mie and ozone parameters.
+//
+// Coefficients are per world unit and scale heights are in world units, so an optical depth is
+// just coefficient x path length. Previously both were expressed relative to the atmosphere
+// thickness and the march divided every step by it.
 float3 rayleighCoefficients;
-float rayleighDensityAvg;
+float rayleighScaleHeight;
 float mieCoefficient;
-float mieDensityAvg;
+float mieScaleHeight;
 float mieAbsorption;
-float ozonePeakDensityAltitude;
-float ozoneDensityFalloff;
+float ozonePeakAltitude;
+float ozoneHalfWidth;
 float3 ozoneAbsorption;
 
 // Other
@@ -35,12 +39,26 @@ struct ScatteringResult {
 ScatteringParameters getScatteringValues(float3 rayPos) {
 	ScatteringParameters scattering;
 
-	float height = length(rayPos - 0) - planetRadius;
-	float height01 = saturate(height / atmosphereThickness);
+	// Altitude above the surface, in world units.
+	//
+	// This was normalised by the whole atmosphere thickness, which made every scale height a
+	// fraction of it and every coefficient an inverse-atmosphere-thickness. Nothing could then
+	// be compared against a published value without first undoing that normalisation, which is
+	// most of why the constants here drifted so far from physical ones unnoticed.
+	float height = length(rayPos) - planetRadius;
 
-	float rayleighDensity = exp(-height01 / rayleighDensityAvg);
-	float mieDensity = exp(-height01 / mieDensityAvg);
-	float ozoneDensity = saturate(1 - abs(ozonePeakDensityAltitude - height01) * ozoneDensityFalloff);
+	// The upper clamp reproduces the previous saturate(): density stops decaying at the top of
+	// the atmosphere rather than continuing to zero.
+	//
+	// The lower clamp is the one that matters. It gives samples *inside the planet* sea-level
+	// density rather than none, and since nothing clips the march at the ground, a downward ray
+	// integrates the full chord through the planet's interior at maximum density. It stays only
+	// until the ground intersection lands.
+	height = clamp(height, 0, atmosphereThickness);
+
+	float rayleighDensity = exp(-height / rayleighScaleHeight);
+	float mieDensity = exp(-height / mieScaleHeight);
+	float ozoneDensity = saturate(1 - abs(height - ozonePeakAltitude) / ozoneHalfWidth);
 
 	float mie = mieCoefficient * mieDensity;
 	float3 rayleigh = rayleighCoefficients * rayleighDensity;
@@ -122,18 +140,22 @@ float3 getSunTransmittance(float3 pos, float3 sunDir) {
 	float rayLength = atmoHitInfo.y;
 
 	float stepSize = rayLength / sunTransmittanceSteps;
-	float3 transmittance = 1;
 	float3 opticalDepth = 0;
 
 	for (int i = 0; i < sunTransmittanceSteps; i ++) {
+		// Advancing before sampling makes this a right-Riemann sum, which for a decreasing
+		// density profile systematically understates optical depth - measured at 13.9% here.
+		// Left as is until the midpoint fix, so this change stays numerically identical.
 		pos += sunDir * stepSize;
-		ScatteringParameters scattering = getScatteringValues(pos);
-		
-		transmittance *= exp(-scattering.extinction / atmosphereThickness * stepSize);
-		opticalDepth += scattering.extinction;
 
+		ScatteringParameters scattering = getScatteringValues(pos);
+		opticalDepth += scattering.extinction;
 	}
-	return exp(-(opticalDepth / atmosphereThickness * stepSize));
+
+	// A `transmittance` accumulator used to be maintained alongside this and never returned.
+	// It was not a second method either: sum-then-exponentiate and multiply-the-exponentials
+	// are the same number when the step size is constant.
+	return exp(-(opticalDepth * stepSize));
 }
 
 // (1 - exp(-t)) / t, the analytic integral of a constant source attenuated across one step,
@@ -166,7 +188,6 @@ ScatteringResult raymarch(float3 rayPos, float3 rayDir, float rayLength, int num
 	float3 transmittance = 1;
 
 	float stepSize = rayLength / numSteps;
-	float scaledStepSize = stepSize / atmosphereThickness;
 
 	float cosTheta = dot(rayDir, dirToSun);
 	//float rayleighPhaseValue = getRayleighPhase(-cosTheta);
@@ -183,7 +204,7 @@ ScatteringResult raymarch(float3 rayPos, float3 rayDir, float rayLength, int num
 		ScatteringParameters scattering = getScatteringValues(rayPos);
 
 		// The proportion of light transmitted along the ray from the current sample point to the previous one
-		float3 opticalDepth = scattering.extinction * scaledStepSize;
+		float3 opticalDepth = scattering.extinction * stepSize;
 		float3 sampleTransmittance = exp(-opticalDepth);
 		
 		// The proportion of light that reaches this point from the sun
@@ -200,10 +221,10 @@ ScatteringResult raymarch(float3 rayPos, float3 rayDir, float rayLength, int num
 		float3 inScattering = (scattering.rayleigh * rayleighPhaseValue + scattering.mie * miePhase) * sunTransmittance;
 
 		// Increase the luminance by the in-scattered light.
-		// The simple way would be: luminance += inScattering * transmittance * scaledStepSize;
+		// The simple way would be: luminance += inScattering * transmittance * stepSize;
 		// This integrates the step analytically instead, which converges at far lower step
 		// counts. Same closed form as Hillaire 2020.
-		float3 scatteringIntegral = inScattering * scaledStepSize * integralFactor(opticalDepth, sampleTransmittance);
+		float3 scatteringIntegral = inScattering * stepSize * integralFactor(opticalDepth, sampleTransmittance);
 		luminance += scatteringIntegral*transmittance;
 		
 
