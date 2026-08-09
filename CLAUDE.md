@@ -27,16 +27,31 @@ performance and image output logged identically, for thesis figures/tables.
 - Camera and controls
 - Core render pipeline hookup points
 
-**Remove/ignore:**
-- [gameplay systems not relevant — fill in once you've toured the code, e.g. AI, resource systems, UI menus]
-- [anything else not needed for a rendering testbed]
+**Removed** (done — commit `e7764ae`, see NOTES.md):
+- Menus, HUD, localization, audio, the input-rebinding layer
+- The player aeroplane, packages, parachutes, quests, hot air balloons
+- The in-game delivery map globe (a second globe on layer 7 with its own camera)
+- `GameController`/`GameState` — a testbed has no game states, and
+  `SolarSystemManager.SetTimes` is a better time API for measurement anyway
+
+**Kept despite looking removable** — don't delete these without reading NOTES.md:
+- `Assets/Scripts/Editor Helper/` — not an `Editor` folder; `EditorShaderHelper`
+  compiles into the main assembly and `AtmosphereEffect.cs:394` uses it
+- `WorldLookup` — idles, but is the only terrain-height-at-a-coordinate query, which
+  the measurement harness needs
+- `PlaceholderWorld` — deactivates itself on play; the only thing showing where the
+  planet is in the Scene view before terrain loads
+- `Assets/Scripts/Generation/` — offline bake tools for the 900 MB in `Assets/Data`
 
 **Not in scope for this thesis:** any systems tied to actual gameplay. This project isn't an actual game, just a tech demo. So score, credits, menu, and so on is not relevant.
 
 ## Target feature list (rough milestone order)
 
-1. Strip Geography down to globe + camera scaffold
+1. ~~Strip Geography down to globe + camera scaffold~~ **done** — `TestbedCamera`
+   (orbit + free-fly), scene down to 21 GameObjects
 2. Add controls and basic UI to allow for swapping between renderers, move around the globe with both keyboard and mouse, time controls
+   — *camera and time controls done (`TestbedCamera`, `TimeController`/`SolarTime`);
+   renderer-swap UI still outstanding*
 3. Build a measurement harness: fixed camera paths, frame timing / GPU timers,
    screenshot capture, exportable data (CSV or similar)
 4. Baseline skybox/simple atmosphere renderer
