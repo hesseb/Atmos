@@ -40,7 +40,17 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 	
 	if (dstThroughAtmosphere > 0) {
 		float3 inPoint = rayPos + rayDir * dstToAtmosphere;
-		float rayLength = min(dstThroughAtmosphere, (terrestrialClipDst - nearClip) * depthT);
+
+		// The slice's far distance is measured from the CAMERA, but the march starts at the
+		// atmosphere boundary - so the distance already covered getting there has to come off,
+		// or the slice integrates that much too far.
+		//
+		// This was invisible from inside the atmosphere, where dstToAtmosphere is 0 and the two
+		// origins coincide. The testbed camera reaches altitude 250, i.e. radius 400 against an
+		// atmosphere top of 259.5, so it spends real time outside - and there the far endpoint
+		// over-extended by up to a whole atmosphere thickness.
+		float distanceFromCamera = (terrestrialClipDst - nearClip) * depthT;
+		float rayLength = min(dstThroughAtmosphere, max(0, distanceFromCamera - dstToAtmosphere));
 		ScatteringResult result = raymarch(inPoint, rayDir, rayLength, numScatteringSteps, TransmittanceLUT, 0); // dont include earth shadow (causes issues due to low texture size)
 		col = result.luminance;
 		transmittance = result.transmittance;
