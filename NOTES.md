@@ -761,3 +761,21 @@ longer benchmark before quoting.
    in with the sky shading - 0.162 ms reported as "shading" when the shading alone is a
    fraction of it. Added a `nullsky-aerial` control that is the structural twin of the
    baselines, so `baseline − nullsky-aerial` isolates the sky shading and nothing else.
+
+### F5: live renderer preview
+`BenchmarkHud` cycles the runner's profiles live — scene as authored, then each profile in
+turn, then back. For looking at the difference rather than measuring it.
+
+It applies through a `RestoreScope`, which is not optional bookkeeping here:
+`PostProcessingEffect.enabled` is a serialized field on a ScriptableObject *asset*, so a
+preview left applied would be written to the project on the next save and the scene would
+quietly come back configured as whichever renderer was last looked at. The scope is unwound
+on three paths — cycling to the next profile, starting a run, and `OnDisable`.
+
+Clearing it before a run matters for a second reason: a run pins the environment by
+snapshotting current values, so starting one with a preview applied would record the
+previewed state as the thing to restore to, and every pass would measure from a perturbed
+starting point.
+
+The overlay's `viewing` line reports the live `RenderingManager.ActiveMode` alongside the
+requested profile, so a profile that failed to apply cannot claim on screen that it worked.
