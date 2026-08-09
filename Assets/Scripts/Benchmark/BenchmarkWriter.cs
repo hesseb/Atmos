@@ -1209,8 +1209,15 @@ public static class GitInfo
 			return false;
 		}
 #else
-		// A build would need a stamp baked in at build time; not yet implemented.
-		return false;
+		// No .git beside the executable, and git may not be installed at all - so a build
+		// reads the stamp baked in by BenchmarkBuild instead.
+		BuildStamp stamp = BuildStamp.Load();
+		if (stamp == null) { return false; }
+
+		commit = stamp.commit;
+		branch = stamp.branch;
+		dirty = stamp.dirty;
+		return commit != "unknown";
 #endif
 	}
 
