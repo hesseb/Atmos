@@ -92,7 +92,8 @@ public static class BenchmarkWriter
 		public string git_commit, git_branch;
 		public bool git_dirty;
 		public string unity_version, product_version;
-		/// <summary>"Timing" or "Capture". A capture run reports no statistics.</summary>
+		/// <summary>"Timing", "Capture" or "SelfCheck". A capture run reports no statistics; a
+		/// self-check additionally emits selfcheck.md with the run-to-run noise floor.</summary>
 		public string run_mode;
 		public int screenshots_captured;
 		public bool is_editor, development_build;
@@ -137,10 +138,12 @@ public static class BenchmarkWriter
 
 		string stamp = System.DateTime.Now.ToString("yyyyMMdd-HHmmss", Ci);
 		string shortCommit = string.IsNullOrEmpty(commit) ? "nogit" : commit;
-		// Capture runs are tagged in the folder name: they sit next to timing runs of the
-		// same benchmark and contain a frames.csv that looks identical but carries readback
-		// stalls. Nobody should have to open run.json to tell them apart.
-		string suffix = mode == BenchmarkRunMode.Capture ? "_capture" : "";
+		// Non-timing runs are tagged in the folder name: they sit next to timing runs of the
+		// same benchmark and contain a frames.csv that looks identical - a capture run's
+		// carries readback stalls, a self-check's is deliberately redundant. Nobody should
+		// have to open run.json to tell them apart.
+		string suffix = mode == BenchmarkRunMode.Capture ? "_capture"
+			: mode == BenchmarkRunMode.SelfCheck ? "_selfcheck" : "";
 		string runFolder = IOPath.Combine(outputRoot,
 			$"{stamp}_{Sanitise(plan.definition.id)}_{shortCommit}{suffix}");
 
@@ -186,6 +189,217 @@ public static class BenchmarkWriter
 		File.WriteAllText(IOPath.Combine(runFolder, "run.json"), JsonUtility.ToJson(metadata, true));
 		File.WriteAllText(IOPath.Combine(runFolder, "summary.md"),
 			BuildSummary(metadata, passes));
+
+		if (runner.mode == BenchmarkRunMode.SelfCheck)
+		{
+			File.WriteAllText(IOPath.Combine(runFolder, "selfcheck.md"),
+				BuildSelfCheck(metadata, passes));
+		}
+	}
+
+	// -------------------------------------------------------------- selfcheck.md
+
+	/// <summary>One statistic's spread across repeats of a single profile and segment.</summary>
+	struct Spread
+	{
+		public string profileId, label;
+		public int repeats;
+		public double min, max, mean;
+
+		public double AbsoluteMs => max - min;
+		/// <summary>Spread as a fraction of the mean. The comparable form - an 0.05 ms spread
+		/// means something very different at 1 ms than at 20 ms.</summary>
+		public double Relative => mean > 0 ? (max - min) / mean : double.NaN;
+		public bool Valid => repeats >= 2 && !double.IsNaN(mean);
+	}
+
+	/// <summary>
+	/// Reports how far repeats of the *same* configuration disagreed.
+	///
+	/// Two kinds of claim, kept deliberately separate. The hash checks are pass/fail: they
+	/// assert the runs were actually comparable, and a failure invalidates everything else.
+	/// The spread is *reported and not judged* - there is no threshold here that could be
+	/// mistaken for a standard, because what counts as acceptable depends entirely on how
+	/// large the effect being measured is.
+	/// </summary>
+	static string BuildSelfCheck(RunMetadata meta, List<PassResult> passes)
+	{
+		var sb = new StringBuilder();
+		sb.Append("# Self-check `").Append(meta.run_id).Append("`\n\n")
+		  .Append("Repeats of the same configuration, run back to back in one process. ")
+		  .Append("This measures the **harness and the machine**, not the renderer.\n\n");
+
+		if (meta.is_editor)
+		{
+			sb.Append("> **Editor run.** The noise floor measured here includes editor ")
+			  .Append("overhead and is not the one to quote. Re-run in a standalone build ")
+			  .Append("before using this number.\n\n");
+		}
+
+		// --- part 1: the pass/fail claims ---
+		sb.Append("## Comparability\n\n");
+
+		bool posesAgree = true;
+		for (int i = 1; i < passes.Count; i++)
+		{
+			if (passes[i].poseHash != passes[0].poseHash) { posesAgree = false; break; }
+		}
+
+		bool scenesAgree = true;
+		foreach (PassResult a in passes)
+		{
+			foreach (PassResult b in passes)
+			{
+				// Only within a profile: two profiles legitimately draw different geometry,
+				// and that difference is a result rather than a fault.
+				if (a.profileId == b.profileId && a.sceneHash != b.sceneHash) { scenesAgree = false; }
+			}
+		}
+
+		sb.Append("| check | result | meaning |\n|---|---|---|\n")
+		  .Append("| pose hash identical across all passes | ")
+		  .Append(posesAgree ? "**PASS**" : "**FAIL**")
+		  .Append(" | every pass rendered the same camera and sun sequence |\n")
+		  .Append("| scene hash identical within each profile | ")
+		  .Append(scenesAgree ? "**PASS**" : "**FAIL**")
+		  .Append(" | repeats submitted the same geometry workload |\n\n");
+
+		if (!posesAgree || !scenesAgree)
+		{
+			sb.Append("> **A comparability check failed.** The spread below is not a noise ")
+			  .Append("floor - the repeats were not measuring the same thing. Fix this first.\n\n");
+		}
+
+		// --- part 2: the number ---
+		List<Spread> median = CollectSpread(passes, s => s.gpu.medianMs);
+		List<Spread> p99 = CollectSpread(passes, s => s.gpu.p99Ms);
+		List<Spread> p1Low = CollectSpread(passes, s => s.gpu.p1LowMeanMs);
+
+		sb.Append("## Run-to-run spread, GPU frame time\n\n")
+		  .Append("Max minus min across repeats, per profile and segment. Reported, not ")
+		  .Append("judged: whether a spread is acceptable depends on the size of the effect ")
+		  .Append("being measured.\n\n");
+
+		sb.Append("| profile | segment | repeats | median (ms) | spread | spread % | p99 spread | 1% low spread |\n")
+		  .Append("|---|---|---|---|---|---|---|---|\n");
+
+		for (int i = 0; i < median.Count; i++)
+		{
+			Spread m = median[i];
+			sb.Append("| ").Append(m.profileId)
+			  .Append(" | ").Append(m.label)
+			  .Append(" | ").Append(m.repeats.ToString(Ci))
+			  .Append(" | ").Append(M(m.mean))
+			  .Append(" | ").Append(M(m.AbsoluteMs))
+			  .Append(" | ").Append(Pct(m.Relative))
+			  .Append(" | ").Append(M(Find(p99, m).AbsoluteMs))
+			  .Append(" | ").Append(M(Find(p1Low, m).AbsoluteMs))
+			  .Append(" |\n");
+		}
+
+		Spread worst = Worst(median);
+
+		sb.Append("\n## Noise floor\n\n");
+
+		if (!worst.Valid)
+		{
+			sb.Append("Not computable - fewer than two repeats produced valid GPU timings.\n");
+			return sb.ToString();
+		}
+
+		sb.Append("The largest run-to-run spread in **median GPU frame time** was ")
+		  .Append("**").Append(M(worst.AbsoluteMs)).Append(" ms** (")
+		  .Append(Pct(worst.Relative)).Append(" of the median), on `")
+		  .Append(worst.profileId).Append(" / ").Append(worst.label).Append("`.\n\n")
+		  .Append("Read this as: a difference between two renderer configurations smaller ")
+		  .Append("than roughly this much cannot be distinguished from run-to-run variation ")
+		  .Append("on this machine, and should be reported as such rather than as a result. ")
+		  .Append("It is a single-machine, single-session figure - it does not generalise, ")
+		  .Append("and it should be re-measured whenever the hardware, driver or scene ")
+		  .Append("changes.\n\n")
+		  .Append("Note that the p99 and 1% low columns are typically several times wider ")
+		  .Append("than the median column. Tail statistics are inherently less stable, so a ")
+		  .Append("tail difference needs a correspondingly larger margin before it means ")
+		  .Append("anything.\n");
+
+		return sb.ToString();
+	}
+
+	static List<Spread> CollectSpread(List<PassResult> passes,
+		System.Func<SegmentStats, double> select)
+	{
+		var result = new List<Spread>();
+		var seen = new List<string>();
+
+		foreach (PassResult pass in passes)
+		{
+			foreach (SegmentStats seg in pass.segments)
+			{
+				string key = pass.profileId + " :: " + seg.label;
+				if (seen.Contains(key)) { continue; }
+				seen.Add(key);
+
+				var values = new List<double>();
+				foreach (PassResult other in passes)
+				{
+					if (other.profileId != pass.profileId) { continue; }
+					foreach (SegmentStats s in other.segments)
+					{
+						if (s.label != seg.label || !s.gpu.Valid) { continue; }
+						double v = select(s);
+						if (!double.IsNaN(v)) { values.Add(v); }
+					}
+				}
+
+				if (values.Count < 2) { continue; }
+
+				double min = values[0], max = values[0], sum = 0;
+				foreach (double v in values)
+				{
+					if (v < min) { min = v; }
+					if (v > max) { max = v; }
+					sum += v;
+				}
+
+				result.Add(new Spread
+				{
+					profileId = pass.profileId,
+					label = seg.label,
+					repeats = values.Count,
+					min = min,
+					max = max,
+					mean = sum / values.Count
+				});
+			}
+		}
+
+		return result;
+	}
+
+	static Spread Find(List<Spread> spreads, Spread like)
+	{
+		foreach (Spread s in spreads)
+		{
+			if (s.profileId == like.profileId && s.label == like.label) { return s; }
+		}
+		// NaN rather than zero: a missing statistic must print as "n/a", not as a spread of
+		// 0.000 ms, which would read as perfect stability.
+		return new Spread { mean = double.NaN, min = double.NaN, max = double.NaN };
+	}
+
+	static Spread Worst(List<Spread> spreads)
+	{
+		var worst = new Spread { mean = double.NaN };
+		foreach (Spread s in spreads)
+		{
+			if (!worst.Valid || s.AbsoluteMs > worst.AbsoluteMs) { worst = s; }
+		}
+		return worst;
+	}
+
+	static string Pct(double fraction)
+	{
+		return double.IsNaN(fraction) ? "n/a" : (fraction * 100.0).ToString("F2", Ci) + "%";
 	}
 
 	/// <summary>
@@ -690,6 +904,13 @@ public static class BenchmarkWriter
 
 		AppendComparison(sb, passes);
 		AppendReproducibility(sb, passes);
+
+		if (meta.run_mode == BenchmarkRunMode.SelfCheck.ToString())
+		{
+			sb.Append("\nSee `selfcheck.md` for the run-to-run spread these repeats disagreed ")
+			  .Append("by - the margin any delta above has to clear to mean anything.\n");
+		}
+
 		AppendCaveats(sb, meta);
 
 		return sb.ToString();

@@ -73,7 +73,7 @@ MonoBehaviour:
       rising: 0
       highest: 1
     screenshotFirstAndLast: 0
-    screenshotFrames: 
+    screenshotFrames: 000000002c0100005802000084030000
   - label: sahara
     kind: 2
     frames: 1200
@@ -122,4 +122,4 @@ MonoBehaviour:
       rising: 0
       highest: 1
     screenshotFirstAndLast: 0
-    screenshotFrames: 
+    screenshotFrames: 000000002c0100005802000084030000

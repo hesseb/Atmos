@@ -34,6 +34,9 @@ static class BenchmarkMenu
 	[MenuItem("Testbed/Benchmark/Set Mode - Capture (images)")]
 	static void SetModeCapture() => SetMode(BenchmarkRunMode.Capture);
 
+	[MenuItem("Testbed/Benchmark/Set Mode - Self-Check (noise floor)")]
+	static void SetModeSelfCheck() => SetMode(BenchmarkRunMode.SelfCheck);
+
 	/// <summary>
 	/// Flips the runner's mode on the scene object. A menu item rather than only an inspector
 	/// field because the two modes are meant to be run back to back over the same benchmark -
@@ -59,8 +62,14 @@ static class BenchmarkMenu
 		runner.mode = mode;
 		EditorUtility.SetDirty(runner);
 
-		Debug.Log($"[Benchmark] mode set to {mode}." + (mode == BenchmarkRunMode.Capture
-			? " This run will produce images and no statistics."
-			: " This run will produce statistics and no images."), runner);
+		string note = mode switch
+		{
+			BenchmarkRunMode.Capture => " This run will produce images and no statistics.",
+			BenchmarkRunMode.SelfCheck => " This run will replay each profile at least twice " +
+				"and write selfcheck.md with the run-to-run noise floor.",
+			_ => " This run will produce statistics and no images."
+		};
+
+		Debug.Log($"[Benchmark] mode set to {mode}.{note}", runner);
 	}
 }

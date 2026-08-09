@@ -324,3 +324,30 @@ frames are `phase = Prewarm` and never enter statistics. `prewarmPosesEvery = 0`
 `screenshots/manifest.csv` records frame index, pass, segment, resolution, camera pose,
 sky fraction and **sun elevation in degrees** — the last is there because it is the caption
 a twilight figure needs and reconstructing it from `dayT` afterwards is painful.
+
+### Self-check mode — where the noise floor comes from
+`BenchmarkRunMode.SelfCheck` replays each profile at least twice in one process (repeats
+are forced to ≥2) and writes `selfcheck.md` alongside the usual outputs.
+
+Two kinds of claim, kept deliberately separate:
+- **Comparability — pass/fail.** Pose hash identical across every pass; scene hash identical
+  *within* each profile (across profiles it may legitimately differ, by the passes each
+  adds). A failure here invalidates the spread below, so it is stated first.
+- **Spread — reported, not judged.** Max-minus-min of GPU median, p99 and 1% low across
+  repeats, per profile and segment. There is deliberately **no threshold** in the report,
+  because what counts as acceptable depends entirely on the size of the effect measured.
+
+The headline is the largest median spread across all segments. Read it as: a difference
+between two renderer configurations smaller than that cannot be distinguished from
+run-to-run variation on this machine.
+
+For calibration, the editor numbers from the earlier two-repeat run were 0.982 / 0.990 ms
+median → **0.008 ms spread (0.81%)**, against a measured atmosphere delta of 0.293–0.314 ms
+— roughly **37×** the noise floor, comfortably resolvable. That editor figure is optimistic;
+re-run in a standalone build before quoting anything, and re-measure whenever the hardware,
+driver or scene changes.
+
+p99 and 1% low columns are typically several times wider than the median column — tail
+statistics are inherently less stable, so a tail difference needs a correspondingly larger
+margin before it means anything. That is why all three are reported rather than just the
+median.
