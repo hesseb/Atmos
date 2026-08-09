@@ -66,7 +66,7 @@ public class TimeController : MonoBehaviour
 
 	void OnEnable()
 	{
-		if (solarSystem == null) { solarSystem = FindObjectOfType<SolarSystemManager>(); }
+		if (solarSystem == null) { solarSystem = FindFirstObjectByType<SolarSystemManager>(); }
 		if (observer == null && Camera.main != null) { observer = Camera.main.transform; }
 		ApplySpeed();
 	}
@@ -252,7 +252,7 @@ public class TimeController : MonoBehaviour
 
 	void EnsureRefs()
 	{
-		if (solarSystem == null) { solarSystem = FindObjectOfType<SolarSystemManager>(); }
+		if (solarSystem == null) { solarSystem = FindFirstObjectByType<SolarSystemManager>(); }
 		if (observer == null && Camera.main != null) { observer = Camera.main.transform; }
 	}
 

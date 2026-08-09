@@ -23,15 +23,15 @@ public class BenchmarkSceneRefs
 	public bool Resolve(out string error)
 	{
 		if (camera == null) { camera = Camera.main; }
-		if (testbedCamera == null) { testbedCamera = Object.FindObjectOfType<TestbedCamera>(); }
-		if (solarSystem == null) { solarSystem = Object.FindObjectOfType<SolarSystemManager>(); }
-		if (timeController == null) { timeController = Object.FindObjectOfType<TimeController>(); }
-		if (lodSystem == null) { lodSystem = Object.FindObjectOfType<SimpleLodSystem>(); }
-		if (postProcessing == null) { postProcessing = Object.FindObjectOfType<PostProcessingManager>(); }
+		if (testbedCamera == null) { testbedCamera = Object.FindFirstObjectByType<TestbedCamera>(); }
+		if (solarSystem == null) { solarSystem = Object.FindFirstObjectByType<SolarSystemManager>(); }
+		if (timeController == null) { timeController = Object.FindFirstObjectByType<TimeController>(); }
+		if (lodSystem == null) { lodSystem = Object.FindFirstObjectByType<SimpleLodSystem>(); }
+		if (postProcessing == null) { postProcessing = Object.FindFirstObjectByType<PostProcessingManager>(); }
 
 		if (countryInteraction == null)
 		{
-			GlobePicker picker = Object.FindObjectOfType<GlobePicker>(true);
+			GlobePicker picker = Object.FindFirstObjectByType<GlobePicker>(FindObjectsInactive.Include);
 			if (picker != null) { countryInteraction = picker.gameObject; }
 		}
 

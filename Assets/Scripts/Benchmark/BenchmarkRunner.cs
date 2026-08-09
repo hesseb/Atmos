@@ -37,6 +37,16 @@ public class BenchmarkRunner : MonoBehaviour
 	public bool pinResolution = true;
 	public bool runOnStart;
 
+	[Header("Output")]
+	public bool writeResults = true;
+	// Identifies the pass within a run folder. Becomes "<profile>_r<repeat>" once renderer
+	// profiles exist.
+	public string passId = "default";
+	// Free-text note recorded in run.json - which machine these numbers came from.
+	public string machineLabel = "";
+	// Leave empty for <project>/Results in the editor, <exe>/BenchmarkResults in a build.
+	public string outputRootOverride = "";
+
 	[Header("Debug")]
 	public bool logProgress = true;
 
@@ -256,6 +266,19 @@ public class BenchmarkRunner : MonoBehaviour
 				$"  warnings          {(warnings.Count > 0 ? string.Join(", ", warnings) : "none")}\n" +
 				$"  Run twice and compare pose_hash: equal means both runs rendered the same poses.",
 				this);
+		}
+
+		if (writeResults)
+		{
+			string root = string.IsNullOrEmpty(outputRootOverride)
+				? BenchmarkWriter.DefaultOutputRoot()
+				: outputRootOverride;
+
+			string folder = BenchmarkWriter.Write(this, root, passId, machineLabel);
+			if (!string.IsNullOrEmpty(folder))
+			{
+				Debug.Log($"[Benchmark] results written to {folder}", this);
+			}
 		}
 
 		onCompleted?.Invoke(this);

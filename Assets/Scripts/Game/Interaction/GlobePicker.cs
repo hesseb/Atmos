@@ -64,7 +64,7 @@ public class GlobePicker : MonoBehaviour
 	void OnEnable()
 	{
 		if (cam == null) { cam = Camera.main; }
-		if (worldLookup == null) { worldLookup = FindObjectOfType<WorldLookup>(); }
+		if (worldLookup == null) { worldLookup = FindFirstObjectByType<WorldLookup>(); }
 
 		pickRadius = DefaultPickRadius;
 		onResult = OnResult;
