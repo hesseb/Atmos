@@ -71,7 +71,11 @@ public class BenchmarkRunner : MonoBehaviour
 	// in both modes and pair the outputs by frame index - the plan and pose hashes recorded
 	// by each are what certify the two runs rendered the same thing.
 	public BenchmarkRunMode mode = BenchmarkRunMode.Timing;
-	public Vector2Int targetResolution = new Vector2Int(1920, 1080);
+	// Matches the player's default startup resolution, so pressing run does not resize the
+	// window. The atmosphere is five full-screen passes, so its cost scales with pixel count -
+	// results at different resolutions are not comparable, which is why this is pinned and
+	// recorded rather than left to whatever the window happens to be.
+	public Vector2Int targetResolution = new Vector2Int(2560, 1440);
 	public bool pinResolution = true;
 	public bool runOnStart;
 
