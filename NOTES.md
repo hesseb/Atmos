@@ -385,3 +385,38 @@ Consequence for the protocol: **an editor self-check will occasionally eat a sta
 median is robust to it, the p99 and 1% low are not — the wide `pbr / alps` p99 spread
 (1.381 ms vs 0.112 ms on the neighbouring segment) is that one frame. Another reason the
 quotable noise floor has to come from a standalone build.
+
+### Standalone build path (milestone 3, step 10)
+Editor runs are never authoritative, so every number in the report has to come from a build.
+`Testbed → Benchmark → Build Standalone Player` makes one, as a **development build** —
+Unity strips the profiler from release players and the Render counters the harness records
+are among the casualties. The development flag's CPU overhead applies identically to every
+profile, so a like-for-like delta survives it; a missing counter does not.
+
+**`BuildStamp`** bakes the commit into `Assets/Resources` at build time. A player has no
+`.git` beside the executable and may be on a machine without git, so `GitInfo` cannot shell
+out the way it does in the editor — without this every build's `run.json` would record
+commit `unknown`. The asset is **gitignored**: it changes on every build, and committing it
+would dirty the tree, which would make the next stamp report dirty for no reason. The build
+prompts for confirmation if the tree is already dirty.
+
+**Command line** (all optional; anything not passed keeps the scene-authored value, so one
+build serves scripted and interactive use):
+
+```
+Atmos.exe -benchmark framing -mode selfcheck -resolution 1920x1080 \
+          -machine "desktop" -strict -quitWhenDone
+```
+
+`-benchmark <id>` selects from the runner's **`availableBenchmarks`** list — populate it in
+the inspector, because a ScriptableObject only reaches a build if something references it,
+and an unlisted definition would exist in the editor and silently not exist in the player.
+
+Exit codes: `0` ok, `1` run failed (frame-count mismatch, pose-hash mismatch, abort),
+`2` could not start (bad options, no benchmark, batch mode), `3` `-strict` violation (GPU
+timing unavailable).
+
+> **Never run the player with `-batchmode`.** `WaitForEndOfFrame` never resumes there, so
+> the end-of-frame reader never runs, `FrameCursor` never advances, and the run hangs
+> forever rather than failing. The runner now detects batch mode and refuses to start —
+> this was the single most likely way to wedge a scripted run.

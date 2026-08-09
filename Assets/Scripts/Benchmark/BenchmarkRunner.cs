@@ -49,6 +49,10 @@ public class BenchmarkRunner : MonoBehaviour
 {
 	[Header("What to run")]
 	public BenchmarkDefinition benchmark;
+	// Everything -benchmark <id> can select. Listed explicitly rather than loaded from
+	// Resources because a ScriptableObject only reaches a build if something references it -
+	// an unlisted definition would exist in the editor and silently not exist in the player.
+	public BenchmarkDefinition[] availableBenchmarks;
 	public CameraBookmarks fallbackBookmarks;
 	public BenchmarkSceneRefs sceneRefs = new BenchmarkSceneRefs();
 
@@ -135,9 +139,130 @@ public class BenchmarkRunner : MonoBehaviour
 	int currentPass = -1;
 	string runFolder;
 
+	BenchmarkCommandLine cli;
+	bool runFailed;
+
+	/// <summary>Exit codes for a scripted run. Distinct values so a shell script can tell a
+	/// bad result from a bad invocation.</summary>
+	const int ExitOk = 0;
+	const int ExitRunFailed = 1;
+	const int ExitCannotStart = 2;
+	const int ExitStrictViolation = 3;
+
 	void Start()
 	{
-		if (runOnStart) { StartRun(); }
+		cli = BenchmarkCommandLine.Parse(System.Environment.GetCommandLineArgs());
+
+		if (cli.Requested)
+		{
+			Debug.Log($"[Benchmark] command line: {cli.Describe()}");
+
+			if (cli.errors.Count > 0)
+			{
+				foreach (string error in cli.errors) { Debug.LogError($"[Benchmark] {error}"); }
+				QuitIfRequested(ExitCannotStart);
+				return;
+			}
+
+			if (!ApplyCommandLine())
+			{
+				QuitIfRequested(ExitCannotStart);
+				return;
+			}
+		}
+
+		if (runOnStart || cli.Requested) { StartRun(); }
+	}
+
+	/// <summary>Overlays command-line options onto the scene-authored configuration. Options
+	/// not passed leave the authored value alone, so one build serves both scripted and
+	/// interactive use.</summary>
+	bool ApplyCommandLine()
+	{
+		if (!string.IsNullOrEmpty(cli.benchmarkId))
+		{
+			BenchmarkDefinition selected = FindBenchmark(cli.benchmarkId);
+			if (selected == null)
+			{
+				Debug.LogError($"[Benchmark] -benchmark '{cli.benchmarkId}' is not in " +
+					$"availableBenchmarks. Known: {KnownBenchmarkIds()}", this);
+				return false;
+			}
+			benchmark = selected;
+		}
+
+		if (cli.profileIds != null)
+		{
+			var selected = new List<RendererProfile>();
+			foreach (string id in cli.profileIds)
+			{
+				RendererProfile match = null;
+				if (profiles != null)
+				{
+					foreach (RendererProfile profile in profiles)
+					{
+						if (profile != null && profile.id == id) { match = profile; break; }
+					}
+				}
+
+				if (match == null)
+				{
+					Debug.LogError($"[Benchmark] -profiles: no renderer profile with id '{id}'.", this);
+					return false;
+				}
+				selected.Add(match);
+			}
+			profiles = selected.ToArray();
+		}
+
+		if (cli.repeats > 0) { repeats = cli.repeats; }
+		if (cli.mode.HasValue) { mode = cli.mode.Value; }
+		if (cli.resolution.HasValue) { targetResolution = cli.resolution.Value; pinResolution = true; }
+		if (cli.outputRoot != null) { outputRootOverride = cli.outputRoot; }
+		if (cli.machineLabel != null) { machineLabel = cli.machineLabel; }
+
+		return true;
+	}
+
+	BenchmarkDefinition FindBenchmark(string id)
+	{
+		if (availableBenchmarks != null)
+		{
+			foreach (BenchmarkDefinition candidate in availableBenchmarks)
+			{
+				if (candidate != null && candidate.id == id) { return candidate; }
+			}
+		}
+
+		// The authored benchmark counts as available even if it was left out of the list.
+		return benchmark != null && benchmark.id == id ? benchmark : null;
+	}
+
+	string KnownBenchmarkIds()
+	{
+		var ids = new List<string>();
+		if (availableBenchmarks != null)
+		{
+			foreach (BenchmarkDefinition candidate in availableBenchmarks)
+			{
+				if (candidate != null) { ids.Add(candidate.id); }
+			}
+		}
+		if (benchmark != null && !ids.Contains(benchmark.id)) { ids.Add(benchmark.id); }
+
+		return ids.Count > 0 ? string.Join(", ", ids) : "(none)";
+	}
+
+	void QuitIfRequested(int exitCode)
+	{
+		if (cli == null || !cli.quitWhenDone) { return; }
+
+		Debug.Log($"[Benchmark] quitting with exit code {exitCode}.");
+#if UNITY_EDITOR
+		UnityEditor.EditorApplication.isPlaying = false;
+#else
+		Application.Quit(exitCode);
+#endif
 	}
 
 	[ContextMenu("Start Run")]
@@ -152,6 +277,20 @@ public class BenchmarkRunner : MonoBehaviour
 		if (benchmark == null)
 		{
 			Debug.LogError("[Benchmark] no BenchmarkDefinition assigned.", this);
+			QuitIfRequested(ExitCannotStart);
+			return;
+		}
+
+		// WaitForEndOfFrame never resumes under -batchmode, so the end-of-frame reader would
+		// never run, FrameCursor would never advance, and the run would hang forever rather
+		// than fail. Refuse instead - this is the single most likely way to wedge a scripted
+		// run on a build server.
+		if (Application.isBatchMode)
+		{
+			Debug.LogError("[Benchmark] cannot run under -batchmode: WaitForEndOfFrame never " +
+				"resumes, so no frame would ever be recorded and the run would hang. Launch " +
+				"the player windowed.", this);
+			QuitIfRequested(ExitCannotStart);
 			return;
 		}
 
@@ -433,6 +572,14 @@ public class BenchmarkRunner : MonoBehaviour
 
 		if (deltaDriftFrames > 0) { AddWarning($"DELTA_TIME_DRIFT:{deltaDriftFrames}"); }
 
+		// The plan is a fixed array of frames; rendering a different number of them means the
+		// rows no longer line up with the plan, which invalidates every per-frame column.
+		if (FrameCursor != Plan.Length)
+		{
+			AddWarning($"FRAME_COUNT_MISMATCH:{FrameCursor}/{Plan.Length}");
+			runFailed = true;
+		}
+
 		// Snapshot the instrumentation state before disposing the sampler - the writer
 		// needs it, and an absent counter must be recorded as absent rather than zero.
 		if (Sampler != null)
@@ -505,6 +652,37 @@ public class BenchmarkRunner : MonoBehaviour
 
 		ReleaseResources();
 		onCompleted?.Invoke(this);
+		QuitIfRequested(DetermineExitCode());
+	}
+
+	/// <summary>
+	/// What a scripted run should report. Distinguishes "the run produced a bad result" from
+	/// "the run could not produce a result at all" - a script that treats both as failure is
+	/// fine, but one that treats both as success is not.
+	/// </summary>
+	int DetermineExitCode()
+	{
+		if (runFailed) { return ExitRunFailed; }
+
+		// Strict exists because degrading silently to CPU-only numbers is how a thesis ends
+		// up with a table nobody can falsify.
+		if (cli != null && cli.strict && !FrameTimingAvailable)
+		{
+			Debug.LogError("[Benchmark] -strict: GPU frame timing was unavailable.", this);
+			return ExitStrictViolation;
+		}
+
+		for (int i = 1; i < passResults.Count; i++)
+		{
+			if (passResults[i].poseHash != passResults[0].poseHash)
+			{
+				Debug.LogError("[Benchmark] pose hash differs between passes - the passes did " +
+					"not render the same poses, so the comparison is invalid.", this);
+				return ExitRunFailed;
+			}
+		}
+
+		return ExitOk;
 	}
 
 	[ContextMenu("Abort Run")]
@@ -514,7 +692,9 @@ public class BenchmarkRunner : MonoBehaviour
 
 		Debug.LogWarning($"[Benchmark] aborted at frame {FrameCursor} / {Plan.Length}.", this);
 		IsRunning = false;
+		runFailed = true;
 		ReleaseResources();
+		QuitIfRequested(ExitRunFailed);
 	}
 
 	/// <summary>
