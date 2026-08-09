@@ -281,13 +281,13 @@ static class SkyGradientBaker
 
 	static void WriteCubemap(Color[][] pixels)
 	{
-		// Cube map face orientation silently mirrors or rotates if the convention is wrong,
-		// and the result still looks like a sky - just with seams. Rather than trust the
-		// convention, measure the discontinuity across a seam both ways and take the better.
-		// The numbers are logged, so a wrong answer is visible instead of assumed.
-		float direct = SeamError(pixels, flipVertically: false);
-		float flipped = SeamError(pixels, flipVertically: true);
-		bool flip = flipped < direct;
+		// Orientation is decided against ground truth rather than against the faces' agreement
+		// with each other: we chose where to put the sun, so we know which texel it must land
+		// on. An earlier version compared the +Z/+Y seam in the read-back arrays, which cannot
+		// work - a vertical flip applied consistently to every face leaves that comparison
+		// unchanged while still producing seams once the faces are assembled.
+		bool flip = ShouldFlipRows(pixels[0], out float sunRow, out float expectDirect,
+			out float expectFlipped);
 
 		if (flip)
 		{
@@ -305,36 +305,50 @@ static class SkyGradientBaker
 		Debug.Log($"[BaselineSky] baked {CubemapSize}^2 sky cubemap to {CubemapPath}\n" +
 			$"  frozen at sun elevation {CubemapSunElevationDegrees} deg, observer " +
 			$"{BakeAltitude} above the surface, {ScatteringSteps} scattering steps\n" +
-			$"  seam error: direct {direct:F5}, flipped {flipped:F5} -> using " +
-			$"{(flip ? "FLIPPED" : "direct")} row order\n" +
-			"  If both numbers are large the face basis is wrong, not just the row order - " +
-			"expect visible seams.");
+			$"  brightest texel on +X is at row {sunRow:F1}; the sun must be at " +
+			$"{expectDirect:F1} unflipped or {expectFlipped:F1} flipped\n" +
+			$"  -> using {(flip ? "FLIPPED" : "direct")} row order\n" +
+			"  If the measured row is near NEITHER prediction, the face basis is wrong rather " +
+			"than the row order, and seams will remain.");
 
 		Selection.activeObject = cubemap;
 	}
 
 	/// <summary>
-	/// Mean absolute difference across the seam where the +Z face meets the +Y face. Those two
-	/// view almost the same directions along their shared edge, so a correct assembly makes
-	/// this near zero and a vertical flip makes it large.
+	/// Decides the row order by finding the sun.
+	///
+	/// The sun is placed at a known elevation in the plane of +X and up, so on the +X face it
+	/// must land at a computable texel: that face is parameterised as dir proportional to
+	/// (1, -v, -u), and normalising the sun direction by its x component gives (1, tan e, 0),
+	/// hence u = 0 and v = -tan(e). The two row-order hypotheses put it about 119 rows apart
+	/// at 256^2, so the measurement is not close to ambiguous.
+	///
+	/// The bake contains no sun disc - that is added in the shader - but the Mie forward lobe
+	/// peaks at the same direction, so the brightest texel is still the sun.
 	/// </summary>
-	static float SeamError(Color[][] pixels, bool flipVertically)
+	static bool ShouldFlipRows(Color[] positiveX, out float measuredRow,
+		out float expectedDirect, out float expectedFlipped)
 	{
-		Color[] side = flipVertically ? FlipRows(pixels[4], CubemapSize) : pixels[4];   // +Z
-		Color[] top = flipVertically ? FlipRows(pixels[2], CubemapSize) : pixels[2];    // +Y
+		float radians = CubemapSunElevationDegrees * Mathf.Deg2Rad;
+		float v = -Mathf.Tan(radians);
+		float idY = (v + 1f) * 0.5f * CubemapSize - 0.5f;
 
-		// GetPixels is row 0 = bottom, so +Z's shared edge with +Y is its top row.
-		int sideRow = CubemapSize - 1;
-		const int topRow = 0;
+		// Read-back arrays are row 0 = bottom, while the compute writes id.y = 0 at the top.
+		expectedDirect = CubemapSize - 1 - idY;
+		expectedFlipped = idY;
 
-		float total = 0f;
-		for (int x = 0; x < CubemapSize; x++)
+		int brightest = 0;
+		float best = -1f;
+		for (int i = 0; i < positiveX.Length; i++)
 		{
-			Color a = side[sideRow * CubemapSize + x];
-			Color b = top[topRow * CubemapSize + x];
-			total += Mathf.Abs(a.r - b.r) + Mathf.Abs(a.g - b.g) + Mathf.Abs(a.b - b.b);
+			Color c = positiveX[i];
+			float luminance = c.r + c.g + c.b;
+			if (luminance > best) { best = luminance; brightest = i; }
 		}
-		return total / (CubemapSize * 3f);
+
+		measuredRow = brightest / CubemapSize;
+
+		return Mathf.Abs(measuredRow - expectedFlipped) < Mathf.Abs(measuredRow - expectedDirect);
 	}
 
 	static Color[] FlipRows(Color[] pixels, int size)

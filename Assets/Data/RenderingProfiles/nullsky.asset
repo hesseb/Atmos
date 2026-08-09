@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: nullsky
   m_EditorClassIdentifier: Assembly-CSharp::PostProcessRendererProfile
   id: nullsky
-  description: 'Control, not a renderer: the sky pass with a passthrough fragment.
-    Subtract from any sky to remove the cost of the pass structure.'
+  description: 'Control: the sky pass with a passthrough fragment and no aerial perspective.
+    Subtract from noatmo to price the sky pass structure itself.'
   effects:
   - effect: {fileID: 11400000, guid: 7526e0f14e0a0a7479aeb2e5d87ae0a3, type: 2}
     enabled: 0
