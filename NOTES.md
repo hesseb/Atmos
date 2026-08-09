@@ -1397,3 +1397,43 @@ Options, none taken yet:
 **Deferred until after stages 2 and 3.** The Rayleigh phase is precisely what creates the
 angular structure of a sunset, and multiple scattering is what fills the twilight band — judging
 sunset appearance before either has landed would be premature.
+
+### To explore: a hybrid — grow the planet *and* adjust the parameters
+Rather than choosing between Earth-proportioned geometry (which puts every benchmark camera in
+space) and toy geometry with physical constants (which cannot make a sunset), meet in the
+middle: grow the planet part of the way and cover the remaining deficit with coefficients,
+stating both.
+
+**Two knobs, not one.** The terrain globe is pinned at radius 150 world units, so the planet's
+real size is set entirely by `k`, the kilometres per world unit. The second knob is
+`atmosphereThickness` in world units, which should be `100/k` to keep the column at Earth's
+100 km — the current setup gets this wrong by leaving the column 110 units thick regardless.
+
+| k (km/unit) | planet (km) | thickness (u) | H/R | horizon air mass | coefficients × Hillaire | altitude 12 u |
+|---|---|---|---|---|---|---|
+| 0.909 (now) | 136 | 110 | 0.733 | 5.2 | 6.8 | 11 km |
+| 2 | 300 | 50 | 0.333 | 7.7 | 4.6 | 24 km |
+| 3 | 450 | 33 | 0.222 | 9.4 | 3.8 | 36 km |
+| **5** | **750** | **20** | **0.133** | **12.1** | **2.9** | **60 km** |
+| 8 | 1200 | 12.5 | 0.083 | 15.3 | 2.3 | 96 km |
+| 12 | 1800 | 8.3 | 0.056 | 18.8 | 1.9 | 144 km — camera leaves the column |
+| 42.5 | 6375 | 2.4 | **0.0157** | 35.4 | **1.0** | 510 km — deep space |
+
+Air mass grows only as `sqrt(k)`, so the coefficient inflation needed to reach Earth's horizon
+optical depth falls as `1/sqrt(k)` — halving the fudge costs a 4× larger planet.
+
+**The binding constraint is the camera**, not the physics: at 12 world units it has to stay
+inside the column, which caps `k` near 8. Somewhere around **k = 3–5** looks like the sweet
+spot — an air mass of 9–12 against Earth's 35, coefficients only ~3–4× physical instead of
+6.8×, and the strategy view at a plausible 36–60 km.
+
+Worth noting what this would make the deviation list say: instead of "the coefficients are 3×
+too large", it becomes "the coefficients are 3× physical **because** the planet is 8× too
+small, and here is the curve relating the two". That is a far better RQ3 answer, and it turns
+the inherited implementation's fudge into a measured adaptation.
+
+Things to check before committing to it: terrain LOD thresholds and `TestbedCamera` altitude
+limits are tuned in world units and would need revisiting; the aerial perspective's
+`terrestrialClipDst` is derived from `bodyRadius`; and every camera bookmark and benchmark
+view is expressed in world-unit altitudes, so their *meaning* in kilometres changes even
+though the numbers do not.
