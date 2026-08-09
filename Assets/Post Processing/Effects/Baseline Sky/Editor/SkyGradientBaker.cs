@@ -164,6 +164,189 @@ static class SkyGradientBaker
 		Selection.activeObject = AssetDatabase.LoadAssetAtPath<Texture2D>(BakedPath);
 	}
 
+	// ------------------------------------------------------------------ cubemap
+
+	const string CubemapPath = Folder + "/SkyCubemap.asset";
+	const int CubemapSize = 256;
+
+	/// <summary>
+	/// The sun elevation the cubemap is frozen at. A cubemap cannot track the sun - that is
+	/// the whole point of the variant - so this is the single moment it is correct for.
+	/// Chosen as mid-morning rather than noon or sunset: it makes the failure visible in both
+	/// directions as the day cycle runs past it.
+	/// </summary>
+	const float CubemapSunElevationDegrees = 25f;
+
+	/// <summary>
+	/// Face bases, expressed so that the compute's v runs **downward** across the image, which
+	/// is the Direct3D cube map convention:
+	///   +X (1,-v,-u)   -X (-1,-v,u)   +Y (u,1,v)   -Y (u,-1,-v)   +Z (u,-v,1)   -Z (-u,-v,-1)
+	/// Order matches UnityEngine.CubemapFace.
+	/// </summary>
+	static readonly Vector3[][] FaceBasis =
+	{
+		new[] { new Vector3(1, 0, 0),  new Vector3(0, 0, -1), new Vector3(0, -1, 0) },  // +X
+		new[] { new Vector3(-1, 0, 0), new Vector3(0, 0, 1),  new Vector3(0, -1, 0) },  // -X
+		new[] { new Vector3(0, 1, 0),  new Vector3(1, 0, 0),  new Vector3(0, 0, 1) },   // +Y
+		new[] { new Vector3(0, -1, 0), new Vector3(1, 0, 0),  new Vector3(0, 0, -1) },  // -Y
+		new[] { new Vector3(0, 0, 1),  new Vector3(1, 0, 0),  new Vector3(0, -1, 0) },  // +Z
+		new[] { new Vector3(0, 0, -1), new Vector3(-1, 0, 0), new Vector3(0, -1, 0) }   // -Z
+	};
+
+	[MenuItem("Testbed/Baseline Sky/Bake Sky Cubemap From PBR")]
+	static void BakeCubemap()
+	{
+		AtmosphereEffect atmosphere = FindAtmosphere();
+		var compute = AssetDatabase.LoadAssetAtPath<ComputeShader>(ComputePath);
+
+		if (atmosphere == null || compute == null)
+		{
+			Debug.LogError("[BaselineSky] need both an AtmosphereEffect asset and " +
+				$"{ComputePath} to bake.");
+			return;
+		}
+
+		atmosphere.ApplyAtmosphereValuesTo(compute);
+		if (atmosphere.transmittanceLUT == null)
+		{
+			Debug.LogError("[BaselineSky] the atmosphere's transmittance LUT is null - open " +
+				"the scene containing the atmosphere and try again.");
+			return;
+		}
+
+		int kernel = compute.FindKernel("BakeSkyCubemapFace");
+
+		var face = new RenderTexture(CubemapSize, CubemapSize, 0, RenderTextureFormat.ARGBFloat)
+		{
+			enableRandomWrite = true,
+			name = "Sky Cubemap Face"
+		};
+		face.Create();
+
+		compute.SetTexture(kernel, "FaceResult", face);
+		compute.SetTexture(kernel, "TransmittanceLUT", atmosphere.transmittanceLUT);
+		compute.SetInt("faceSize", CubemapSize);
+		compute.SetInt("numScatteringSteps", ScatteringSteps);
+		compute.SetFloat("bakeAltitude", BakeAltitude);
+
+		Vector3 up = Vector3.up;
+		Vector3 east = Vector3.right;
+		compute.SetVector("observerUp", up);
+
+		float radians = CubemapSunElevationDegrees * Mathf.Deg2Rad;
+		compute.SetVector("dirToSun", (up * Mathf.Sin(radians) + east * Mathf.Cos(radians)).normalized);
+
+		int groups = Mathf.CeilToInt(CubemapSize / 8f);
+		var pixels = new Color[6][];
+
+		try
+		{
+			for (int f = 0; f < 6; f++)
+			{
+				EditorUtility.DisplayProgressBar("Baking sky cubemap",
+					$"face {(CubemapFace)f}", (f + 1) / 6f);
+
+				compute.SetVector("faceForward", FaceBasis[f][0]);
+				compute.SetVector("faceRight", FaceBasis[f][1]);
+				compute.SetVector("faceUp", FaceBasis[f][2]);
+				compute.Dispatch(kernel, groups, groups, 1);
+
+				pixels[f] = ReadBack(face, CubemapSize);
+			}
+		}
+		finally
+		{
+			EditorUtility.ClearProgressBar();
+		}
+
+		face.Release();
+		Object.DestroyImmediate(face);
+
+		WriteCubemap(pixels);
+	}
+
+	static Color[] ReadBack(RenderTexture source, int size)
+	{
+		var texture = new Texture2D(size, size, TextureFormat.RGBAFloat, false, linear: true);
+		RenderTexture previous = RenderTexture.active;
+		RenderTexture.active = source;
+		texture.ReadPixels(new Rect(0, 0, size, size), 0, 0);
+		texture.Apply();
+		RenderTexture.active = previous;
+
+		Color[] pixels = texture.GetPixels();
+		Object.DestroyImmediate(texture);
+		return pixels;
+	}
+
+	static void WriteCubemap(Color[][] pixels)
+	{
+		// Cube map face orientation silently mirrors or rotates if the convention is wrong,
+		// and the result still looks like a sky - just with seams. Rather than trust the
+		// convention, measure the discontinuity across a seam both ways and take the better.
+		// The numbers are logged, so a wrong answer is visible instead of assumed.
+		float direct = SeamError(pixels, flipVertically: false);
+		float flipped = SeamError(pixels, flipVertically: true);
+		bool flip = flipped < direct;
+
+		if (flip)
+		{
+			for (int f = 0; f < 6; f++) { pixels[f] = FlipRows(pixels[f], CubemapSize); }
+		}
+
+		var cubemap = new Cubemap(CubemapSize, TextureFormat.RGBAHalf, mipChain: false);
+		for (int f = 0; f < 6; f++) { cubemap.SetPixels(pixels[f], (CubemapFace)f); }
+		cubemap.Apply();
+
+		AssetDatabase.DeleteAsset(CubemapPath);
+		AssetDatabase.CreateAsset(cubemap, CubemapPath);
+		AssetDatabase.SaveAssets();
+
+		Debug.Log($"[BaselineSky] baked {CubemapSize}^2 sky cubemap to {CubemapPath}\n" +
+			$"  frozen at sun elevation {CubemapSunElevationDegrees} deg, observer " +
+			$"{BakeAltitude} above the surface, {ScatteringSteps} scattering steps\n" +
+			$"  seam error: direct {direct:F5}, flipped {flipped:F5} -> using " +
+			$"{(flip ? "FLIPPED" : "direct")} row order\n" +
+			"  If both numbers are large the face basis is wrong, not just the row order - " +
+			"expect visible seams.");
+
+		Selection.activeObject = cubemap;
+	}
+
+	/// <summary>
+	/// Mean absolute difference across the seam where the +Z face meets the +Y face. Those two
+	/// view almost the same directions along their shared edge, so a correct assembly makes
+	/// this near zero and a vertical flip makes it large.
+	/// </summary>
+	static float SeamError(Color[][] pixels, bool flipVertically)
+	{
+		Color[] side = flipVertically ? FlipRows(pixels[4], CubemapSize) : pixels[4];   // +Z
+		Color[] top = flipVertically ? FlipRows(pixels[2], CubemapSize) : pixels[2];    // +Y
+
+		// GetPixels is row 0 = bottom, so +Z's shared edge with +Y is its top row.
+		int sideRow = CubemapSize - 1;
+		const int topRow = 0;
+
+		float total = 0f;
+		for (int x = 0; x < CubemapSize; x++)
+		{
+			Color a = side[sideRow * CubemapSize + x];
+			Color b = top[topRow * CubemapSize + x];
+			total += Mathf.Abs(a.r - b.r) + Mathf.Abs(a.g - b.g) + Mathf.Abs(a.b - b.b);
+		}
+		return total / (CubemapSize * 3f);
+	}
+
+	static Color[] FlipRows(Color[] pixels, int size)
+	{
+		var flipped = new Color[pixels.Length];
+		for (int y = 0; y < size; y++)
+		{
+			System.Array.Copy(pixels, y * size, flipped, (size - 1 - y) * size, size);
+		}
+		return flipped;
+	}
+
 	static AtmosphereEffect FindAtmosphere()
 	{
 		foreach (string guid in AssetDatabase.FindAssets("t:AtmosphereEffect"))
