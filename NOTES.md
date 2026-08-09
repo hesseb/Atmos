@@ -896,3 +896,13 @@ band is where the gradient is steepest.
 
 Marching *through* the planet instead was not an option: `getScatteringValues` takes height as
 `|pos| − planetRadius`, so a negative height makes the density exponential blow up.
+
+**Resolved.** Sky-only baking fixed the seam. The chain of three wrong diagnoses is worth
+keeping as a record: face orientation (never wrong), sampling frame (wrong, and a real bug,
+but not the seam's cause), and finally planet occlusion baked into a background (the actual
+cause). The self-check gave a false alarm at every step, because each version rested on an
+assumption that was only nearly true.
+
+Consequence for the numbers already taken: the `smoke` timings stand — texture *content* does
+not change the cost of a texture fetch — but any RQ1 figure from `baseline-baked` or
+`baseline-cubemap` predates the fix and must be recaptured.
