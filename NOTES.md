@@ -1214,3 +1214,25 @@ Two display bugs the run exposed: the minimum extinction printed as `0.0000` und
 the value that matters is 1.9e-05, and the sun's reference angle rendered as `0,2667` from a
 raw interpolation — the sv-SE decimal comma leaking into the report despite this project having
 been bitten by that before.
+
+### Bake stamp implemented
+The staleness hazard recorded earlier now has a detector. `SkyBakeStamp` (a ScriptableObject
+in `Resources`) records, per baked asset, a hash of the scene values it was derived from;
+`BenchmarkEnvironment.Validate` recomputes from the live scene and emits `BAKE_STALE:<asset>`
+into `run.json`'s warnings, next to the numbers the staleness invalidates.
+
+Two design points worth keeping:
+
+- **Only scene-derived values enter the hash.** The bakers' own constants — altitude, azimuth,
+  step counts, resolutions — are recorded in readable form for diagnosis but deliberately
+  excluded, because they change only by editing the baker, which is visible in a diff, whereas
+  a scene parameter changes by dragging a slider and leaves no trace at all.
+- **Each asset declares its recipe**, so the check knows what it depends on rather than
+  inferring it. `SkyGradient.exr` is `ToneMap` — it is inverse-mapped against the tone-map
+  constants and stales when those move even if no atmosphere parameter did. `SkyGradientBaked`
+  and `SkyCubemap` are `Atmosphere` — they store raw radiance, so the tone map is applied at
+  runtime and does *not* stale them. Getting that backwards would have made the stamp fire on
+  the wrong changes and stay quiet on the right ones.
+
+A first attempt reconstructed each entry's inputs by parsing the stored text and guessing which
+parts came from where. That was clever and brittle; the recipe enum replaced it.

@@ -114,6 +114,12 @@ static class SkyGradientTools
 		AssetDatabase.ImportAsset(GradientPath, ImportAssetOptions.ForceUpdate);
 		ConfigureImporter(GradientPath);
 
+		// This gradient is inverse-tone-mapped, so it is the tone-map constants it goes stale
+		// against - not the atmosphere.
+		SkyBakeStampWriter.Record(GradientPath, SkyBakeStamp.Recipe.ToneMap, null, renderer,
+			new SkyBakeStamp.Inputs().Add("bakeWidth", Width).Add("bakeHeight", Height)
+				.Add("bakeZenithFalloff", ZenithFalloff));
+
 		Debug.Log($"[BaselineSky] wrote {Width}x{Height} sky gradient to {GradientPath}\n" +
 			"  U = view elevation (0 down, 0.5 horizon, 1 zenith), V = sun elevation (-90 to +90)\n" +
 			$"  Linear EXR, pre-tone-map. Inverted against intensity={intensity}, " +
