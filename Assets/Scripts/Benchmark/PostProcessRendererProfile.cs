@@ -28,11 +28,35 @@ public class PostProcessRendererProfile : RendererProfile
 		public bool active;
 	}
 
+	/// <summary>Which sky this profile wants. Orthogonal to the effect toggles, because the
+	/// sky is drawn from a command buffer rather than from the post-processing chain.</summary>
+	public enum SkyOverride
+	{
+		/// <summary>Inherit whatever the scene is set to.</summary>
+		LeaveAlone,
+		/// <summary>Baseline renderer off. The physically based sky draws if its effect is
+		/// enabled; otherwise nothing draws a sky at all.</summary>
+		Off,
+		/// <summary>Hand-authored gradient LUT.</summary>
+		Gradient,
+		/// <summary>Gradient LUT baked off the physically based renderer. Same cost as
+		/// Gradient; the difference is the authoring method.</summary>
+		GradientBaked,
+		Cubemap,
+		/// <summary>The measurement control: the sky pass with no shading.</summary>
+		Null
+	}
+
 	[Tooltip("Effects to force on or off. Effects not listed keep whatever the scene has.")]
 	public EffectToggle[] effects;
 
 	[Tooltip("Scene objects to activate or deactivate, by hierarchy path.")]
 	public ObjectToggle[] objects;
+
+	[Tooltip("Which sky to draw. Every profile should state this explicitly - LeaveAlone " +
+		"inherits whatever the previous pass happened to leave, which is how state leaks " +
+		"between passes.")]
+	public SkyOverride sky = SkyOverride.LeaveAlone;
 
 	public override void Apply(BenchmarkSceneRefs refs, RestoreScope scope)
 	{
@@ -67,6 +91,40 @@ public class PostProcessRendererProfile : RendererProfile
 				scope.Set(() => captured.activeSelf, v => captured.SetActive(v), toggle.active);
 			}
 		}
+
+		ApplySkyOverride(refs, scope);
+	}
+
+	void ApplySkyOverride(BenchmarkSceneRefs refs, RestoreScope scope)
+	{
+		if (sky == SkyOverride.LeaveAlone) { return; }
+
+		BaselineSkyRenderer baseline = refs.baselineSky;
+		if (baseline == null)
+		{
+			Debug.LogWarning($"[Benchmark] profile '{id}' asks for sky '{sky}', but there is no " +
+				"BaselineSkyRenderer in the scene - the sky will be whatever the scene has.", this);
+			return;
+		}
+
+		// Variant first, so that enabling the renderer never briefly attaches the wrong sky.
+		if (sky != SkyOverride.Off)
+		{
+			BaselineSkyRenderer.Variant variant;
+			switch (sky)
+			{
+				case SkyOverride.Cubemap: variant = BaselineSkyRenderer.Variant.Cubemap; break;
+				case SkyOverride.GradientBaked: variant = BaselineSkyRenderer.Variant.GradientBaked; break;
+				case SkyOverride.Null: variant = BaselineSkyRenderer.Variant.Null; break;
+				default: variant = BaselineSkyRenderer.Variant.Gradient; break;
+			}
+
+			scope.Set(() => baseline.variant, v => baseline.variant = v, variant);
+		}
+
+		// A component, so Unity discards this on exiting play mode even if the scope somehow
+		// does not run - unlike the effect flags above, which are asset state.
+		scope.Set(() => baseline.enabled, v => baseline.enabled = v, sky != SkyOverride.Off);
 	}
 
 	public override string DescribeSettings(BenchmarkSceneRefs refs)
@@ -83,6 +141,20 @@ public class PostProcessRendererProfile : RendererProfile
 				if (!first) { sb.Append(", "); }
 				sb.Append(effect.name).Append('=').Append(effect.enabled ? "on" : "off");
 				first = false;
+			}
+		}
+
+		// Which sky ACTUALLY rendered, read back from the renderer rather than from what this
+		// profile requested - the same principle as hashing the observed camera pose rather
+		// than the planned one. A profile that silently failed to apply must not be able to
+		// claim in run.json that it did.
+		if (refs.renderingManager != null)
+		{
+			sb.Append(" | sky: ").Append(refs.renderingManager.ActiveMode);
+
+			if (refs.baselineSky != null && refs.renderingManager.ActiveMode == SkyMode.Baseline)
+			{
+				sb.Append('/').Append(refs.baselineSky.variant);
 			}
 		}
 

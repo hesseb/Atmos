@@ -22,9 +22,12 @@ public class BaselineSkyRenderer : MonoBehaviour
 {
 	public enum Variant
 	{
-		/// <summary>2D LUT indexed by (view elevation, sun elevation). Responds to time of
-		/// day and is hand-editable.</summary>
+		/// <summary>Hand-authored 2D LUT indexed by (view elevation, sun elevation). Responds
+		/// to time of day and is editable in any image editor.</summary>
 		Gradient,
+		/// <summary>The same lookup, but from a LUT baked off the physically based renderer.
+		/// Identical cost to Gradient - the difference is entirely in the authoring.</summary>
+		GradientBaked,
 		/// <summary>A single static cubemap. Cheapest, but blind to the sun moving.</summary>
 		Cubemap,
 		/// <summary>No shading at all - the measurement control. See DrawSkyNull.shader.</summary>
@@ -38,7 +41,11 @@ public class BaselineSkyRenderer : MonoBehaviour
 	public Shader nullShader;
 
 	[Header("Sky")]
+	[Tooltip("Hand-authored. Generate a starting point with Testbed > Baseline Sky.")]
 	public Texture2D skyGradient;
+	[Tooltip("Baked from the physically based renderer. Same shader path as the hand-authored " +
+		"gradient, so the two differ only in how the texture was produced.")]
+	public Texture2D skyGradientBaked;
 	public Cubemap skyCubemap;
 	public float skyIntensity = 1f;
 
@@ -158,15 +165,21 @@ public class BaselineSkyRenderer : MonoBehaviour
 		{
 			material.EnableKeyword("SKY_CUBEMAP");
 			material.DisableKeyword("SKY_GRADIENT");
+
+			if (skyCubemap != null) { material.SetTexture("SkyCubemap", skyCubemap); }
 		}
 		else
 		{
 			material.EnableKeyword("SKY_GRADIENT");
 			material.DisableKeyword("SKY_CUBEMAP");
-		}
 
-		if (skyGradient != null) { material.SetTexture("SkyGradient", skyGradient); }
-		if (skyCubemap != null) { material.SetTexture("SkyCubemap", skyCubemap); }
+			// Gradient and GradientBaked take the same path and cost the same. That is the
+			// point of the pair: the only difference between them is how the texture was
+			// authored, so any measured difference is noise and any visual difference is
+			// entirely attributable to the authoring method.
+			Texture2D gradient = variant == Variant.GradientBaked ? skyGradientBaked : skyGradient;
+			if (gradient != null) { material.SetTexture("SkyGradient", gradient); }
+		}
 		if (blueNoise != null) { material.SetTexture("BlueNoise", blueNoise); }
 
 		Vector3 planetCentre = ObserverGeometry.PlanetCentre(ref planet);
