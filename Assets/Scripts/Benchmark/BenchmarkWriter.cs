@@ -545,6 +545,15 @@ public static class BenchmarkWriter
 			  .Append("nothing below is a comparison. Fix this first.\n\n");
 		}
 
+		if (geometry.compared > 0 && !geometry.countersPresent)
+		{
+			sb.Append("> **Geometry could not be checked.** The Render profiler counters read ")
+			  .Append("zero on every frame, which means they were stripped - this is a release ")
+			  .Append("player. Frame timings are unaffected and the spread below stands, but ")
+			  .Append("nothing here can confirm the repeats drew the same thing. Use a ")
+			  .Append("development build if that assurance matters.\n\n");
+		}
+
 		if (geometry.differing > 0)
 		{
 			sb.Append("Geometry differed on **").Append(geometry.differing.ToString(Ci))
@@ -639,6 +648,11 @@ public static class BenchmarkWriter
 	{
 		public int compared, differing;
 		public double worstWallMs, medianWallMs;
+		/// <summary>False when the Render profiler counters were unavailable - a release
+		/// player strips them. Without this, every frame reports zero geometry, every pass
+		/// agrees trivially, and the check reports a confident PASS having compared
+		/// nothing.</summary>
+		public bool countersPresent;
 
 		public double Fraction => compared > 0 ? (double)differing / compared : 0.0;
 
@@ -654,6 +668,7 @@ public static class BenchmarkWriter
 			get
 			{
 				if (compared == 0) { return "n/a"; }
+				if (!countersPresent) { return "n/a (profiler counters unavailable)"; }
 				if (differing == 0) { return "**PASS**"; }
 				return Isolated ? "**PASS** (isolated stalls)" : "**FAIL**";
 			}
@@ -667,7 +682,7 @@ public static class BenchmarkWriter
 	/// </summary>
 	static GeometryAgreement CompareGeometry(List<PassResult> passes)
 	{
-		var agreement = new GeometryAgreement();
+		var agreement = new GeometryAgreement { countersPresent = CountersPresent(passes) };
 		var wall = new List<double>();
 
 		foreach (PassResult pass in passes)
@@ -1426,6 +1441,33 @@ public static class BenchmarkWriter
 		sb.Append("\nScene hash covers draw calls, triangles and LOD state. It should match ")
 		  .Append("between repeats of one profile, and may legitimately differ between ")
 		  .Append("profiles by the passes each adds.\n");
+
+		if (!CountersPresent(passes))
+		{
+			sb.Append("\n> **Scene hash is degraded here.** Draw calls and triangles read zero ")
+			  .Append("on every frame - the Render profiler counters were stripped, which is a ")
+			  .Append("release player. Only the LOD count still contributes, so two profiles ")
+			  .Append("drawing genuinely different geometry can share a scene hash. Do not read ")
+			  .Append("a match as evidence they drew the same thing.\n");
+		}
+	}
+
+	/// <summary>
+	/// Whether the Render profiler counters were live. A release player strips them, and
+	/// every counter then reads zero - which several checks would otherwise interpret as
+	/// agreement rather than as absence.
+	/// </summary>
+	static bool CountersPresent(List<PassResult> passes)
+	{
+		foreach (PassResult pass in passes)
+		{
+			if (pass.geometry == null) { continue; }
+			foreach (FrameGeometry g in pass.geometry)
+			{
+				if (g.drawCalls > 0) { return true; }
+			}
+		}
+		return false;
 	}
 
 	static string M(double v) => double.IsNaN(v) ? "n/a" : v.ToString("F3", Ci);

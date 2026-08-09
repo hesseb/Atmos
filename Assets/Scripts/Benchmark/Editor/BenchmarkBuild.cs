@@ -24,10 +24,35 @@ static class BenchmarkBuild
 	const string StampFolder = "Assets/Resources";
 	const string StampPath = StampFolder + "/BuildStamp.asset";
 
-	[MenuItem("Testbed/Benchmark/Build Standalone Player")]
-	static void Build()
+	/// <summary>
+	/// The default. Keeps the profiler alive, so the harness records draw calls, triangles
+	/// and memory - which feed scene_hash and the self-check's geometry comparison, the thing
+	/// that distinguishes a one-frame stall from a systematic difference.
+	/// </summary>
+	[MenuItem("Testbed/Benchmark/Build Standalone Player (Development)")]
+	static void BuildDevelopment() { Build(development: true); }
+
+	/// <summary>
+	/// No profiler overhead, and the closest thing to shipping conditions.
+	///
+	/// Frame timings survive: FrameTimingManager is not a development-build feature and works
+	/// given enableFrameTimingStats, which this project sets. The ProfilerRecorder counters
+	/// are the open question - Unity strips much of the profiler from a release player, and
+	/// exactly which Render counters survive in 6000.3.21f1 is not something to assume.
+	///
+	/// Build both and compare `counters_available` in the two run.json files: that turns the
+	/// question into a measured fact, and the frame-time difference between them is the cost
+	/// of the development flag.
+	/// </summary>
+	[MenuItem("Testbed/Benchmark/Build Standalone Player (Release)")]
+	static void BuildRelease() { Build(development: false); }
+
+	static void Build(bool development)
 	{
-		string directory = EditorUtility.SaveFolderPanel("Build benchmark player to", "", "");
+		string kind = development ? "development" : "release";
+
+		string directory = EditorUtility.SaveFolderPanel(
+			$"Build {kind} benchmark player to", "", "");
 		if (string.IsNullOrEmpty(directory)) { return; }
 
 		BuildStamp stamp = WriteStamp();
@@ -40,16 +65,21 @@ static class BenchmarkBuild
 			if (!proceed) { return; }
 		}
 
-		string exe = IOPath.Combine(directory, $"{SanitiseProduct()}.exe");
+		// Each kind gets its own subfolder. A player is an exe plus a _Data folder and
+		// several DLLs, so building both into one directory would have the second silently
+		// overwrite the first - and results live beside the exe, so they would mix too.
+		string product = SanitiseProduct();
+		string target = IOPath.Combine(directory, $"{product}-{kind}");
+		string exe = IOPath.Combine(target, $"{product}.exe");
 
 		var options = new BuildPlayerOptions
 		{
 			scenes = EnabledScenes(),
 			locationPathName = exe,
 			target = BuildTarget.StandaloneWindows64,
-			// Development: the release player strips the profiler counters the harness reads.
-			// AllowDebugging is deliberately off - a managed debugger changes timings.
-			options = BuildOptions.Development
+			// AllowDebugging is deliberately off even for development - attaching a managed
+			// debugger changes timings, and this build exists to measure them.
+			options = development ? BuildOptions.Development : BuildOptions.None
 		};
 
 		if (options.scenes.Length == 0)
@@ -63,17 +93,21 @@ static class BenchmarkBuild
 
 		if (summary.result != BuildResult.Succeeded)
 		{
-			Debug.LogError($"[Benchmark] build {summary.result}: {summary.totalErrors} error(s).");
+			Debug.LogError($"[Benchmark] {kind} build {summary.result}: " +
+				$"{summary.totalErrors} error(s).");
 			return;
 		}
 
-		Debug.Log($"[Benchmark] built {exe}\n" +
-			$"  commit {stamp.commit}{(stamp.dirty ? " (dirty)" : "")} on {stamp.branch}\n" +
-			$"  size   {summary.totalSize / (1024 * 1024)} MB\n\n" +
-			"Run it windowed - NOT with -batchmode, where WaitForEndOfFrame never resumes and " +
-			"the harness would hang. Example:\n" +
-			$"  \"{exe}\" -benchmark framing -mode selfcheck -resolution 1920x1080 " +
-			"-machine \"desktop\" -strict -quitWhenDone");
+		Debug.Log($"[Benchmark] built {kind} player: {exe}\n" +
+			$"  commit  {stamp.commit}{(stamp.dirty ? " (dirty)" : "")} on {stamp.branch}\n" +
+			$"  size    {summary.totalSize / (1024 * 1024)} MB\n" +
+			$"  results {IOPath.Combine(target, "BenchmarkResults")}\n" +
+			(development
+				? "  profiler counters expected available\n"
+				: "  profiler counters likely stripped - check counters_available in run.json\n") +
+			"\nRun it windowed - NOT with -batchmode, where WaitForEndOfFrame never resumes " +
+			"and the harness would hang. Example:\n" +
+			$"  \"{exe}\" -benchmark framing -mode selfcheck -machine \"desktop\" -quitWhenDone");
 
 		EditorUtility.RevealInFinder(exe);
 	}

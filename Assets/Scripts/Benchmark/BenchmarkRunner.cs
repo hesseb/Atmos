@@ -600,6 +600,22 @@ public class BenchmarkRunner : MonoBehaviour
 			CounterAvailability = Sampler.CounterAvailability();
 
 			if (!FrameTimingAvailable) { AddWarning("NO_GPU_TIME"); }
+
+			// A release player strips much of the profiler. Recording that as a warning is
+			// what makes a development-vs-release comparison legible - otherwise the only
+			// evidence is a map in run.json nobody reads.
+			if (CounterAvailability != null)
+			{
+				int missing = 0;
+				foreach ((string _, bool available) in CounterAvailability)
+				{
+					if (!available) { missing++; }
+				}
+				if (missing > 0)
+				{
+					AddWarning($"COUNTERS_UNAVAILABLE:{missing}/{CounterAvailability.Count}");
+				}
+			}
 			if (AttributionAnomalies > 0)
 			{
 				AddWarning($"TIMING_ATTRIBUTION_ANOMALIES:{AttributionAnomalies}");
