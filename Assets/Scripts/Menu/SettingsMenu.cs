@@ -127,10 +127,6 @@ public class SettingsMenu : Menu
 		Screen.SetResolution(settings.screenSize.x, settings.screenSize.y, mode);
 		QualitySettings.vSyncCount = (settings.vsyncEnabled) ? 1 : 0;
 
-		RenderSettingsController.SetTerrainQuality(settings.terrainQuality);
-		RenderSettingsController.SetShadowQuality(settings.shadowQuality);
-
-
 		// Save
 		lastAppliedSettings = settings;
 		Settings.Save(settings);
