@@ -119,63 +119,7 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
---- !u!1 &197948334
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 197948335}
-  - component: {fileID: 197948336}
-  m_Layer: 6
-  m_Name: Moon
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &197948335
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 197948334}
-  serializedVersion: 2
-  m_LocalRotation: {x: -0.15339737, y: 0.98154956, z: -0.1114497, w: 0.024674185}
-  m_LocalPosition: {x: -732.7096, y: -328.77652, z: -37.43811}
-  m_LocalScale: {x: 33, y: 33, z: 33}
-  m_ConstrainProportionsScale: 0
-  m_Children:
-  - {fileID: 1389253765}
-  m_Father: {fileID: 1948587245}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &197948336
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 197948334}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: a5a9f3ca4b8f29b46962aec947eaf3f3, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  moonOrbitAngle: 5.14
-  moonTilt: 1.54
-  periapsis: 3.626
-  apoapsis: 4.054
-  dstMultiplier: 200
-  size: 16.5
-  resolution: 15
-  moonRenderer: {fileID: 1389253766}
-  camTest: {fileID: 0}
-  debug_dst: 4.0198226
-  freezeOrbit: 0
---- !u!43 &473265745
+--- !u!43 &189343814
 Mesh:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -353,6 +297,62 @@ Mesh:
       - serializedVersion: 1
         m_IndexStart: 0
         m_IndexCount: 0
+--- !u!1 &197948334
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 197948335}
+  - component: {fileID: 197948336}
+  m_Layer: 6
+  m_Name: Moon
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &197948335
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 197948334}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0.15339737, y: 0.98154956, z: -0.1114497, w: 0.024674185}
+  m_LocalPosition: {x: -732.7096, y: -328.77652, z: -37.43811}
+  m_LocalScale: {x: 33, y: 33, z: 33}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 1389253765}
+  m_Father: {fileID: 1948587245}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &197948336
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 197948334}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a5a9f3ca4b8f29b46962aec947eaf3f3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  moonOrbitAngle: 5.14
+  moonTilt: 1.54
+  periapsis: 3.626
+  apoapsis: 4.054
+  dstMultiplier: 200
+  size: 16.5
+  resolution: 15
+  moonRenderer: {fileID: 1389253766}
+  camTest: {fileID: 0}
+  debug_dst: 4.0198226
+  freezeOrbit: 0
 --- !u!1 &662225698
 GameObject:
   m_ObjectHideFlags: 0
@@ -432,6 +432,9 @@ MonoBehaviour:
   fadeInDuration: 0.12
   joinResolution: 8
   drawJoins: 1
+  fillEnabled: 1
+  fillColour: {r: 1, g: 0.95, b: 0.82, a: 1}
+  fillBrightness: 1.35
   layer: 5
   targetCamera: {fileID: 0}
 --- !u!114 &662225702
@@ -447,6 +450,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CountryLabelSystem
   cam: {fileID: 0}
+  picker: {fileID: 0}
   countryData: {fileID: 11400000, guid: 1bd34af60df8cb04197d7f07dc9ddf72, type: 2}
   labelData: {fileID: 11400000, guid: bc73653288e6e4e49bc0f9edc3d3eda1, type: 2}
   heightSettings: {fileID: 11400000, guid: 159ce22bf92aee440ad10625d3e3a8e9, type: 2}
@@ -465,6 +469,12 @@ MonoBehaviour:
   horizonFadeStart: 0.15
   horizonFadeEnd: 0.35
   showFailedBakes: 0
+  idleBrightness: 0.8
+  idleAlpha: 0.85
+  hoverColour: {r: 1, g: 1, b: 1, a: 1}
+  hoverScaleMultiplier: 1.05
+  hoverTransitionDuration: 0.08
+  hoverOverridesSizeFilter: 1
   logInitTime: 1
   flipFacing: 1
 --- !u!1 &698678719
@@ -915,7 +925,7 @@ MeshFilter:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1389253764}
-  m_Mesh: {fileID: 473265745}
+  m_Mesh: {fileID: 189343814}
 --- !u!1 &1433245418
 GameObject:
   m_ObjectHideFlags: 0
