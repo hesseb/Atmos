@@ -58,16 +58,39 @@ static class AtmosphereValidation
 		else { Debug.LogError(report.ToString()); }
 	}
 
+	/// <summary>
+	/// Kilometres per world unit, fixed by declaring the atmosphere column to be Earth's 100 km.
+	///
+	/// The planet cannot also be Earth-sized - the terrain globe is pinned at radius 150 - so
+	/// this maps the *vertical* structure and leaves curvature wrong. That is the honest trade:
+	/// every scale height, ozone altitude and optical depth becomes directly comparable to a
+	/// published value, while the horizon still dips far too steeply for the altitude.
+	/// </summary>
+	static float KilometresPerUnit(AtmosphereEffect a) => 100f / a.atmosphereThickness;
+
 	static void AppendParameters(StringBuilder report, AtmosphereEffect a)
 	{
-		report.Append("| parameter | value |\n|---|---|\n")
-			.Append($"| planet radius | {F(a.bodyRadius)} |\n")
-			.Append($"| atmosphere thickness | {F(a.atmosphereThickness)} |\n")
-			.Append($"| thickness / radius | {F(a.atmosphereThickness / a.bodyRadius)} (Earth 0.0157) |\n")
-			.Append($"| Rayleigh scale height | {F(a.rayleighDensityAvg * a.atmosphereThickness)} units |\n")
-			.Append($"| Mie scale height | {F(a.mieDensityAvg * a.atmosphereThickness)} units |\n")
-			.Append($"| scale height ratio | {F(a.rayleighDensityAvg / a.mieDensityAvg)} : 1 (physical 6.67 : 1) |\n")
-			.Append($"| sky / aerial steps | {a.numSkyScatteringSteps} / {a.numAerialScatteringSteps} |\n\n");
+		float km = KilometresPerUnit(a);
+
+		report.Append("| parameter | world units | kilometres |\n|---|---|---|\n")
+			.Append($"| planet radius | {F(a.bodyRadius)} | {F(a.bodyRadius * km)} |\n")
+			.Append($"| atmosphere thickness | {F(a.atmosphereThickness)} | {F(a.atmosphereThickness * km)} |\n")
+			.Append($"| Rayleigh scale height | {F(a.rayleighDensityAvg * a.atmosphereThickness)} | " +
+				$"{F(a.rayleighDensityAvg * a.atmosphereThickness * km)} (Earth 8.0) |\n")
+			.Append($"| Mie scale height | {F(a.mieDensityAvg * a.atmosphereThickness)} | " +
+				$"{F(a.mieDensityAvg * a.atmosphereThickness * km)} (Earth 1.2) |\n")
+			.Append($"| ozone peak altitude | {F(a.ozonePeakDensityAltitude * a.atmosphereThickness)} | " +
+				$"{F(a.ozonePeakDensityAltitude * a.atmosphereThickness * km)} (Earth 25.0) |\n")
+			.Append($"| ozone half-width | {F(a.atmosphereThickness / a.ozoneDensityFalloff)} | " +
+				$"{F(a.atmosphereThickness / a.ozoneDensityFalloff * km)} (Earth 15.0) |\n\n")
+			.Append($"- 1 world unit = {F(km)} km, fixed by declaring the column to be Earth's 100 km\n")
+			.Append($"- scale height ratio {F(a.rayleighDensityAvg / a.mieDensityAvg)} : 1 (Earth 6.67 : 1)\n")
+			.Append($"- thickness / radius {F(a.atmosphereThickness / a.bodyRadius)} against Earth's 0.0157, " +
+				"so **curvature is not to scale** even though the vertical structure now is\n")
+			.Append($"- sky / aerial steps {a.numSkyScatteringSteps} / {a.numAerialScatteringSteps}; " +
+				$"a sky ray from the ground to the horizon is ~212 units, i.e. " +
+				$"{F(212f / a.numSkyScatteringSteps)} units per step against a Mie scale height of " +
+				$"{F(a.mieDensityAvg * a.atmosphereThickness)}\n\n");
 	}
 
 	// ------------------------------------------------------------------ arithmetic
