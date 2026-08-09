@@ -18,6 +18,11 @@
 # Recordings can get excessive in size
 /[Rr]ecordings/
 
+# Benchmark harness output. Per-frame CSVs and screenshots get large fast; the
+# numbers that go in the thesis are archived deliberately, not by committing everything.
+/[Rr]esults/
+/BenchmarkResults/
+
 # Uncomment this line if you wish to ignore the asset store tools plugin
 # /[Aa]ssets/AssetStoreTools*
 
