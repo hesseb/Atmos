@@ -52,6 +52,31 @@ public class SimpleLodSystem : MonoBehaviour
 	}
 
 
+	/// <summary>
+	/// How many groups are currently showing their high-res mesh. Counted on demand rather
+	/// than tracked, so it costs nothing unless something asks.
+	///
+	/// The benchmark harness records this per frame: it is the direct evidence that the
+	/// terrain workload was identical between two renderer configurations, and that LOD
+	/// selection was reproducible between runs.
+	/// </summary>
+	public int HighResCount
+	{
+		get
+		{
+			if (renderers == null) { return 0; }
+
+			int count = 0;
+			for (int i = 0; i < renderers.Count; i++)
+			{
+				if (renderers[i].ShowingHighRes) { count++; }
+			}
+			return count;
+		}
+	}
+
+	public int RenderGroupCount => renderers != null ? renderers.Count : 0;
+
 	// Called on camera pre-cull
 	void UpdateLODs(Camera camera)
 	{
@@ -121,6 +146,8 @@ public class SimpleLodSystem : MonoBehaviour
 
 		bool usingDebugMat;
 		bool showingHighRes;
+
+		public bool ShowingHighRes => showingHighRes;
 
 		public RenderGroup(MeshRenderer highRes, MeshRenderer lowRes)
 		{

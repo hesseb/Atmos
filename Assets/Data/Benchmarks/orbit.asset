@@ -1,0 +1,125 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 61e6c43eeccd4824aa7a0c699b2bd99e, type: 3}
+  m_Name: orbit
+  m_EditorClassIdentifier: Assembly-CSharp::BenchmarkDefinition
+  id: orbit
+  description: 360 degree heading sweep at a typical strategy-game framing, over
+    two different terrain types. The nearest thing here to a representative workload
+    rather than an isolated condition.
+  bootFrames: 60
+  prewarmPosesEvery: 40
+  warmupFrames: 120
+  defaultSettleFrames: 12
+  flushFrames: 16
+  simulatedFps: 60
+  monthT: 0.404
+  yearT: 0.288
+  segments:
+  - label: alps
+    kind: 2
+    frames: 1200
+    settleFramesOverride: 0
+    from:
+      source: 0
+      inlineView:
+        coordinate:
+          longitude: 8
+          latitude: 46.5
+        altitude: 30
+        pitch: 55
+        heading: 0
+        roll: 0
+        fieldOfView: 60
+      bookmarkAsset: {fileID: 0}
+      bookmarkLabel: 
+      bookmarkIndex: 0
+    to:
+      source: 0
+      inlineView:
+        coordinate:
+          longitude: 8
+          latitude: 46.5
+        altitude: 30
+        pitch: 55
+        heading: 0
+        roll: 0
+        fieldOfView: 60
+      bookmarkAsset: {fileID: 0}
+      bookmarkLabel: 
+      bookmarkIndex: 0
+    ease: 0
+    sweepDegrees: 360
+    sweepAxis: 0
+    sunFrom:
+      mode: 2
+      dayT: 0
+      elevationDegrees: 0
+      rising: 0
+      highest: 1
+    sunTo:
+      mode: 2
+      dayT: 0
+      elevationDegrees: 0
+      rising: 0
+      highest: 1
+    screenshotFirstAndLast: 0
+    screenshotFrames: 000000002c0100005802000084030000
+  - label: sahara
+    kind: 2
+    frames: 1200
+    settleFramesOverride: 0
+    from:
+      source: 0
+      inlineView:
+        coordinate:
+          longitude: 10
+          latitude: 25
+        altitude: 30
+        pitch: 55
+        heading: 0
+        roll: 0
+        fieldOfView: 60
+      bookmarkAsset: {fileID: 0}
+      bookmarkLabel: 
+      bookmarkIndex: 0
+    to:
+      source: 0
+      inlineView:
+        coordinate:
+          longitude: 10
+          latitude: 25
+        altitude: 30
+        pitch: 55
+        heading: 0
+        roll: 0
+        fieldOfView: 60
+      bookmarkAsset: {fileID: 0}
+      bookmarkLabel: 
+      bookmarkIndex: 0
+    ease: 0
+    sweepDegrees: 360
+    sweepAxis: 0
+    sunFrom:
+      mode: 2
+      dayT: 0
+      elevationDegrees: 0
+      rising: 0
+      highest: 1
+    sunTo:
+      mode: 2
+      dayT: 0
+      elevationDegrees: 0
+      rising: 0
+      highest: 1
+    screenshotFirstAndLast: 0
+    screenshotFrames: 000000002c0100005802000084030000

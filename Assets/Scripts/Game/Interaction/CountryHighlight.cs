@@ -98,7 +98,7 @@ public class CountryHighlight : MonoBehaviour
 	void OnEnable()
 	{
 		if (picker == null) { picker = GetComponent<GlobePicker>(); }
-		if (worldLookup == null) { worldLookup = FindObjectOfType<WorldLookup>(); }
+		if (worldLookup == null) { worldLookup = FindFirstObjectByType<WorldLookup>(); }
 		Initialise();
 
 		EnableFillKeyword();
@@ -360,13 +360,14 @@ public class CountryHighlight : MonoBehaviour
 		ClearFill();
 		ComputeHelper.Release(segmentsBuffer, lineArgsBuffer, joinArgsBuffer);
 
-		DestroyObject(lineMaterial);
-		DestroyObject(joinMaterial);
-		DestroyObject(segmentMesh);
-		DestroyObject(joinMesh);
+		DestroySafely(lineMaterial);
+		DestroySafely(joinMaterial);
+		DestroySafely(segmentMesh);
+		DestroySafely(joinMesh);
 	}
 
-	static void DestroyObject(Object obj)
+	// Not named DestroyObject: that hides UnityEngine.Object.DestroyObject.
+	static void DestroySafely(Object obj)
 	{
 		if (obj == null) { return; }
 		if (Application.isPlaying) { Destroy(obj); }

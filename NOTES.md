@@ -100,6 +100,48 @@ allocates and costs frame time) and `SolarSystemManager.animate` (pin the sun wi
 
 ---
 
+## 2026-08-09 — Benchmark harness (milestone 3, in progress)
+
+Branch `benchmark-harness`. Plan: `C:\Users\Alex\.claude\plans\delegated-snacking-moth.md`.
+
+### Measured facts from `FrameProbe` — do not re-derive these
+
+Editor run, 600 measured frames, `Time.captureDeltaTime = 1/60`, after enabling
+**Frame Timing Stats** and **Run In Background** in Player Settings.
+
+| Question | Answer |
+|---|---|
+| Does `captureDeltaTime` throttle? | **No.** Mean wall 8.42 ms vs 16.67 if it slept. `cpuFrameTime` 8.4169 ≈ wall 8.4192 — the frame-locked design is sound. |
+| Which clock does it pin? | **`Time.deltaTime` only.** `Time.unscaledDeltaTime` ranged 2.25–18.34 ms, i.e. still real time. Assert the frame lock on `deltaTime`. |
+| GPU timing available? | **Yes**, mean `gpuFrameTime` 1.88 ms. |
+| Timing lag | **1 frame** (assumed 3–5). |
+| Per-frame attribution | **Exact** — 600 timings over 600 frames, exactly one per frame. No segment-aggregation fallback needed. |
+| `ProfilerRecorder` counters | **All 13 valid** in the editor (Render *and* Memory). Still to check in a build. |
+
+Baseline scene cost, for context: 488 draw calls, 150 batches, 68 SetPass, 2.10 M
+triangles, 1.18 M vertices, 177 shadow casters. Memory: 3.4 GB total used, 2.0 GB
+graphics. **27.6 KB GC allocated per frame** — worth chasing down later; some may be editor.
+
+### The finding that shapes RQ2
+
+**The testbed is CPU-bound: GPU 1.88 ms against CPU 8.42 ms.**
+
+This matters more than any other number here. If whole-frame time is the headline metric,
+swapping the PBR atmosphere for a cheap baseline may show almost **no** difference, because
+the CPU is the bottleneck and the GPU has idle headroom. That would be a true statement
+about this testbed and a misleading answer to RQ2, which asks about the *rendering* cost of
+the technique.
+
+So: **report GPU frame time as the primary metric**, with CPU and wall time as context, and
+state the CPU-bound condition explicitly in the methodology. Consider also reporting at a
+higher resolution, where the atmosphere's five full-screen passes shift the balance toward
+GPU-bound and the delta becomes visible in whole-frame time too.
+
+Caveat: this is an *editor* run, so CPU includes editor overhead. Re-measure in a
+standalone build before drawing conclusions about the ratio.
+
+---
+
 ## 2026-08-09 — Country hover highlight and name labels
 
 Branch `country-ui`. Grand-strategy presentation features, not thesis-critical rendering,
@@ -230,3 +272,380 @@ references, which `Component > Reset` would.
 - The atmosphere's deviations from the pre-study theory are listed in `START.md` §3 and in
   the root `CLAUDE.md`. That list is the seed of RQ3's answer — every item is either a
   finding or a defect, and it will not be reconstructable later.
+
+---
+
+## Session — benchmark harness: screenshots (milestone 3, step 8)
+
+### Timing and capture are separate runs, by design
+`BenchmarkRunner.mode` is `Timing` or `Capture`, and only a capture run writes PNGs.
+
+`ScreenCapture.CaptureScreenshotAsTexture` forces a full GPU-to-CPU readback. That stalls
+the frame it is taken on and the one after it, so capturing inside a timing run would
+corrupt the exact frames a figure is meant to illustrate — typically the twilight and
+horizon frames, which are the expensive ones and therefore the interesting ones.
+
+Splitting them is only legitimate because **world state at plan index `i` is a pure
+function of `i`**: the plan is fully resolved before the first frame renders and replayed
+identically per pass, so the image captured at frame N *is* the image the timing run
+rendered at frame N. The evidence for that claim is `plan_hash` and `pose_hash`, which both
+runs record — **check they agree before putting a figure next to a number.** `scene_hash`
+should also match between a timing and a capture run of the same benchmark, since a
+readback changes no geometry.
+
+Consequences, all enforced in code:
+- A capture run writes `measured = 0` on every row and produces no segment statistics.
+- `authoritative` is false for a capture run regardless of editor or build.
+- Repeats are ignored (they would rewrite byte-identical images).
+- The run folder is suffixed `_capture` so it cannot be confused at a glance.
+- A capture run over a benchmark with no marked frames is refused rather than replaying
+  the whole plan to produce nothing.
+
+`superSize` is fixed at 1 and must stay there: a supersized capture re-renders at a
+different resolution, which changes both FXAA and the atmosphere's per-pixel cost, so it
+would no longer be the image that was measured.
+
+### Prewarm looks like a bug and is not
+The visible burst of camera movement before a benchmark settles is the prewarm phase
+stepping a decimated sample of the run's own poses (`content/prewarmPosesEvery` frames,
+~0.5 s for a 2400-frame run). It exists because the project has no `ShaderVariantCollection`,
+so D3D11 pipeline-state creation would otherwise land inside the measured window. Those
+frames are `phase = Prewarm` and never enter statistics. `prewarmPosesEvery = 0` disables it.
+
+### Screenshot frames on the example benchmarks
+- `daycycle` — first and last of each sun sweep (6 images). The RQ1 set: the sun moves, so
+  the endpoints differ.
+- `framing` — one mid-hold image per pitch (4). *Not* first-and-last: a hold's endpoints are
+  the same pose, which would capture the same picture twice.
+- `orbit` — every 90° of each sweep (8), for sun-relative framings where the Mie forward
+  lobe shows.
+- `smoke`, `altitude` — none.
+
+`screenshots/manifest.csv` records frame index, pass, segment, resolution, camera pose,
+sky fraction and **sun elevation in degrees** — the last is there because it is the caption
+a twilight figure needs and reconstructing it from `dayT` afterwards is painful.
+
+### Self-check mode — where the noise floor comes from
+`BenchmarkRunMode.SelfCheck` replays each profile at least twice in one process (repeats
+are forced to ≥2) and writes `selfcheck.md` alongside the usual outputs.
+
+Two kinds of claim, kept deliberately separate:
+- **Comparability — pass/fail.** Pose hash identical across every pass; scene hash identical
+  *within* each profile (across profiles it may legitimately differ, by the passes each
+  adds). A failure here invalidates the spread below, so it is stated first.
+- **Spread — reported, not judged.** Max-minus-min of GPU median, p99 and 1% low across
+  repeats, per profile and segment. There is deliberately **no threshold** in the report,
+  because what counts as acceptable depends entirely on the size of the effect measured.
+
+The headline is the largest median spread across all segments. Read it as: a difference
+between two renderer configurations smaller than that cannot be distinguished from
+run-to-run variation on this machine.
+
+For calibration, the editor numbers from the earlier two-repeat run were 0.982 / 0.990 ms
+median → **0.008 ms spread (0.81%)**, against a measured atmosphere delta of 0.293–0.314 ms
+— roughly **37×** the noise floor, comfortably resolvable. That editor figure is optimistic;
+re-run in a standalone build before quoting anything, and re-measure whenever the hardware,
+driver or scene changes.
+
+p99 and 1% low columns are typically several times wider than the median column — tail
+statistics are inherently less stable, so a tail difference needs a correspondingly larger
+margin before it means anything. That is why all three are reported rather than just the
+median.
+
+### First real self-check: an editor stall, and what it changed
+`orbit`, 4 passes (pbr/noatmo × 2 repeats), editor. Noise floor **0.030 ms** (1.81%) on the
+worst segment, against a measured atmosphere delta of ~0.570 ms — about **19×**, comfortably
+resolvable. Editor figure; re-measure in a build before quoting.
+
+The interesting part was a **FAIL on scene hash**. Cause, from `frames.csv`:
+
+| frame | wall_ms | gc_alloc | draw calls | triangles | gpu_ms |
+|---|---|---|---|---|---|
+| 356 | **1002.36** | 10 KB | 407 | 2.19 M | 1.86 |
+| 357 | 59.15 | **4.3 MB** | 407 | 2.19 M | 2.01 |
+| 358 | 33.51 | 417 KB | **2443** | **13.15 M** | **0** |
+
+A one-second main-thread stall in the editor (nothing in the harness can block that long),
+then a single frame whose profiler counters absorbed roughly six frames' worth of geometry
+and whose GPU timing was invalid. **1 differing frame out of 4800 compared pairs**;
+`noatmo_r0` vs `noatmo_r1` were byte-identical throughout.
+
+So the check was right that the hashes differed and wrong about what it meant. A binary
+hash comparison cannot distinguish one stall from a systematic difference, and it declared
+a perfectly usable noise floor invalid.
+
+**Fix:** `PassResult` now retains per-measured-frame geometry (draw calls, triangles, LOD
+count, wall ms), and the self-check reports *how many* frames disagreed rather than only
+that the hash did. Under 0.5% differing → `PASS (isolated stalls)`, with the run's worst
+wall-clock frame quoted next to the median so the stall is visible. At or above that →
+`FAIL`, described as systematic. Both cases print the actual counts; the threshold only
+picks the wording.
+
+Consequence for the protocol: **an editor self-check will occasionally eat a stall.** The
+median is robust to it, the p99 and 1% low are not — the wide `pbr / alps` p99 spread
+(1.381 ms vs 0.112 ms on the neighbouring segment) is that one frame. Another reason the
+quotable noise floor has to come from a standalone build.
+
+### Standalone build path (milestone 3, step 10)
+Editor runs are never authoritative, so every number in the report has to come from a build.
+`Testbed → Benchmark → Build Standalone Player` makes one, as a **development build** —
+Unity strips the profiler from release players and the Render counters the harness records
+are among the casualties. The development flag's CPU overhead applies identically to every
+profile, so a like-for-like delta survives it; a missing counter does not.
+
+**`BuildStamp`** bakes the commit into `Assets/Resources` at build time. A player has no
+`.git` beside the executable and may be on a machine without git, so `GitInfo` cannot shell
+out the way it does in the editor — without this every build's `run.json` would record
+commit `unknown`. The asset is **gitignored**: it changes on every build, and committing it
+would dirty the tree, which would make the next stamp report dirty for no reason. The build
+prompts for confirmation if the tree is already dirty.
+
+**Command line** (all optional; anything not passed keeps the scene-authored value, so one
+build serves scripted and interactive use):
+
+```
+Atmos.exe -benchmark framing -mode selfcheck -resolution 1920x1080 \
+          -machine "desktop" -strict -quitWhenDone
+```
+
+`-benchmark <id>` selects from the runner's **`availableBenchmarks`** list — populate it in
+the inspector, because a ScriptableObject only reaches a build if something references it,
+and an unlisted definition would exist in the editor and silently not exist in the player.
+
+Exit codes: `0` ok, `1` run failed (frame-count mismatch, pose-hash mismatch, abort),
+`2` could not start (bad options, no benchmark, batch mode), `3` `-strict` violation (GPU
+timing unavailable).
+
+> **Never run the player with `-batchmode`.** `WaitForEndOfFrame` never resumes there, so
+> the end-of-frame reader never runs, `FrameCursor` never advances, and the run hangs
+> forever rather than failing. The runner now detects batch mode and refuses to start —
+> this was the single most likely way to wedge a scripted run.
+
+### In-application benchmark control (`BenchmarkHud`)
+Additional to the command line, not a replacement — scripted runs want
+`-benchmark ... -quitWhenDone`, driving it by hand wants to see the selection and press a
+key. Both go through the same `BenchmarkRunner`.
+
+| key | action |
+|---|---|
+| `F2` | cycle benchmark, wrapping through **All** past the last entry |
+| `F3` | cycle mode (Timing → Capture → SelfCheck) |
+| `F4` | run the current selection |
+| `Esc` | abort a run in progress, clearing any queue |
+| `F6` | hide/show the overlay |
+
+Sits bottom-left so it does not fight the time overlay top-left. Shows the selected
+benchmark, mode, profile list and the **size of the run** — total frames × passes × queued
+runs — computed by `BenchmarkPlan.EstimateLength`, which mirrors `Build`'s assembly without
+resolving views or solving sun positions. Validated against all seven runs on disk
+(daycycle 2078, altitude 2066, orbit 2681): exact match.
+
+**The overlay hides itself while a run is in progress.** IMGUI draws into the same
+backbuffer as everything else, so it would appear in every captured screenshot and add its
+own draw calls to the counters being recorded. `showProgressDuringRun` opts back in for
+debugging, and is ignored in Capture mode regardless.
+
+**All** queues every available benchmark as separate runs — they have different plans, so
+they cannot share one, and each gets its own output folder. If `StartRun` refuses one (most
+likely a capture run over a benchmark marking no frames), the queue logs it and skips to the
+next rather than stalling on the bad entry.
+
+### Batch runs (All)
+Selecting **All** now writes one parent folder, `<stamp>_batch_<commit>/`, containing each
+benchmark's own run folder plus two cross-benchmark files. Runs still get their own folders
+— different benchmarks have different plans and frame counts, so they cannot share one; the
+batch groups them and adds a view across them.
+
+- **`batch-summary.md`** — one row per (benchmark, segment): each profile's median GPU
+  frame time and its delta from the baseline. The baseline is the **first entry in the
+  runner's `profiles` array**, so reorder that array to change what everything is compared
+  against.
+- **`batch-summary.csv`** — every segment of every run with `benchmark`, `mode`, `pass_id`,
+  `profile` and `repeat` columns prepended to the full statistic set. This is the file a
+  plotting script wants; assembling it from the per-run folder layout by hand is tedious.
+
+Rendered from the real runs on disk, the shape is:
+
+| benchmark | segment | sky frac | noatmo | pbr | delta pbr |
+|---|---|---|---|---|---|
+| daycycle | daylight | 0.77 | 0.749 | 1.127 | +0.379 |
+| daycycle | twilight | 0.77 | 0.764 | 1.126 | +0.363 |
+| orbit | alps | 0.26 | 1.072 | 1.642 | +0.570 |
+| orbit | sahara | 0.26 | 1.070 | 1.626 | +0.556 |
+
+Note the atmosphere costs *more* in the low-sky-fraction views (+0.57 ms at 0.26) than in
+the high-sky ones (+0.38 ms at 0.77). That is the expected direction — the sky raymarch
+early-outs on rays that miss the atmosphere, while the aerial-perspective composite runs on
+terrain pixels — but **these two benchmarks differ in altitude and LOD count as well as
+framing**, so it is not a clean attribution. `framing` is the benchmark that isolates it:
+four holds from one position varying only pitch.
+
+An aborted batch still writes a summary covering the runs that completed, with a warning
+saying how many of how many it covers. The output-root redirect is restored on every exit
+path, so a later single run never writes into a stale batch folder.
+
+### Default resolution raised to 1440p
+There were two separate sources of 1080p, and both are now 2560x1440:
+
+- **Player Settings** — `defaultScreenWidth/Height` 2560x1440, `defaultIsNativeResolution: 0`
+  (it was 1, which ignored the default and used the display's native size), and
+  `fullscreenMode` 2 → **3 (Windowed)**. That last one is required: MaximizedWindow and
+  FullScreenWindow both ignore the requested size and take the display's, so an exact,
+  known pixel count is only achievable windowed. `resizableWindow` stays 0, so the window
+  cannot be dragged to a different size mid-session.
+- **`BenchmarkRunner.targetResolution`** — scene value and C# default both 2560x1440, so
+  pressing run no longer resizes the window from 1440p down to 1080p.
+
+1440p is **1.78x** the pixels of 1080p. The atmosphere is five full-screen passes, so its
+cost scales roughly with pixel count — results at the two resolutions are not comparable.
+No loss here: every run on disk so far is an editor run, explicitly non-authoritative.
+`-resolution WxH` still overrides for scripted runs, and the requested *and actual*
+resolution are both recorded in `run.json` with a `matched` flag.
+
+> If the display is smaller than 2560x1440 the window will not fit. Either lower
+> `defaultScreenWidth/Height`, or set `fullscreenMode` back to 1/2 and accept the display's
+> own resolution as the measurement resolution.
+
+### Release build option, and the stripped-counter trap it exposed
+`Testbed → Benchmark → Build Standalone Player (Development | Release)`. Each kind builds
+into its own `<product>-<kind>/` subfolder — a player is an exe plus a `_Data` folder and
+several DLLs, so building both into one directory would have the second overwrite the
+first, and results live beside the exe so they would mix too.
+
+What actually differs:
+- **Frame timings survive release.** `FrameTimingManager` is not a development-build
+  feature; it needs `enableFrameTimingStats`, which this project sets. So the primary RQ2
+  metric is available either way.
+- **`ProfilerRecorder` counters are the open question.** Unity strips much of the profiler
+  from a release player. Build both, run the same benchmark, and diff `counters_available`
+  in the two `run.json` files — that turns an assumption into a measured fact, and the
+  frame-time difference between them is the cost of the development flag.
+
+**The trap:** when the counters are stripped they read **zero**, not absent. Three checks
+would have read that as agreement:
+1. The self-check's geometry comparison — every frame zero, every pass identical, confident
+   `PASS` having compared nothing.
+2. `scene_hash` — partially degraded rather than destroyed, since `lod_high_res` comes from
+   `SimpleLodSystem` and is unaffected. Two profiles drawing genuinely different geometry
+   could still share a hash.
+3. Nothing in `warnings[]` said the counters were missing.
+
+All three now handle it: a new `COUNTERS_UNAVAILABLE:<n>/<total>` warning, the geometry
+verdict reports `n/a (profiler counters unavailable)` instead of PASS, and both
+`selfcheck.md` and `summary.md` carry an explicit banner saying a match is not evidence.
+
+This is the general shape of the hazard the plan flagged as "empty cells rather than zeros":
+a reader must never mistake *stripped* for *zero*. `frames.csv` already got that right; the
+derived checks did not.
+
+---
+
+## First authoritative results: development vs release, 1440p, RTX 4090
+
+Full suite (5 benchmarks, pbr + noatmo, 2 repeats = 4 passes each) run from both builds at
+commit `2bcb572`. Both report `authoritative: true`, `resolution 2560x1440 matched`,
+`frame_timing_available`, GPU timing lag 1 frame.
+
+### 1. Release keeps almost all instrumentation — earlier claim was wrong
+
+I had said the Render profiler counters do not survive a release player. **They do.**
+**11 of 13 counters are available in release**; only two are stripped:
+
+- `GC Allocated In Frame`
+- `Gfx Used Memory`
+
+Every Render counter survives — draw calls, batches, SetPass, triangles, vertices, shadow
+casters — so `scene_hash`, the geometry-agreement check and the self-check all work fully in
+a release build. The defensive `countersPresent` handling added for stripped counters never
+triggers here; keep it anyway, it is cheap and the assumption was wrong once already.
+
+**Consequence: release is the better build for the thesis.** Nothing an RQ metric depends on
+is lost. Use development only when per-frame GC allocation matters — which is how the
+editor stall got diagnosed, so it is not worthless.
+
+### 2. The development flag costs essentially nothing on GPU time
+
+Across 26 segment/profile pairs: **median +0.0023 ms, max +0.0276 ms, min −0.0038 ms**.
+Several are negative. This is noise, not overhead — expected, since the flag is CPU-side and
+the metric is GPU. The build choice can be made on instrumentation grounds alone.
+
+### 3. `daycycle` pose hash differs across builds — diagnosed, not a defect
+
+`daycycle` is the only benchmark whose `pose_hash` differs between dev and release. Cause:
+
+- The **plans are byte-identical** (`plan_hash` matches, and a full column diff of `plan.csv`
+  shows zero differences), so the intent was identical.
+- The **camera is bit-identical** in all five benchmarks.
+- The **sun direction** differs by at most **1.3e-6** — a last-bit floating-point difference
+  in the runtime sun transform between build configurations.
+- `MixQuantized` rounds at scale **10000** (1e-4 for every component, including directions —
+  note the plan document said 1e-3 for angles; the code does not). Exactly **3 of 6234**
+  sampled components sit within 1.3e-6 of a rounding boundary and flip buckets. First is row
+  473, `sun_dir_z` −0.56155038 vs −0.56154990, which straddles the .5 midpoint at ×10000.
+
+Only `daycycle` is affected because it is the only benchmark that **moves** the sun: 1800
+measured frames of sun motion is 1800 chances to land on a boundary, whereas the others hold
+it at a single solved value.
+
+**Within** each build all passes agree, in both builds — so the hash does its actual job.
+Cross-build it is brittle by construction: any quantisation has boundaries. **Rule: compare
+`pose_hash` within a build; across builds compare with a tolerance** (the procedure is a
+column diff of `frames.csv` on `cam_*`/`sun_dir_*`, which is what produced the numbers here).
+
+### 4. Atmosphere cost is not monotonic in sky fraction
+
+Release build, absolute GPU cost of the atmosphere (pbr − noatmo), by sky fraction:
+
+| benchmark | segment | sky | pbr | noatmo | cost ms | cost % |
+|---|---|---|---|---|---|---|
+| framing | nadir | 0.00 | 1.223 | 1.017 | +0.205 | 20.2% |
+| framing | steep | 0.05 | 1.277 | 1.066 | +0.211 | 19.8% |
+| framing | oblique | 0.54 | 1.046 | 0.806 | **+0.240** | 29.8% |
+| framing | horizon | 0.97 | 0.439 | 0.281 | +0.158 | 56.4% |
+
+`framing` is the clean comparison — one position, only pitch varies. Cost **peaks at
+intermediate sky fraction**, which is the expected shape: at nadir you pay aerial perspective
+on nearly every pixel and almost no sky raymarch; at the horizon nearly all sky raymarch and
+almost no aerial perspective; in between you pay both.
+
+Note absolute and relative cost tell **opposite** stories — relative cost climbs
+monotonically (20% → 56%) only because the baseline falls faster, terrain being the expensive
+thing. **Report absolute ms for RQ2**; the percentage is a statement about the terrain
+renderer, not the atmosphere.
+
+> **Caveat: no self-check was run on these builds.** The differences between segments
+> (0.035–0.082 ms) are close to the editor noise floor of 0.030 ms, and the real 1440p
+> release noise floor is unmeasured. The non-monotonicity claim needs a self-check before it
+> goes in the report.
+
+### 5. `TIMING_ATTRIBUTION_ANOMALIES:1` on every run, both builds
+One frame per run where the timing stream did not deliver exactly one new timing. Consistent
+across all ten runs, so it is a property of the instrumentation rather than of any benchmark.
+One frame in 400–2400 is not material, but it should be explained before the report rather
+than left as an unexamined warning.
+
+### `TIMING_ATTRIBUTION_ANOMALIES:1` explained and fixed
+It was a false positive on the **priming call**, and it fired on every run ever recorded.
+
+`FrameSampler.Capture` counts a timing as fresh by comparing `cpuTimePresentCalled` against
+`lastSeenPresentTime`. On the first call that baseline is still −1, so the comparison is
+skipped and *every* timing already sitting in the buffer counts as fresh — `fresh > 1`, one
+anomaly, every run.
+
+Verified rather than assumed: the release `orbit` run has **2681 rows and zero frames with
+`timing_valid = 0`**, so nothing was ever mis-attributed. The `fresh > 1` check is now
+guarded on a baseline existing.
+
+Worth stating as a principle: a warning that fires on every run is worse than no warning,
+because it teaches the reader to skip the field that is supposed to mean something. The
+existing results remain valid — the flag was noise, and the frame data behind it was correct.
+
+### `FrameProbe` is retained, not retired
+Originally scoped as a temporary diagnostic. Keeping it, for two reasons:
+- It is inert. `runOnStart: 0` in the scene and `Update` returns immediately while Idle, so
+  it costs one branch per frame and only runs from its context menu.
+- Its findings in this file are marked "do not re-derive" — but after a Unity upgrade they
+  *would* need re-deriving, and this is the tool that derives them.
+
+Removing it would also mean deleting a live component from `Game.unity` by hand, which is a
+worse trade than keeping an inert script.
