@@ -649,3 +649,75 @@ Originally scoped as a temporary diagnostic. Keeping it, for two reasons:
 
 Removing it would also mean deleting a live component from `Game.unity` by hand, which is a
 worse trade than keeping an inert script.
+
+---
+
+## Milestone 4: the baseline renderer
+
+### `noatmo` was never a baseline
+The camera clears to solid black (`m_ClearFlags: 2`) and `RenderSettings.skybox` is the stock
+Default-Skybox that is never drawn, so "atmosphere off" renders a **black sky** and terrain
+with no distance haze. Every RQ2 number recorded before this milestone is "PBR minus
+nothing", not "PBR minus a cheap alternative". `noatmo` is kept, but as an **ablation
+control** and labelled as one.
+
+The physically based path also does two jobs — sky radiance and aerial perspective — so the
+baseline has to do both or the comparison is two features against one.
+
+### Where the sky is drawn, and why not in the post chain
+Every sky variant renders from a CommandBuffer at `BeforeForwardOpaque`, through one shared
+`SkyPass.Record`. Making the baseline a `PostProcessingEffect` instead would have integrated
+with the profile system for free, but it would have confounded the shading model with **four**
+simultaneous differences, all favouring the baseline: pass slot, blit count (1 vs 2), a
+possible MSAA resolve the pre-opaque slot pays, and depth rejection. One full-screen RGBA16F
+read+write at 2560x1440 is roughly 0.06–0.09 ms against a measured atmosphere cost of
+0.158–0.240 ms — the confound is the same size as the signal.
+
+Depth rejection is available in **both** slots (`PostProcessingManager` sets
+`depthTextureMode = Depth`, forcing a prepass, and `AfterDepthTexture` precedes
+`BeforeForwardOpaque`). So "the PBR sky wastes work on covered pixels" is not a property of
+the slot — it is an optimization `DrawSky` does not do. Applying it to one arm only would be
+a measurement error; applying it to both and measuring is Stage 6.
+
+`RenderSettings.skybox` + `clearFlags = Skybox` was rejected outright: the built-in skybox
+draws after opaque with `ZTest LEqual` and `Star.shader` is `ZWrite Off`, so **every star
+would be painted over** while the moon survives (it writes depth) — a moon in an empty sky.
+
+### The tone-map pedestal
+The gradient generator authors anchors as **the colour wanted on screen** and inverts the
+tone map to find what to store. Authoring stored values directly does not work: `toneMap`
+applies `lerp(0.5, lum, 1.45)`, which has a pedestal at 0.155, so every plausible night-sky
+radiance lands on the `smoothMax` floor and comes out flat black — leaving the stars nothing
+to sit against — while daylight clips past 1. **The usable input band is roughly [0.17, 0.87]**,
+which is not a range anyone would guess; the first set of hand-picked anchors was an order of
+magnitude out at both ends. The inverse round-trips to 2e-16 and reads the tone-map constants
+off the scene renderer rather than assuming them.
+
+### Profiles: decomposition, not just A/B
+| profile | Atmosphere | Aerial | sky |
+|---|---|---|---|
+| `pbr` | on | off | PBR |
+| `baseline-gradient` | off | on | hand-authored LUT |
+| `baseline-baked` | off | on | LUT baked from PBR |
+| `baseline-cubemap` | off | on | static cubemap |
+| `nullsky` | off | off | pass with no shading |
+| `noatmo` | off | off | none |
+
+`nullsky − noatmo` is the pass structure alone; `baseline − nullsky` the shading model;
+`pbr − baseline` the headline number. `baseline-gradient` vs `baseline-baked` share a shader
+path and a cost exactly, so any visual difference between them is **purely** authoring method
+— which is the cleanest authoring-flexibility evidence the report can get.
+
+Every profile states every switch explicitly. An omitted toggle inherits whatever the previous
+pass left behind.
+
+### Baked LUT: two structural limitations, both findings
+- **No azimuth axis.** Each texel is the mean radiance over all horizontal directions, so the
+  Mie forward lobe is absent by construction. The shader's separate glow term stands in for it.
+- **No altitude axis.** Baked at one observer height (12, matching the benchmark cameras) and
+  progressively wrong away from it. A strategy-game camera ranges over a large fraction of the
+  atmosphere's thickness, so this is a real limit of the technique rather than of this
+  implementation.
+
+The bake includes `AtmosphereCommon.hlsl` and calls the same `raymarch()` the runtime sky
+does, so a difference between baked and physically based cannot be a difference in the bake.
