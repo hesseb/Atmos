@@ -988,3 +988,39 @@ cost should fall at high sky fractions where it was previously doing needless wo
 The mean sky fraction of a segment that sweeps altitude 220 → 4 is not a meaningful summary of
 it, so this is probably an artefact of averaging over a huge altitude range rather than a real
 effect — but it should be checked before anything is claimed about sky fraction.
+
+### The tone map's pedestal is a threshold, and it was hiding behind the fog
+Removing the fog-over-sky bug revealed two defects it had been masking — it was replacing 60%
+of the sky with haze colour, which papers over a dark sky and softens seams.
+
+**Root cause of both: `toneMap` applies `lerp(0.5, lum, 1.45)`, whose zero crossing is at
+0.155.** That is not a curve near black, it is a *threshold*: anything below crushes to the
+floor, so a value that is slightly too dark does not render dim, it renders **absent**, and a
+smooth gradient crossing 0.155 becomes a hard edge.
+
+Two consequences, both now fixed:
+
+1. **Tone-map constants did not match.** `AtmosphereEffect` uses intensity 1.31, whitePoint 1,
+   dither 4; `BaselineSkyRenderer`'s C# defaults were guesses at 1, 1.1, 0.8. Scene values
+   corrected. Note the hand-authored gradient is inverse-mapped against these constants, so
+   **it must be regenerated after any change to them.**
+
+2. **Azimuth averaging removed sunsets entirely.** The bake averaged 32 azimuths. At low sun
+   the sky is bright only *toward* the sun, so the mean fell under the pedestal and sunset
+   went black, while noon survived because the sky is near-uniform there. Measured from the
+   baked EXR: at sunset the horizon stored 0.182 and the zenith 0.040, against a threshold of
+   0.155 (0.118 once intensity is corrected) — so the whole sky bar a sliver of horizon was
+   below it.
+
+   Now sampled at a **fixed azimuth measured from the sun**, defaulting to 0 (sunward). That
+   keeps the colours that make a sunset legible; the cost is an anti-solar sky rendered too
+   warm. That trade is the honest limitation of having no azimuth axis, and which way it was
+   taken is what needs stating.
+
+The cubemap seams are the same story: it has full directional detail and needs no averaging,
+but with the sky sitting near 0.155 the pedestal turned every small cross-face difference into
+a hard black/not-black edge. Correcting the exposure should take most of it out.
+
+> Debugging note: the EXRs are uncompressed float, so they can be parsed directly to read the
+> baked values. That is how this was settled rather than guessed — and worth remembering,
+> since two earlier hypotheses (face orientation, sampling frame) were wrong.

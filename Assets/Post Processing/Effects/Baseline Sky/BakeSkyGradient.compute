@@ -19,11 +19,19 @@ uint width;
 uint row;
 int numScatteringSteps;
 
-// The LUT has no azimuth axis, so each texel is the mean radiance over all horizontal
-// directions at that (view elevation, sun elevation). The sun-relative variation this drops -
-// principally the Mie forward lobe - is what the runtime shader's glow term approximates.
-// That split is the honest description of what a 2D sky LUT can and cannot represent.
-int numAzimuthSamples;
+// The LUT has no azimuth axis, so one horizontal direction has to stand for all of them.
+//
+// Averaging over azimuth was the obvious choice and it was wrong. At low sun elevations the
+// sky is bright only TOWARD the sun, so the mean is far darker than the sunward sky that
+// dominates the visual impression - and the shared tone map has a pedestal at 0.155, below
+// which everything crushes to black. The average fell under it, so sunsets did not come out
+// dim, they came out ABSENT, while noon survived because the sky is near-uniform there.
+//
+// So the sample is taken at a fixed azimuth instead, measured from the sun. 0 keeps the
+// sunset colours that make a sunset legible; the cost is that the anti-solar sky is rendered
+// too warm and too bright. That trade is the honest limitation of a 2D sky LUT, and stating
+// which way it was taken matters more than the value.
+float bakeAzimuthDegrees;
 
 // The LUT has no altitude axis either. Everything is baked from one observer height, so the
 // result is correct at that altitude and progressively wrong away from it. This is a real
@@ -70,32 +78,29 @@ void BakeSkyGradientRow (uint3 id : SV_DispatchThreadID)
 
 	float3 north = normalize(cross(observerUp, observerEast));
 
-	const float TWO_PI = 6.28318530718;
-	float3 sum = 0;
+	// observerEast is the sun's azimuth by construction - the baker places the sun in the
+	// up/east plane - so this angle is measured from the sun.
+	float azimuth = radians(bakeAzimuthDegrees);
+	float3 horizontal = observerEast * cos(azimuth) + north * sin(azimuth);
+	float3 viewDir = normalize(observerUp * cosView + horizontal * sinView);
 
-	for (int a = 0; a < numAzimuthSamples; a++)
+	// Below the horizon the LUT stores horizon colour rather than the planet, for the same
+	// reason the cubemap does - see clampToHorizon.
+	viewDir = clampToHorizon(viewDir, observerUp, observerEast);
+
+	float3 col = 0;
+	float2 hitInfo = raySphere(0, atmosphereRadius, pos, viewDir);
+	float rayLength = hitInfo.y;
+
+	if (rayLength > 0)
 	{
-		float azimuth = (a + 0.5) * TWO_PI / numAzimuthSamples;
-		float3 horizontal = observerEast * cos(azimuth) + north * sin(azimuth);
-		float3 viewDir = normalize(observerUp * cosView + horizontal * sinView);
-
-		// Below the horizon the LUT stores horizon colour rather than the planet, for the
-		// same reason the cubemap does - see clampToHorizon.
-		viewDir = clampToHorizon(viewDir, observerUp, observerEast);
-
-		float2 hitInfo = raySphere(0, atmosphereRadius, pos, viewDir);
-		float rayLength = hitInfo.y;
-
-		if (rayLength > 0)
-		{
-			float3 inPoint = pos + viewDir * hitInfo.x;
-			ScatteringResult result = raymarch(inPoint, viewDir, rayLength,
-				numScatteringSteps, TransmittanceLUT, planetRadius);
-			sum += result.luminance;
-		}
+		float3 inPoint = pos + viewDir * hitInfo.x;
+		ScatteringResult result = raymarch(inPoint, viewDir, rayLength,
+			numScatteringSteps, TransmittanceLUT, planetRadius);
+		col = result.luminance;
 	}
 
-	Result[uint2(id.x, row)] = float4(sum / max(1, numAzimuthSamples), 1);
+	Result[uint2(id.x, row)] = float4(col, 1);
 }
 
 // ---------------------------------------------------------------- cubemap
