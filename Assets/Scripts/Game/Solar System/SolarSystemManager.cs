@@ -45,7 +45,7 @@ namespace SolarSystem
 		void Update()
 		{
 
-			if (animate && Application.isPlaying && GameController.IsState(GameState.Playing))
+			if (animate && Application.isPlaying)
 			{
 				float daySpeed = 1 / (dayDurationMinutes * 60);
 				if (fastForwarding)
