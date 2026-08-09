@@ -100,6 +100,48 @@ allocates and costs frame time) and `SolarSystemManager.animate` (pin the sun wi
 
 ---
 
+## 2026-08-09 — Benchmark harness (milestone 3, in progress)
+
+Branch `benchmark-harness`. Plan: `C:\Users\Alex\.claude\plans\delegated-snacking-moth.md`.
+
+### Measured facts from `FrameProbe` — do not re-derive these
+
+Editor run, 600 measured frames, `Time.captureDeltaTime = 1/60`, after enabling
+**Frame Timing Stats** and **Run In Background** in Player Settings.
+
+| Question | Answer |
+|---|---|
+| Does `captureDeltaTime` throttle? | **No.** Mean wall 8.42 ms vs 16.67 if it slept. `cpuFrameTime` 8.4169 ≈ wall 8.4192 — the frame-locked design is sound. |
+| Which clock does it pin? | **`Time.deltaTime` only.** `Time.unscaledDeltaTime` ranged 2.25–18.34 ms, i.e. still real time. Assert the frame lock on `deltaTime`. |
+| GPU timing available? | **Yes**, mean `gpuFrameTime` 1.88 ms. |
+| Timing lag | **1 frame** (assumed 3–5). |
+| Per-frame attribution | **Exact** — 600 timings over 600 frames, exactly one per frame. No segment-aggregation fallback needed. |
+| `ProfilerRecorder` counters | **All 13 valid** in the editor (Render *and* Memory). Still to check in a build. |
+
+Baseline scene cost, for context: 488 draw calls, 150 batches, 68 SetPass, 2.10 M
+triangles, 1.18 M vertices, 177 shadow casters. Memory: 3.4 GB total used, 2.0 GB
+graphics. **27.6 KB GC allocated per frame** — worth chasing down later; some may be editor.
+
+### The finding that shapes RQ2
+
+**The testbed is CPU-bound: GPU 1.88 ms against CPU 8.42 ms.**
+
+This matters more than any other number here. If whole-frame time is the headline metric,
+swapping the PBR atmosphere for a cheap baseline may show almost **no** difference, because
+the CPU is the bottleneck and the GPU has idle headroom. That would be a true statement
+about this testbed and a misleading answer to RQ2, which asks about the *rendering* cost of
+the technique.
+
+So: **report GPU frame time as the primary metric**, with CPU and wall time as context, and
+state the CPU-bound condition explicitly in the methodology. Consider also reporting at a
+higher resolution, where the atmosphere's five full-screen passes shift the balance toward
+GPU-bound and the delta becomes visible in whole-frame time too.
+
+Caveat: this is an *editor* run, so CPU includes editor overhead. Re-measure in a
+standalone build before drawing conclusions about the ratio.
+
+---
+
 ## 2026-08-09 — Country hover highlight and name labels
 
 Branch `country-ui`. Grand-strategy presentation features, not thesis-critical rendering,

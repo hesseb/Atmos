@@ -58,8 +58,10 @@ public class FrameProbe : MonoBehaviour
 	double lastSeenPresentTime = -1;
 	bool anyNonZeroGpu;
 
-	// Delta time stability
+	// Delta time stability. Both clocks, because captureDeltaTime pins Time.deltaTime but
+	// NOT Time.unscaledDeltaTime - measured, not assumed.
 	double deltaMinMs = double.MaxValue, deltaMaxMs;
+	double unscaledMinMs = double.MaxValue, unscaledMaxMs;
 
 	// Counters
 	ProfilerRecorder[] recorders;
@@ -142,7 +144,8 @@ public class FrameProbe : MonoBehaviour
 		captureFrameCount++;
 		int newTimings = DrainTimings(out double cpuMs, out double gpuMs);
 
-		double deltaMs = Time.unscaledDeltaTime * 1000.0;
+		double deltaMs = Time.deltaTime * 1000.0;
+		double unscaledMs = Time.unscaledDeltaTime * 1000.0;
 
 		if (phase == Phase.Measure)
 		{
@@ -152,6 +155,8 @@ public class FrameProbe : MonoBehaviour
 
 			if (deltaMs < deltaMinMs) { deltaMinMs = deltaMs; }
 			if (deltaMs > deltaMaxMs) { deltaMaxMs = deltaMs; }
+			if (unscaledMs < unscaledMinMs) { unscaledMinMs = unscaledMs; }
+			if (unscaledMs > unscaledMaxMs) { unscaledMaxMs = unscaledMs; }
 
 			cpuTotalMs += cpuMs;
 			gpuTotalMs += gpuMs;
@@ -300,10 +305,14 @@ public class FrameProbe : MonoBehaviour
 		sb.Append('\n');
 
 		// --- delta time stability ---
-		sb.Append("    unscaledDeltaTime stability (frame lock actually engaged?)\n");
-		sb.Append(F("      min ms", deltaMinMs));
-		sb.Append(F("      max ms", deltaMaxMs));
-		sb.Append(F("      expected ms", applyCaptureDeltaTime ? expectedIfThrottled : double.NaN));
+		sb.Append("    which clock does captureDeltaTime pin?\n");
+		sb.Append(F("      Time.deltaTime min ms", deltaMinMs));
+		sb.Append(F("      Time.deltaTime max ms", deltaMaxMs));
+		sb.Append(F("      Time.unscaledDeltaTime min ms", unscaledMinMs));
+		sb.Append(F("      Time.unscaledDeltaTime max ms", unscaledMaxMs));
+		sb.Append(F("      expected if pinned ms", applyCaptureDeltaTime ? expectedIfThrottled : double.NaN));
+		sb.Append("      -> the harness must assert frame lock on the PINNED clock; the other\n" +
+			"         one still reports real elapsed time.\n");
 		sb.Append('\n');
 
 		// --- Q2/Q3: frame timings ---
