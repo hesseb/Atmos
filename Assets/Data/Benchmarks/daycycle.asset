@@ -1,0 +1,175 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 61e6c43eeccd4824aa7a0c699b2bd99e, type: 3}
+  m_Name: daycycle
+  m_EditorClassIdentifier: Assembly-CSharp::BenchmarkDefinition
+  id: daycycle
+  description: Fixed camera near the horizon while the sun sets from +30 degrees
+    elevation through to -12 (civil twilight). Isolates sun angle with the view held
+    constant. Screenshots at the ends of each segment give paired images for the
+    visual comparison.
+  bootFrames: 60
+  prewarmPosesEvery: 40
+  warmupFrames: 120
+  defaultSettleFrames: 12
+  flushFrames: 16
+  simulatedFps: 60
+  monthT: 0.404
+  yearT: 0.288
+  segments:
+  - label: daylight
+    kind: 3
+    frames: 600
+    settleFramesOverride: 0
+    from:
+      source: 0
+      inlineView:
+        coordinate:
+          longitude: 8
+          latitude: 46.5
+        altitude: 12
+        pitch: 8
+        heading: 0
+        roll: 0
+        fieldOfView: 60
+      bookmarkAsset: {fileID: 0}
+      bookmarkLabel: 
+      bookmarkIndex: 0
+    to:
+      source: 0
+      inlineView:
+        coordinate:
+          longitude: 8
+          latitude: 46.5
+        altitude: 12
+        pitch: 8
+        heading: 0
+        roll: 0
+        fieldOfView: 60
+      bookmarkAsset: {fileID: 0}
+      bookmarkLabel: 
+      bookmarkIndex: 0
+    ease: 0
+    sweepDegrees: 0
+    sweepAxis: 0
+    sunFrom:
+      mode: 1
+      dayT: 0
+      elevationDegrees: 30
+      rising: 0
+      highest: 0
+    sunTo:
+      mode: 1
+      dayT: 0
+      elevationDegrees: 10
+      rising: 0
+      highest: 0
+    screenshotFirstAndLast: 1
+    screenshotFrames: 
+  - label: goldenhour
+    kind: 3
+    frames: 600
+    settleFramesOverride: 0
+    from:
+      source: 0
+      inlineView:
+        coordinate:
+          longitude: 8
+          latitude: 46.5
+        altitude: 12
+        pitch: 8
+        heading: 0
+        roll: 0
+        fieldOfView: 60
+      bookmarkAsset: {fileID: 0}
+      bookmarkLabel: 
+      bookmarkIndex: 0
+    to:
+      source: 0
+      inlineView:
+        coordinate:
+          longitude: 8
+          latitude: 46.5
+        altitude: 12
+        pitch: 8
+        heading: 0
+        roll: 0
+        fieldOfView: 60
+      bookmarkAsset: {fileID: 0}
+      bookmarkLabel: 
+      bookmarkIndex: 0
+    ease: 0
+    sweepDegrees: 0
+    sweepAxis: 0
+    sunFrom:
+      mode: 1
+      dayT: 0
+      elevationDegrees: 10
+      rising: 0
+      highest: 0
+    sunTo:
+      mode: 1
+      dayT: 0
+      elevationDegrees: 0
+      rising: 0
+      highest: 0
+    screenshotFirstAndLast: 1
+    screenshotFrames: 
+  - label: twilight
+    kind: 3
+    frames: 600
+    settleFramesOverride: 0
+    from:
+      source: 0
+      inlineView:
+        coordinate:
+          longitude: 8
+          latitude: 46.5
+        altitude: 12
+        pitch: 8
+        heading: 0
+        roll: 0
+        fieldOfView: 60
+      bookmarkAsset: {fileID: 0}
+      bookmarkLabel: 
+      bookmarkIndex: 0
+    to:
+      source: 0
+      inlineView:
+        coordinate:
+          longitude: 8
+          latitude: 46.5
+        altitude: 12
+        pitch: 8
+        heading: 0
+        roll: 0
+        fieldOfView: 60
+      bookmarkAsset: {fileID: 0}
+      bookmarkLabel: 
+      bookmarkIndex: 0
+    ease: 0
+    sweepDegrees: 0
+    sweepAxis: 0
+    sunFrom:
+      mode: 1
+      dayT: 0
+      elevationDegrees: 0
+      rising: 0
+      highest: 0
+    sunTo:
+      mode: 1
+      dayT: 0
+      elevationDegrees: -12
+      rising: 0
+      highest: 0
+    screenshotFirstAndLast: 1
+    screenshotFrames: 

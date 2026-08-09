@@ -81,8 +81,10 @@ public struct BenchmarkSegment
 	public string label;
 	public SegmentKind kind;
 	[Min(1)] public int frames;
-	// -1 uses the definition's default.
-	public int settleFramesOverride;
+	// 0 (the default for a serialized int) uses the definition's default. Only a positive
+	// value overrides - otherwise every segment authored in the inspector would silently
+	// get zero settle frames, and a pose discontinuity would land in the statistics.
+	[Min(0)] public int settleFramesOverride;
 
 	public ViewRef from;
 	public ViewRef to;
@@ -118,8 +120,17 @@ public class BenchmarkDefinition : ScriptableObject
 
 	[Header("Phase lengths (frames)")]
 	public int bootFrames = 60;
-	// One prewarm frame per N frames of content.
-	[Min(1)] public int prewarmPosesEvery = 40;
+	// One prewarm frame per N frames of content. 0 disables prewarm entirely.
+	//
+	// Prewarm steps through a decimated sample of the run's own poses so Direct3D creates
+	// the pipeline states for every terrain tile variant and both extremes of the raymarch
+	// before anything is measured - there is no ShaderVariantCollection in this project, so
+	// otherwise that compilation lands inside the measured frames.
+	//
+	// It looks alarming: the camera teleports through the whole route in a fraction of a
+	// second. That is expected. Roughly content/40 frames, so about half a second for a
+	// 2400-frame benchmark.
+	[Min(0)] public int prewarmPosesEvery = 40;
 	public int warmupFrames = 120;
 	public int defaultSettleFrames = 6;
 	public int flushFrames = 16;
@@ -135,6 +146,6 @@ public class BenchmarkDefinition : ScriptableObject
 
 	public int SettleFramesFor(BenchmarkSegment segment)
 	{
-		return segment.settleFramesOverride >= 0 ? segment.settleFramesOverride : defaultSettleFrames;
+		return segment.settleFramesOverride > 0 ? segment.settleFramesOverride : defaultSettleFrames;
 	}
 }
