@@ -32,6 +32,15 @@ public class BenchmarkRunner : MonoBehaviour
 	public CameraBookmarks fallbackBookmarks;
 	public BenchmarkSceneRefs sceneRefs = new BenchmarkSceneRefs();
 
+	[Header("Renderer configurations")]
+	// Leave empty to measure the scene as-authored. With two or more, the summary reports
+	// the delta between them.
+	public RendererProfile[] profiles;
+	[Min(1)] public int repeats = 1;
+	// Interleaved (ABAB) rather than grouped (AABB), so GPU thermal drift does not get
+	// confounded with the renderer being compared.
+	public bool interleaveRepeats = true;
+
 	[Header("Setup")]
 	public Vector2Int targetResolution = new Vector2Int(1920, 1080);
 	public bool pinResolution = true;
@@ -39,9 +48,6 @@ public class BenchmarkRunner : MonoBehaviour
 
 	[Header("Output")]
 	public bool writeResults = true;
-	// Identifies the pass within a run folder. Becomes "<profile>_r<repeat>" once renderer
-	// profiles exist.
-	public string passId = "default";
 	// Free-text note recorded in run.json - which machine these numbers came from.
 	public string machineLabel = "";
 	// Leave empty for <project>/Results in the editor, <exe>/BenchmarkResults in a build.
@@ -79,12 +85,23 @@ public class BenchmarkRunner : MonoBehaviour
 	public int AttributionAnomalies { get; private set; }
 	public List<(string name, bool available)> CounterAvailability { get; private set; }
 
-	RestoreScope scope;
+	RestoreScope scope;          // run-level: the pinned environment
+	RestoreScope passScope;      // pass-level: the renderer profile
 	readonly List<string> warnings = new List<string>();
 	WaitForEndOfFrame waitForEndOfFrame;
 	Coroutine endOfFrameRoutine;
 	int deltaDriftFrames;
 	double expectedDeltaMs;
+	// Set by Update once it has written a frame's plan state, cleared by the end-of-frame
+	// reader once it has recorded that frame. Keeps the two exactly in step.
+	bool frameStateWritten;
+
+	struct PassPlan { public RendererProfile profile; public int repeat; public string passId; }
+
+	readonly List<PassPlan> passPlans = new List<PassPlan>();
+	readonly List<BenchmarkWriter.PassResult> passResults = new List<BenchmarkWriter.PassResult>();
+	int currentPass = -1;
+	string runFolder;
 
 	void Start()
 	{
@@ -138,18 +155,101 @@ public class BenchmarkRunner : MonoBehaviour
 
 		scope = BenchmarkEnvironment.Pin(sceneRefs, settings, warnings);
 
+		BuildPassPlans();
+		passResults.Clear();
+		runFolder = null;
+
+		if (writeResults)
+		{
+			string root = string.IsNullOrEmpty(outputRootOverride)
+				? BenchmarkWriter.DefaultOutputRoot()
+				: outputRootOverride;
+			runFolder = BenchmarkWriter.BeginRun(Plan, root);
+		}
+
+		expectedDeltaMs = Plan.CaptureDeltaTime * 1000.0;
+		IsRunning = true;
+		waitForEndOfFrame = new WaitForEndOfFrame();
+		endOfFrameRoutine = StartCoroutine(EndOfFrameLoop());
+
+		Debug.Log($"[Benchmark] {Plan.Describe()}\n" +
+			$"  passes: {passPlans.Count} ({string.Join(", ", passPlans.ConvertAll(p => p.passId))})\n" +
+			$"  warnings: {(warnings.Count > 0 ? string.Join(", ", warnings) : "none")}", this);
+
+		currentPass = -1;
+		BeginNextPass();
+	}
+
+	/// <summary>
+	/// Interleaved by default: with two profiles and three repeats the order is
+	/// A0 B0 A1 B1 A2 B2, so GPU thermal drift affects both configurations equally
+	/// instead of loading onto whichever ran second.
+	/// </summary>
+	void BuildPassPlans()
+	{
+		passPlans.Clear();
+
+		if (profiles == null || profiles.Length == 0)
+		{
+			for (int r = 0; r < Mathf.Max(1, repeats); r++)
+			{
+				passPlans.Add(new PassPlan { profile = null, repeat = r, passId = $"asis_r{r}" });
+			}
+			return;
+		}
+
+		if (interleaveRepeats)
+		{
+			for (int r = 0; r < Mathf.Max(1, repeats); r++)
+			{
+				foreach (RendererProfile profile in profiles)
+				{
+					if (profile == null) { continue; }
+					passPlans.Add(new PassPlan { profile = profile, repeat = r, passId = $"{profile.id}_r{r}" });
+				}
+			}
+		}
+		else
+		{
+			foreach (RendererProfile profile in profiles)
+			{
+				if (profile == null) { continue; }
+				for (int r = 0; r < Mathf.Max(1, repeats); r++)
+				{
+					passPlans.Add(new PassPlan { profile = profile, repeat = r, passId = $"{profile.id}_r{r}" });
+				}
+			}
+		}
+	}
+
+	void BeginNextPass()
+	{
+		currentPass++;
+		if (currentPass >= passPlans.Count)
+		{
+			FinishRun();
+			return;
+		}
+
+		PassPlan pass = passPlans[currentPass];
+
+		// Per-pass scope, so a profile's changes are undone before the next one applies.
+		passScope = new RestoreScope();
+		pass.profile?.Apply(sceneRefs, passScope);
+
+		// Fresh recording state. The plan is replayed identically, including its boot,
+		// prewarm and warmup phases - which is what absorbs the stale-LUT window and the
+		// pipeline-state compilation that follow a renderer change.
 		Records = new FrameRecord[Plan.Length];
 		Sampler = new FrameSampler();
 		FrameCursor = 0;
 		deltaDriftFrames = 0;
-		expectedDeltaMs = Plan.CaptureDeltaTime * 1000.0;
-		IsRunning = true;
+		frameStateWritten = false;
 
-		waitForEndOfFrame = new WaitForEndOfFrame();
-		endOfFrameRoutine = StartCoroutine(EndOfFrameLoop());
-
-		Debug.Log($"[Benchmark] {Plan.Describe()}\n  warnings: " +
-			(warnings.Count > 0 ? string.Join(", ", warnings) : "none"), this);
+		if (logProgress)
+		{
+			Debug.Log($"[Benchmark] pass {currentPass + 1}/{passPlans.Count}: {pass.passId}", this);
+		}
 	}
 
 	void Update()
@@ -167,7 +267,7 @@ public class BenchmarkRunner : MonoBehaviour
 
 		if (FrameCursor >= Plan.Length)
 		{
-			Finish();
+			EndPass();
 			return;
 		}
 
@@ -177,12 +277,22 @@ public class BenchmarkRunner : MonoBehaviour
 		sceneRefs.solarSystem.SetTimes(frame.dayT, frame.monthT, frame.yearT);
 		// SetView applies the transform synchronously, so onPreCull this frame sees it.
 		sceneRefs.testbedCamera.SetView(frame.view);
+
+		// Hand off to the end-of-frame reader. Without this the reader would record any
+		// frame it happened to see, including ones where this method never ran.
+		frameStateWritten = true;
 	}
 
 	/// <summary>
 	/// Reads back what actually happened, after rendering. The pose hash is built from the
 	/// observed transform rather than the planned one - otherwise it would only prove the
 	/// plan equals itself, and would miss a stray input or a camera regression.
+	///
+	/// Records a frame only once Update has written that frame's plan state. Two frames in
+	/// a run have no such state: the one on which StartRun was invoked - a context menu
+	/// fires mid-frame, so the first end-of-frame arrives before Update has run - and the
+	/// one on which a pass ends and the next begins. Recording those would shift every
+	/// subsequent row by one and skip plan frame 0.
 	/// </summary>
 	IEnumerator EndOfFrameLoop()
 	{
@@ -190,7 +300,9 @@ public class BenchmarkRunner : MonoBehaviour
 		{
 			yield return waitForEndOfFrame;
 
-			if (!IsRunning || FrameCursor >= Plan.Length) { yield break; }
+			if (!IsRunning) { yield break; }
+			if (!frameStateWritten) { continue; }
+			if (Records == null || FrameCursor >= Records.Length) { continue; }
 
 			Transform camT = sceneRefs.camera.transform;
 
@@ -215,23 +327,17 @@ public class BenchmarkRunner : MonoBehaviour
 			}
 
 			Records[FrameCursor] = record;
+			frameStateWritten = false;
 			FrameCursor++;
 		}
 	}
 
-	void Finish()
+	void EndPass()
 	{
-		IsRunning = false;
-
-		if (endOfFrameRoutine != null)
-		{
-			StopCoroutine(endOfFrameRoutine);
-			endOfFrameRoutine = null;
-		}
-
+		PassPlan pass = passPlans[currentPass];
 		ObservedPoseHash = ComputePoseHash();
 
-		if (deltaDriftFrames > 0) { warnings.Add($"DELTA_TIME_DRIFT:{deltaDriftFrames}"); }
+		if (deltaDriftFrames > 0) { AddWarning($"DELTA_TIME_DRIFT:{deltaDriftFrames}"); }
 
 		// Snapshot the instrumentation state before disposing the sampler - the writer
 		// needs it, and an absent counter must be recorded as absent rather than zero.
@@ -242,45 +348,64 @@ public class BenchmarkRunner : MonoBehaviour
 			AttributionAnomalies = Sampler.AttributionAnomalies;
 			CounterAvailability = Sampler.CounterAvailability();
 
-			if (!FrameTimingAvailable) { warnings.Add("NO_GPU_TIME"); }
+			if (!FrameTimingAvailable) { AddWarning("NO_GPU_TIME"); }
 			if (AttributionAnomalies > 0)
 			{
-				warnings.Add($"TIMING_ATTRIBUTION_ANOMALIES:{AttributionAnomalies}");
+				AddWarning($"TIMING_ATTRIBUTION_ANOMALIES:{AttributionAnomalies}");
 			}
 		}
-
-		ReleaseResources();
 
 		if (logProgress)
 		{
 			var ci = CultureInfo.InvariantCulture;
 			Debug.Log(
-				$"[Benchmark] complete\n" +
+				$"[Benchmark] pass '{pass.passId}' complete\n" +
 				$"  frames rendered   {FrameCursor} / {Plan.Length} " +
 				$"{(FrameCursor == Plan.Length ? "(exact)" : "MISMATCH")}\n" +
 				$"  plan_hash         0x{Plan.planHash:x16}\n" +
 				$"  pose_hash         0x{ObservedPoseHash:x16}\n" +
 				$"  delta drift       {deltaDriftFrames} frames " +
 				$"(expected {expectedDeltaMs.ToString("F4", ci)} ms/frame)\n" +
-				$"  gpu timing        {(FrameTimingAvailable ? $"available, lag {TimingLagFrames} frame(s)" : "UNAVAILABLE")}\n" +
-				$"  warnings          {(warnings.Count > 0 ? string.Join(", ", warnings) : "none")}\n" +
-				$"  Run twice and compare pose_hash: equal means both runs rendered the same poses.",
+				$"  gpu timing        {(FrameTimingAvailable ? $"available, lag {TimingLagFrames} frame(s)" : "UNAVAILABLE")}",
 				this);
 		}
 
-		if (writeResults)
+		if (writeResults && !string.IsNullOrEmpty(runFolder))
 		{
-			string root = string.IsNullOrEmpty(outputRootOverride)
-				? BenchmarkWriter.DefaultOutputRoot()
-				: outputRootOverride;
+			string settings = pass.profile != null
+				? pass.profile.DescribeSettings(sceneRefs)
+				: "scene as authored";
 
-			string folder = BenchmarkWriter.Write(this, root, passId, machineLabel);
-			if (!string.IsNullOrEmpty(folder))
-			{
-				Debug.Log($"[Benchmark] results written to {folder}", this);
-			}
+			passResults.Add(BenchmarkWriter.WritePass(this, runFolder, pass.passId,
+				pass.profile != null ? pass.profile.id : "asis", settings, pass.repeat));
 		}
 
+		// Undo this profile before the next one applies.
+		passScope?.Dispose();
+		passScope = null;
+		Sampler?.Dispose();
+		Sampler = null;
+
+		BeginNextPass();
+	}
+
+	void FinishRun()
+	{
+		IsRunning = false;
+
+		if (endOfFrameRoutine != null)
+		{
+			StopCoroutine(endOfFrameRoutine);
+			endOfFrameRoutine = null;
+		}
+
+		if (writeResults && !string.IsNullOrEmpty(runFolder) && passResults.Count > 0)
+		{
+			BenchmarkWriter.WriteRunSummary(this, runFolder, passResults, machineLabel);
+			Debug.Log($"[Benchmark] run complete, {passResults.Count} pass(es) written to {runFolder}", this);
+		}
+
+		ReleaseResources();
 		onCompleted?.Invoke(this);
 	}
 
@@ -307,10 +432,22 @@ public class BenchmarkRunner : MonoBehaviour
 			endOfFrameRoutine = null;
 		}
 
+		// Pass scope first: it was applied on top of the run scope, so it unwinds first.
+		// Missing this on an abort would leave a profile's effect flags modified, and
+		// those are asset state that reaches disk on the next project save.
+		passScope?.Dispose();
+		passScope = null;
 		scope?.Dispose();
 		scope = null;
 		Sampler?.Dispose();
 		Sampler = null;
+	}
+
+	void AddWarning(string warning)
+	{
+		// Passes replay the same plan, so a per-pass condition would otherwise be listed
+		// once per pass.
+		if (!warnings.Contains(warning)) { warnings.Add(warning); }
 	}
 
 	ulong ComputePoseHash()

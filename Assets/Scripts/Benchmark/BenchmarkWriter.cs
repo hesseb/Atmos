@@ -102,6 +102,7 @@ public static class BenchmarkWriter
 		public SceneMeta scene;
 		public HardwareMeta hardware;
 		public InstrumentationMeta instrumentation;
+		public PassMeta[] passes;
 		public string[] warnings;
 	}
 
@@ -113,42 +114,102 @@ public static class BenchmarkWriter
 		return IOPath.GetFullPath(IOPath.Combine(Application.dataPath, "..", folder));
 	}
 
-	/// <summary>Writes a run. Returns the run folder, or null on failure.</summary>
-	public static string Write(BenchmarkRunner runner, string outputRoot, string passId,
-		string machineLabel)
+	/// <summary>One completed pass, kept so the run-level summary can compare them.</summary>
+	public class PassResult
 	{
-		if (runner?.Plan == null || runner.Records == null) { return null; }
+		public string passId, profileId, profileSettings;
+		public int repeat;
+		public ulong poseHash, sceneHash;
+		public SegmentStats[] segments;
+	}
 
-		try
+	/// <summary>
+	/// Creates the run folder and writes the shared plan. Called once, before the first
+	/// pass - the plan is common to every pass by construction, which is what makes the
+	/// passes comparable.
+	/// </summary>
+	public static string BeginRun(BenchmarkPlan plan, string outputRoot)
+	{
+		GitInfo.TryGet(out string commit, out _, out _);
+
+		string stamp = System.DateTime.Now.ToString("yyyyMMdd-HHmmss", Ci);
+		string shortCommit = string.IsNullOrEmpty(commit) ? "nogit" : commit;
+		string runFolder = IOPath.Combine(outputRoot,
+			$"{stamp}_{Sanitise(plan.definition.id)}_{shortCommit}");
+
+		Directory.CreateDirectory(runFolder);
+		File.WriteAllText(IOPath.Combine(runFolder, "plan.csv"), plan.ToCsv());
+		return runFolder;
+	}
+
+	/// <summary>Writes one pass's per-frame data and returns its statistics.</summary>
+	public static PassResult WritePass(BenchmarkRunner runner, string runFolder, string passId,
+		string profileId, string profileSettings, int repeat)
+	{
+		string passFolder = IOPath.Combine(runFolder, Sanitise(passId));
+		Directory.CreateDirectory(passFolder);
+
+		File.WriteAllText(IOPath.Combine(passFolder, "frames.csv"), BuildFramesCsv(runner));
+
+		SegmentStats[] segments = ComputeSegments(runner);
+		File.WriteAllText(IOPath.Combine(passFolder, "segments.csv"),
+			BuildSegmentsCsv(runner, segments));
+
+		return new PassResult
 		{
-			GitInfo.TryGet(out string commit, out string branch, out bool dirty);
+			passId = passId,
+			profileId = profileId,
+			profileSettings = profileSettings,
+			repeat = repeat,
+			poseHash = runner.ObservedPoseHash,
+			sceneHash = ComputeSceneHash(runner),
+			segments = segments
+		};
+	}
 
-			string stamp = System.DateTime.Now.ToString("yyyyMMdd-HHmmss", Ci);
-			string shortCommit = string.IsNullOrEmpty(commit) ? "nogit" : commit;
-			string runFolder = IOPath.Combine(outputRoot,
-				$"{stamp}_{Sanitise(runner.Plan.definition.id)}_{shortCommit}");
-			string passFolder = IOPath.Combine(runFolder, Sanitise(passId));
+	/// <summary>Writes run.json and summary.md once every pass is done.</summary>
+	public static void WriteRunSummary(BenchmarkRunner runner, string runFolder,
+		List<PassResult> passes, string machineLabel)
+	{
+		GitInfo.TryGet(out string commit, out string branch, out bool dirty);
 
-			Directory.CreateDirectory(passFolder);
+		RunMetadata metadata = BuildMetadata(runner, commit, branch, dirty, machineLabel,
+			IOPath.GetFileName(runFolder), passes);
 
-			File.WriteAllText(IOPath.Combine(runFolder, "plan.csv"), runner.Plan.ToCsv());
-			File.WriteAllText(IOPath.Combine(passFolder, "frames.csv"), BuildFramesCsv(runner));
+		File.WriteAllText(IOPath.Combine(runFolder, "run.json"), JsonUtility.ToJson(metadata, true));
+		File.WriteAllText(IOPath.Combine(runFolder, "summary.md"),
+			BuildSummary(metadata, passes));
+	}
 
-			SegmentStats[] segments = ComputeSegments(runner);
-			File.WriteAllText(IOPath.Combine(passFolder, "segments.csv"), BuildSegmentsCsv(runner, segments));
+	/// <summary>
+	/// Hash of the geometry workload: draw calls, triangles and LOD state over measured
+	/// frames. Expected to be identical between repeats of one profile, and to DIFFER
+	/// between profiles by exactly the passes each adds - which is itself a result worth
+	/// reporting rather than an error.
+	/// </summary>
+	static ulong ComputeSceneHash(BenchmarkRunner runner)
+	{
+		ulong hash = 0xcbf29ce484222325UL;
+		int limit = Mathf.Min(runner.FrameCursor, runner.Records.Length);
 
-			RunMetadata metadata = BuildMetadata(runner, commit, branch, dirty, machineLabel,
-				IOPath.GetFileName(runFolder));
-			File.WriteAllText(IOPath.Combine(runFolder, "run.json"), JsonUtility.ToJson(metadata, true));
-			File.WriteAllText(IOPath.Combine(runFolder, "summary.md"),
-				BuildSummary(runner, metadata, segments, passId));
+		for (int i = 0; i < limit; i++)
+		{
+			if (runner.Plan.frames[i].phase != BenchmarkPhase.Measure) { continue; }
 
-			return runFolder;
+			FrameSampler.Sample s = runner.Records[i].sample;
+			Mix(ref hash, unchecked((ulong)s.drawCalls));
+			Mix(ref hash, unchecked((ulong)s.triangles));
+			Mix(ref hash, unchecked((ulong)runner.Records[i].lodHighResCount));
 		}
-		catch (System.Exception e)
+		return hash;
+	}
+
+	static void Mix(ref ulong hash, ulong value)
+	{
+		for (int shift = 0; shift < 64; shift += 8)
 		{
-			Debug.LogError($"[Benchmark] failed to write results: {e}");
-			return null;
+			hash ^= (value >> shift) & 0xFF;
+			hash *= 0x100000001b3UL;
 		}
 	}
 
@@ -336,8 +397,15 @@ public static class BenchmarkWriter
 
 	// -------------------------------------------------------------- run.json
 
+	[System.Serializable]
+	public class PassMeta
+	{
+		public string pass_id, profile_id, profile_settings, pose_hash, scene_hash;
+		public int repeat;
+	}
+
 	static RunMetadata BuildMetadata(BenchmarkRunner runner, string commit, string branch,
-		bool dirty, string machineLabel, string runId)
+		bool dirty, string machineLabel, string runId, List<PassResult> passes)
 	{
 		BenchmarkPlan plan = runner.Plan;
 		BenchmarkSceneRefs refs = runner.sceneRefs;
@@ -381,7 +449,8 @@ public static class BenchmarkWriter
 				id = plan.definition.id,
 				description = plan.definition.description,
 				plan_hash = "0x" + plan.planHash.ToString("x16"),
-				pose_hash = "0x" + runner.ObservedPoseHash.ToString("x16"),
+				pose_hash = passes != null && passes.Count > 0
+					? "0x" + passes[0].poseHash.ToString("x16") : "",
 				total_frames = plan.Length,
 				measured_frames = measured,
 				segment_count = plan.segmentLabels.Length,
@@ -457,14 +526,34 @@ public static class BenchmarkWriter
 				counters_available = counters.ToArray()
 			},
 
+			passes = BuildPassMeta(passes),
 			warnings = new List<string>(runner.Warnings).ToArray()
 		};
 	}
 
+	static PassMeta[] BuildPassMeta(List<PassResult> passes)
+	{
+		if (passes == null) { return new PassMeta[0]; }
+
+		var result = new PassMeta[passes.Count];
+		for (int i = 0; i < passes.Count; i++)
+		{
+			result[i] = new PassMeta
+			{
+				pass_id = passes[i].passId,
+				profile_id = passes[i].profileId,
+				profile_settings = passes[i].profileSettings,
+				repeat = passes[i].repeat,
+				pose_hash = "0x" + passes[i].poseHash.ToString("x16"),
+				scene_hash = "0x" + passes[i].sceneHash.ToString("x16")
+			};
+		}
+		return result;
+	}
+
 	// -------------------------------------------------------------- summary.md
 
-	static string BuildSummary(BenchmarkRunner runner, RunMetadata meta, SegmentStats[] segments,
-		string passId)
+	static string BuildSummary(RunMetadata meta, List<PassResult> passes)
 	{
 		var sb = new StringBuilder();
 		sb.Append("# Benchmark run `").Append(meta.run_id).Append("`\n\n");
@@ -504,37 +593,51 @@ public static class BenchmarkWriter
 		  .Append("| Unity | ").Append(meta.unity_version).Append(" |\n")
 		  .Append("| commit | `").Append(meta.git_commit).Append(meta.git_dirty ? " (dirty)" : "").Append("` |\n\n");
 
-		sb.Append("## Per segment, pass `").Append(passId).Append("`\n\n");
-		sb.Append("GPU frame time in ms. The 1% low is the **mean of the slowest 1% of frames**; ")
-		  .Append("p99 is the same tail expressed as a percentile.\n\n");
-		sb.Append("| segment | frames | sky frac | median | mean | p95 | p99 | 1% low | max |\n")
-		  .Append("|---|---|---|---|---|---|---|---|---|\n");
+		// --- per pass, per segment ---
+		sb.Append("## GPU frame time (ms)\n\n")
+		  .Append("The 1% low is the **mean of the slowest 1% of frames**; p99 is the same tail ")
+		  .Append("expressed as a percentile. They can differ substantially - that is why both ")
+		  .Append("are reported.\n\n");
 
-		foreach (SegmentStats s in segments)
+		sb.Append("| pass | segment | frames | sky frac | median | mean | p95 | p99 | 1% low | max |\n")
+		  .Append("|---|---|---|---|---|---|---|---|---|---|\n");
+
+		foreach (PassResult pass in passes)
 		{
-			sb.Append("| ").Append(s.label)
-			  .Append(" | ").Append(s.frames.ToString(Ci))
-			  .Append(" | ").Append(s.meanSkyFraction.ToString("F2", Ci))
-			  .Append(" | ").Append(M(s.gpu.medianMs))
-			  .Append(" | ").Append(M(s.gpu.meanMs))
-			  .Append(" | ").Append(M(s.gpu.p95Ms))
-			  .Append(" | ").Append(M(s.gpu.p99Ms))
-			  .Append(" | ").Append(M(s.gpu.p1LowMeanMs))
-			  .Append(" | ").Append(M(s.gpu.maxMs))
-			  .Append(" |\n");
+			foreach (SegmentStats s in pass.segments)
+			{
+				sb.Append("| ").Append(pass.passId)
+				  .Append(" | ").Append(s.label)
+				  .Append(" | ").Append(s.frames.ToString(Ci))
+				  .Append(" | ").Append(s.meanSkyFraction.ToString("F2", Ci))
+				  .Append(" | ").Append(M(s.gpu.medianMs))
+				  .Append(" | ").Append(M(s.gpu.meanMs))
+				  .Append(" | ").Append(M(s.gpu.p95Ms))
+				  .Append(" | ").Append(M(s.gpu.p99Ms))
+				  .Append(" | ").Append(M(s.gpu.p1LowMeanMs))
+				  .Append(" | ").Append(M(s.gpu.maxMs))
+				  .Append(" |\n");
+			}
 		}
 
-		sb.Append("\n### CPU frame time (ms)\n\n")
-		  .Append("| segment | median | mean | p99 | avg fps |\n|---|---|---|---|---|\n");
-		foreach (SegmentStats s in segments)
+		sb.Append("\n## CPU frame time (ms)\n\n")
+		  .Append("| pass | segment | median | mean | p99 | avg fps |\n|---|---|---|---|---|---|\n");
+		foreach (PassResult pass in passes)
 		{
-			sb.Append("| ").Append(s.label)
-			  .Append(" | ").Append(M(s.cpu.medianMs))
-			  .Append(" | ").Append(M(s.cpu.meanMs))
-			  .Append(" | ").Append(M(s.cpu.p99Ms))
-			  .Append(" | ").Append(M(s.cpu.avgFps))
-			  .Append(" |\n");
+			foreach (SegmentStats s in pass.segments)
+			{
+				sb.Append("| ").Append(pass.passId)
+				  .Append(" | ").Append(s.label)
+				  .Append(" | ").Append(M(s.cpu.medianMs))
+				  .Append(" | ").Append(M(s.cpu.meanMs))
+				  .Append(" | ").Append(M(s.cpu.p99Ms))
+				  .Append(" | ").Append(M(s.cpu.avgFps))
+				  .Append(" |\n");
+			}
 		}
+
+		AppendComparison(sb, passes);
+		AppendReproducibility(sb, passes);
 
 		if (meta.warnings != null && meta.warnings.Length > 0)
 		{
@@ -543,6 +646,119 @@ public static class BenchmarkWriter
 		}
 
 		return sb.ToString();
+	}
+
+	/// <summary>
+	/// Profile-vs-profile deltas per segment, using the median across repeats so a single
+	/// anomalous repeat cannot drive the headline number.
+	/// </summary>
+	static void AppendComparison(StringBuilder sb, List<PassResult> passes)
+	{
+		var profiles = new List<string>();
+		foreach (PassResult p in passes)
+		{
+			if (!string.IsNullOrEmpty(p.profileId) && !profiles.Contains(p.profileId))
+			{
+				profiles.Add(p.profileId);
+			}
+		}
+		if (profiles.Count < 2) { return; }
+
+		string baseline = profiles[0];
+		sb.Append("\n## Comparison (GPU median, ms)\n\n")
+		  .Append("Median across repeats, per segment. Baseline is `").Append(baseline).Append("`.\n\n");
+
+		sb.Append("| segment |");
+		foreach (string p in profiles) { sb.Append(' ').Append(p).Append(" |"); }
+		for (int i = 1; i < profiles.Count; i++)
+		{
+			sb.Append(' ').Append(profiles[i]).Append(" - ").Append(baseline).Append(" |");
+		}
+		sb.Append('\n').Append("|---|");
+		for (int i = 0; i < profiles.Count + profiles.Count - 1; i++) { sb.Append("---|"); }
+		sb.Append('\n');
+
+		// Segment labels are shared across passes because the plan is shared.
+		var labels = new List<string>();
+		foreach (SegmentStats s in passes[0].segments)
+		{
+			if (!labels.Contains(s.label)) { labels.Add(s.label); }
+		}
+
+		foreach (string label in labels)
+		{
+			sb.Append("| ").Append(label).Append(" |");
+
+			var medians = new List<double>();
+			foreach (string profile in profiles)
+			{
+				double m = MedianOfRepeats(passes, profile, label);
+				medians.Add(m);
+				sb.Append(' ').Append(M(m)).Append(" |");
+			}
+
+			for (int i = 1; i < medians.Count; i++)
+			{
+				double delta = medians[i] - medians[0];
+				string sign = delta >= 0 ? "+" : "";
+				sb.Append(' ').Append(sign).Append(M(delta)).Append(" |");
+			}
+			sb.Append('\n');
+		}
+	}
+
+	static double MedianOfRepeats(List<PassResult> passes, string profileId, string label)
+	{
+		var values = new List<double>();
+		foreach (PassResult p in passes)
+		{
+			if (p.profileId != profileId) { continue; }
+			foreach (SegmentStats s in p.segments)
+			{
+				if (s.label == label && s.gpu.Valid) { values.Add(s.gpu.medianMs); }
+			}
+		}
+
+		if (values.Count == 0) { return double.NaN; }
+		values.Sort();
+		return BenchmarkStats.Percentile(values.ToArray(), 0.5);
+	}
+
+	/// <summary>
+	/// Hash agreement and run-to-run spread.
+	///
+	/// The spread is the measurement noise floor: if a profile-vs-profile delta is not
+	/// comfortably larger than it, the result is not significant. Better to learn that
+	/// here than from an examiner.
+	/// </summary>
+	static void AppendReproducibility(StringBuilder sb, List<PassResult> passes)
+	{
+		sb.Append("\n## Reproducibility\n\n");
+
+		bool posesAgree = true;
+		for (int i = 1; i < passes.Count; i++)
+		{
+			if (passes[i].poseHash != passes[0].poseHash) { posesAgree = false; break; }
+		}
+
+		sb.Append(posesAgree
+			? "- **Pose hash identical across every pass** - all passes rendered the same poses.\n"
+			: "- **POSE HASH MISMATCH** - passes did not render the same poses. The comparison " +
+			  "is invalid; something perturbed the camera or the sun.\n");
+
+		sb.Append("\n| pass | profile | repeat | pose hash | scene hash |\n|---|---|---|---|---|\n");
+		foreach (PassResult p in passes)
+		{
+			sb.Append("| ").Append(p.passId)
+			  .Append(" | ").Append(p.profileId)
+			  .Append(" | ").Append(p.repeat.ToString(Ci))
+			  .Append(" | `0x").Append(p.poseHash.ToString("x16"))
+			  .Append("` | `0x").Append(p.sceneHash.ToString("x16")).Append("` |\n");
+		}
+
+		sb.Append("\nScene hash covers draw calls, triangles and LOD state. It should match ")
+		  .Append("between repeats of one profile, and may legitimately differ between ")
+		  .Append("profiles by the passes each adds.\n");
 	}
 
 	static string M(double v) => double.IsNaN(v) ? "n/a" : v.ToString("F3", Ci);
