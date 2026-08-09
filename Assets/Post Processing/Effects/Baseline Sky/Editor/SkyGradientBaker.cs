@@ -286,8 +286,8 @@ static class SkyGradientBaker
 		// on. An earlier version compared the +Z/+Y seam in the read-back arrays, which cannot
 		// work - a vertical flip applied consistently to every face leaves that comparison
 		// unchanged while still producing seams once the faces are assembled.
-		bool flip = ShouldFlipRows(pixels[0], out float sunRow, out float expectDirect,
-			out float expectFlipped);
+		OrientationCheck check = CheckOrientation(pixels[0]);
+		bool flip = check.flip;
 
 		if (flip)
 		{
@@ -305,20 +305,22 @@ static class SkyGradientBaker
 		// Shown as a dialog rather than only logged: the orientation verdict is the one piece
 		// of evidence that says whether the bake is trustworthy, and it is no use sitting in a
 		// Console nobody is filtering to Info.
-		float missBy = Mathf.Min(Mathf.Abs(sunRow - expectDirect), Mathf.Abs(sunRow - expectFlipped));
-		bool confident = missBy < CubemapSize * 0.05f;
-
 		string verdict =
 			$"Baked {CubemapSize}x{CubemapSize}, sun frozen at {CubemapSunElevationDegrees} deg.\n\n" +
-			$"Orientation check\n" +
-			$"  sun found on +X at row {sunRow:F1}\n" +
-			$"  expected {expectDirect:F1} unflipped, {expectFlipped:F1} flipped\n" +
-			$"  -> using {(flip ? "FLIPPED" : "direct")} row order\n\n" +
-			(confident
-				? "The sun landed where one hypothesis predicts, so the face basis and row " +
-				  "order are both right.\nAny remaining seam is not an orientation problem."
-				: "WARNING: the sun landed near NEITHER prediction. The face basis is wrong, " +
-				  "not just the row order - expect seams.");
+			"Orientation check\n" +
+			$"  brightest texel on +X at row {check.row:F1}, column offset {check.columnOffset:+0.000;-0.000}\n" +
+			$"  row {check.expectedDirect:F1} unflipped vs {check.expectedFlipped:F1} flipped " +
+			$"-> using {(flip ? "FLIPPED" : "direct")} row order\n" +
+			$"  implied sun elevation {check.impliedElevationDegrees:F1} deg " +
+			$"(actual {CubemapSunElevationDegrees:F1})\n\n" +
+			(check.confident
+				? "Orientation is correct. The implied elevation sits a few degrees BELOW the " +
+				  "sun, which is expected: air mass grows toward the horizon, so scattered " +
+				  "radiance peaks below the sun rather than at it.\n\nAny remaining seam is " +
+				  "not an orientation problem."
+				: "WARNING: the sun is not where any correct assembly would put it. A large " +
+				  "elevation error or an off-centre column means the face basis is wrong, not " +
+				  "the row order - expect seams.");
 
 		Debug.Log($"[BaselineSky] {CubemapPath}\n{verdict}");
 		EditorUtility.DisplayDialog("Sky cubemap baked", verdict, "OK");
@@ -338,16 +340,25 @@ static class SkyGradientBaker
 	/// The bake contains no sun disc - that is added in the shader - but the Mie forward lobe
 	/// peaks at the same direction, so the brightest texel is still the sun.
 	/// </summary>
-	static bool ShouldFlipRows(Color[] positiveX, out float measuredRow,
-		out float expectedDirect, out float expectedFlipped)
+	struct OrientationCheck
 	{
-		float radians = CubemapSunElevationDegrees * Mathf.Deg2Rad;
-		float v = -Mathf.Tan(radians);
+		public bool flip;
+		public float row, expectedDirect, expectedFlipped;
+		public float impliedElevationDegrees;
+		public float columnOffset;
+		public bool confident;
+	}
+
+	static OrientationCheck CheckOrientation(Color[] positiveX)
+	{
+		var check = new OrientationCheck();
+
+		float v = -Mathf.Tan(CubemapSunElevationDegrees * Mathf.Deg2Rad);
 		float idY = (v + 1f) * 0.5f * CubemapSize - 0.5f;
 
 		// Read-back arrays are row 0 = bottom, while the compute writes id.y = 0 at the top.
-		expectedDirect = CubemapSize - 1 - idY;
-		expectedFlipped = idY;
+		check.expectedDirect = CubemapSize - 1 - idY;
+		check.expectedFlipped = idY;
 
 		int brightest = 0;
 		float best = -1f;
@@ -358,9 +369,30 @@ static class SkyGradientBaker
 			if (luminance > best) { best = luminance; brightest = i; }
 		}
 
-		measuredRow = brightest / CubemapSize;
+		check.row = brightest / CubemapSize;
+		float column = brightest % CubemapSize;
 
-		return Mathf.Abs(measuredRow - expectedFlipped) < Mathf.Abs(measuredRow - expectedDirect);
+		// The decision is binary and the alternatives are ~119 rows apart, so nearness decides
+		// it robustly even though neither prediction is hit exactly.
+		check.flip = Mathf.Abs(check.row - check.expectedFlipped)
+			< Mathf.Abs(check.row - check.expectedDirect);
+
+		float measuredIdY = check.flip ? check.row : CubemapSize - 1 - check.row;
+		float measuredV = (measuredIdY + 0.5f) / CubemapSize * 2f - 1f;
+		check.impliedElevationDegrees = Mathf.Atan(-measuredV) * Mathf.Rad2Deg;
+		check.columnOffset = (column + 0.5f) / CubemapSize * 2f - 1f;
+
+		// The brightest texel is NOT exactly the sun direction, and expecting it to be was the
+		// original mistake. Air mass grows toward the horizon, so the product of the Mie phase
+		// function and the path integral peaks a few degrees BELOW the sun - measured at about
+		// 5 degrees here. A downward bias of that order is the correct behaviour; what would
+		// indicate a broken basis is a large error, or a horizontal offset, since the bias is
+		// purely vertical and the sun sits on the face's centre column by construction.
+		bool elevationPlausible = Mathf.Abs(check.impliedElevationDegrees - CubemapSunElevationDegrees) < 12f;
+		bool centred = Mathf.Abs(check.columnOffset) < 0.08f;
+		check.confident = elevationPlausible && centred;
+
+		return check;
 	}
 
 	static Color[] FlipRows(Color[] pixels, int size)
