@@ -464,6 +464,36 @@ public class BenchmarkPlan
 		return sb.ToString();
 	}
 
+	/// <summary>
+	/// How many frames <see cref="Build"/> would produce, without resolving views, solving
+	/// sun positions or allocating the plan.
+	///
+	/// For UI that wants to show the size of a run before committing to it. Must mirror the
+	/// assembly in Build - if the two ever disagree, this is the one that is wrong.
+	/// </summary>
+	public static int EstimateLength(BenchmarkDefinition definition)
+	{
+		if (definition == null || definition.segments == null) { return 0; }
+
+		int content = 0;
+		foreach (BenchmarkSegment segment in definition.segments)
+		{
+			content += Mathf.Max(0, definition.SettleFramesFor(segment)) + Mathf.Max(1, segment.frames);
+		}
+
+		if (content == 0) { return 0; }
+
+		int prewarm = definition.prewarmPosesEvery > 0
+			? (content + definition.prewarmPosesEvery - 1) / definition.prewarmPosesEvery
+			: 0;
+
+		return Mathf.Max(0, definition.bootFrames)
+			+ prewarm
+			+ Mathf.Max(0, definition.warmupFrames)
+			+ content
+			+ Mathf.Max(0, definition.flushFrames);
+	}
+
 	/// <summary>Frames marked for capture. A capture run with none of these is pointless, so
 	/// the runner refuses to start rather than replaying the whole plan for nothing.</summary>
 	public int ScreenshotCount
