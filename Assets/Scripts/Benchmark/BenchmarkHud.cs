@@ -439,6 +439,7 @@ public class BenchmarkHud : MonoBehaviour
 			$"  profiles    {ProfileList()}\n" +
 			$"  size        {sizeLine}\n" +
 			$"  viewing     {PreviewName()}\n" +
+			$"  post        {EnabledEffects()}\n" +
 			$"  {KeyName(cycleBenchmarkKey)} benchmark   {KeyName(cycleModeKey)} mode   " +
 			$"{KeyName(cycleProfileKey)} view   {KeyName(runKey)} run   " +
 			$"{KeyName(toggleOverlayKey)} hide" +
@@ -460,6 +461,25 @@ public class BenchmarkHud : MonoBehaviour
 
 		RenderingManager rendering = runner.sceneRefs != null ? runner.sceneRefs.renderingManager : null;
 		return rendering != null ? $"{requested}   (sky: {rendering.ActiveMode})" : requested;
+	}
+
+	/// <summary>
+	/// The post-processing effects currently on. Shown because the sky line alone cannot tell
+	/// two configurations apart: the aerial perspective passes live in the post chain, so
+	/// "PBR sky" and "PBR sky plus the cheap fog on top" report identically without this.
+	/// </summary>
+	string EnabledEffects()
+	{
+		PostProcessingManager post = runner.sceneRefs != null ? runner.sceneRefs.postProcessing : null;
+		if (post == null || post.effects == null) { return "-"; }
+
+		var on = new List<string>();
+		foreach (PostProcessingEffect effect in post.effects)
+		{
+			if (effect != null && effect.enabled) { on.Add(effect.name); }
+		}
+
+		return on.Count > 0 ? string.Join(", ", on) : "none";
 	}
 
 	string ProgressText()
