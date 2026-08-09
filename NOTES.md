@@ -1024,3 +1024,24 @@ a hard black/not-black edge. Correcting the exposure should take most of it out.
 > Debugging note: the EXRs are uncompressed float, so they can be parsed directly to read the
 > baked values. That is how this was settled rather than guessed — and worth remembering,
 > since two earlier hypotheses (face orientation, sampling frame) were wrong.
+
+### Cubemap orientation, third check: continuity through the real lookup
+The sun-differencing check locates the sun accurately (23.3° measured against 25° actual,
+column dead centre) but it still could not see the seam, because **it reads the face arrays
+and never the assembled cube**. A flip applied uniformly to every face leaves array-space
+comparisons unchanged while still breaking the cube.
+
+The deciding test now walks a great-circle arc from 30° to 60° elevation — crossing the +Z/+Y
+boundary at 45°, verified — sampling through the **Direct3D cube lookup in C#** and measuring
+the largest step between neighbouring samples. Going through the lookup is what makes it
+work: a uniform flip changes which texel a direction resolves to, so it breaks continuity at
+horizontal edges, which is exactly the seam. Both orientations are measured and the smoother
+one wins; if it disagrees with the sun test, continuity wins and says so.
+
+That is three checks on one property, and the lesson is consistent: **each earlier one tested
+a proxy rather than the thing that fails.** Array agreement, then sun position, then finally
+the assembled cube sampled the way the GPU samples it.
+
+> `baseline-cubemap` showing no sunset is **not** a defect. It is frozen at 25° sun elevation
+> and cannot track the sun; that is the failure mode the variant exists to demonstrate. Only
+> the gradient variants respond to time of day.
