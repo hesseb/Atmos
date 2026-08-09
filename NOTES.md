@@ -351,3 +351,37 @@ p99 and 1% low columns are typically several times wider than the median column 
 statistics are inherently less stable, so a tail difference needs a correspondingly larger
 margin before it means anything. That is why all three are reported rather than just the
 median.
+
+### First real self-check: an editor stall, and what it changed
+`orbit`, 4 passes (pbr/noatmo × 2 repeats), editor. Noise floor **0.030 ms** (1.81%) on the
+worst segment, against a measured atmosphere delta of ~0.570 ms — about **19×**, comfortably
+resolvable. Editor figure; re-measure in a build before quoting.
+
+The interesting part was a **FAIL on scene hash**. Cause, from `frames.csv`:
+
+| frame | wall_ms | gc_alloc | draw calls | triangles | gpu_ms |
+|---|---|---|---|---|---|
+| 356 | **1002.36** | 10 KB | 407 | 2.19 M | 1.86 |
+| 357 | 59.15 | **4.3 MB** | 407 | 2.19 M | 2.01 |
+| 358 | 33.51 | 417 KB | **2443** | **13.15 M** | **0** |
+
+A one-second main-thread stall in the editor (nothing in the harness can block that long),
+then a single frame whose profiler counters absorbed roughly six frames' worth of geometry
+and whose GPU timing was invalid. **1 differing frame out of 4800 compared pairs**;
+`noatmo_r0` vs `noatmo_r1` were byte-identical throughout.
+
+So the check was right that the hashes differed and wrong about what it meant. A binary
+hash comparison cannot distinguish one stall from a systematic difference, and it declared
+a perfectly usable noise floor invalid.
+
+**Fix:** `PassResult` now retains per-measured-frame geometry (draw calls, triangles, LOD
+count, wall ms), and the self-check reports *how many* frames disagreed rather than only
+that the hash did. Under 0.5% differing → `PASS (isolated stalls)`, with the run's worst
+wall-clock frame quoted next to the median so the stall is visible. At or above that →
+`FAIL`, described as systematic. Both cases print the actual counts; the threshold only
+picks the wording.
+
+Consequence for the protocol: **an editor self-check will occasionally eat a stall.** The
+median is robust to it, the p99 and 1% low are not — the wide `pbr / alps` p99 spread
+(1.381 ms vs 0.112 ms on the neighbouring segment) is that one frame. Another reason the
+quotable noise floor has to come from a standalone build.

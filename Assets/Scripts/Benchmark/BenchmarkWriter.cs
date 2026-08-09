@@ -118,6 +118,20 @@ public static class BenchmarkWriter
 		return IOPath.GetFullPath(IOPath.Combine(Application.dataPath, "..", folder));
 	}
 
+	/// <summary>
+	/// The geometry a single measured frame submitted, retained per pass.
+	///
+	/// Kept so a self-check can report *how many* frames disagreed rather than only that the
+	/// scene hash did. One anomalous frame out of 2400 and a systematic difference produce
+	/// the same hash mismatch, and they mean entirely different things.
+	/// </summary>
+	public struct FrameGeometry
+	{
+		public long drawCalls, triangles;
+		public int lodHighRes;
+		public double wallMs;
+	}
+
 	/// <summary>One completed pass, kept so the run-level summary can compare them.</summary>
 	public class PassResult
 	{
@@ -125,6 +139,7 @@ public static class BenchmarkWriter
 		public int repeat;
 		public ulong poseHash, sceneHash;
 		public SegmentStats[] segments;
+		public FrameGeometry[] geometry;
 	}
 
 	/// <summary>
@@ -173,8 +188,31 @@ public static class BenchmarkWriter
 			repeat = repeat,
 			poseHash = runner.ObservedPoseHash,
 			sceneHash = ComputeSceneHash(runner),
-			segments = segments
+			segments = segments,
+			geometry = CollectGeometry(runner)
 		};
+	}
+
+	static FrameGeometry[] CollectGeometry(BenchmarkRunner runner)
+	{
+		int limit = Mathf.Min(runner.FrameCursor, runner.Records.Length);
+		var result = new List<FrameGeometry>(limit);
+
+		for (int i = 0; i < limit; i++)
+		{
+			if (runner.Plan.frames[i].phase != BenchmarkPhase.Measure) { continue; }
+
+			FrameSampler.Sample s = runner.Records[i].sample;
+			result.Add(new FrameGeometry
+			{
+				drawCalls = s.drawCalls,
+				triangles = s.triangles,
+				lodHighRes = runner.Records[i].lodHighResCount,
+				wallMs = s.wallMs
+			});
+		}
+
+		return result.ToArray();
 	}
 
 	/// <summary>Writes run.json and summary.md once every pass is done.</summary>
@@ -245,29 +283,52 @@ public static class BenchmarkWriter
 			if (passes[i].poseHash != passes[0].poseHash) { posesAgree = false; break; }
 		}
 
-		bool scenesAgree = true;
-		foreach (PassResult a in passes)
+		GeometryAgreement geometry = CompareGeometry(passes);
+
+		sb.Append("| check | assertion | result |\n|---|---|---|\n")
+		  .Append("| pose hash | every pass rendered the same camera and sun sequence | ")
+		  .Append(posesAgree ? "**PASS**" : "**FAIL**").Append(" |\n")
+		  .Append("| geometry | repeats submitted the same geometry workload | ")
+		  .Append(geometry.Verdict).Append(" |\n\n");
+
+		if (!posesAgree)
 		{
-			foreach (PassResult b in passes)
-			{
-				// Only within a profile: two profiles legitimately draw different geometry,
-				// and that difference is a result rather than a fault.
-				if (a.profileId == b.profileId && a.sceneHash != b.sceneHash) { scenesAgree = false; }
-			}
+			sb.Append("> **Pose hash mismatch.** The passes did not render the same poses, so ")
+			  .Append("nothing below is a comparison. Fix this first.\n\n");
 		}
 
-		sb.Append("| check | result | meaning |\n|---|---|---|\n")
-		  .Append("| pose hash identical across all passes | ")
-		  .Append(posesAgree ? "**PASS**" : "**FAIL**")
-		  .Append(" | every pass rendered the same camera and sun sequence |\n")
-		  .Append("| scene hash identical within each profile | ")
-		  .Append(scenesAgree ? "**PASS**" : "**FAIL**")
-		  .Append(" | repeats submitted the same geometry workload |\n\n");
-
-		if (!posesAgree || !scenesAgree)
+		if (geometry.differing > 0)
 		{
-			sb.Append("> **A comparability check failed.** The spread below is not a noise ")
-			  .Append("floor - the repeats were not measuring the same thing. Fix this first.\n\n");
+			sb.Append("Geometry differed on **").Append(geometry.differing.ToString(Ci))
+			  .Append(" of ").Append(geometry.compared.ToString(Ci))
+			  .Append(" measured frames** (").Append(Pct(geometry.Fraction)).Append(").");
+
+			if (geometry.Isolated)
+			{
+				// A hitch inflates one frame's counters by absorbing several frames' work, so
+				// the same profiler frame reports six times the geometry and an invalid GPU
+				// time. Reporting that as "the repeats were not comparable" would be wrong -
+				// it is one bad frame, and it is visible in the wall clock.
+				sb.Append(" That is isolated rather than systematic, which is the signature ")
+				  .Append("of a stall - the profiler folds several frames' counters into one ")
+				  .Append("when the main thread blocks. ");
+
+				if (geometry.worstWallMs > 0)
+				{
+					sb.Append("The slowest measured frame in this run took **")
+					  .Append(M(geometry.worstWallMs)).Append(" ms** wall clock, against a ")
+					  .Append("median of ").Append(M(geometry.medianWallMs)).Append(" ms. ");
+				}
+
+				sb.Append("Treat the spread below as usable, but confirm the affected frames ")
+				  .Append("are not the ones a conclusion rests on.\n\n");
+			}
+			else
+			{
+				sb.Append(" That is systematic, not a stall: the repeats genuinely drew ")
+				  .Append("different things, so the spread below is not a noise floor. ")
+				  .Append("Investigate before using it.\n\n");
+			}
 		}
 
 		// --- part 2: the number ---
@@ -323,6 +384,88 @@ public static class BenchmarkWriter
 		  .Append("anything.\n");
 
 		return sb.ToString();
+	}
+
+	/// <summary>How far repeats of one profile agreed on what they drew, frame by frame.</summary>
+	struct GeometryAgreement
+	{
+		public int compared, differing;
+		public double worstWallMs, medianWallMs;
+
+		public double Fraction => compared > 0 ? (double)differing / compared : 0.0;
+
+		/// <summary>
+		/// A handful of disagreeing frames is a stall artefact; a steady stream is a real
+		/// difference in what was rendered. The threshold is deliberately loose - it only
+		/// decides the wording, and both cases are reported with their actual counts.
+		/// </summary>
+		public bool Isolated => differing > 0 && Fraction < 0.005;
+
+		public string Verdict
+		{
+			get
+			{
+				if (compared == 0) { return "n/a"; }
+				if (differing == 0) { return "**PASS**"; }
+				return Isolated ? "**PASS** (isolated stalls)" : "**FAIL**";
+			}
+		}
+	}
+
+	/// <summary>
+	/// Compares measured-frame geometry between repeats of the same profile. Across profiles
+	/// it is skipped deliberately: two renderers legitimately draw different things, and that
+	/// difference is a result rather than a fault.
+	/// </summary>
+	static GeometryAgreement CompareGeometry(List<PassResult> passes)
+	{
+		var agreement = new GeometryAgreement();
+		var wall = new List<double>();
+
+		foreach (PassResult pass in passes)
+		{
+			if (pass.geometry != null)
+			{
+				foreach (FrameGeometry g in pass.geometry)
+				{
+					wall.Add(g.wallMs);
+					if (g.wallMs > agreement.worstWallMs) { agreement.worstWallMs = g.wallMs; }
+				}
+			}
+
+			// Compare each pass against the first pass of its own profile.
+			PassResult reference = null;
+			foreach (PassResult candidate in passes)
+			{
+				if (candidate.profileId == pass.profileId) { reference = candidate; break; }
+			}
+
+			if (reference == null || ReferenceEquals(reference, pass)) { continue; }
+			if (reference.geometry == null || pass.geometry == null) { continue; }
+
+			int n = Mathf.Min(reference.geometry.Length, pass.geometry.Length);
+			agreement.compared += n;
+
+			for (int i = 0; i < n; i++)
+			{
+				FrameGeometry a = reference.geometry[i];
+				FrameGeometry b = pass.geometry[i];
+
+				if (a.drawCalls != b.drawCalls || a.triangles != b.triangles
+					|| a.lodHighRes != b.lodHighRes)
+				{
+					agreement.differing++;
+				}
+			}
+		}
+
+		if (wall.Count > 0)
+		{
+			wall.Sort();
+			agreement.medianWallMs = wall[wall.Count / 2];
+		}
+
+		return agreement;
 	}
 
 	static List<Spread> CollectSpread(List<PassResult> passes,
