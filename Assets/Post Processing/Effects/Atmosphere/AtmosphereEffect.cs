@@ -191,6 +191,11 @@ public class AtmosphereEffect : PostProcessingEffect
 		//
 		// The null check is the belt: a lost render texture is the one case that would not
 		// otherwise re-trigger, and it costs one reference comparison per frame.
+		// Bindings are refreshed unconditionally: they are cheap, and they do not survive a
+		// domain reload. The expensive part - creating render textures and dispatching the
+		// transmittance LUT - stays behind the dirty flag.
+		BindComputeResources();
+
 		if (!settingsUpToDate || transmittanceLUT == null)
 		{
 			sharedAtmosphereValues = GetShaderValues();
@@ -340,14 +345,7 @@ public class AtmosphereEffect : PostProcessingEffect
 		ComputeHelper.CreateRenderTexture3D(ref aerialPerspectiveLuminance, aerialPerspectiveLUTSize, aerialPerspectiveLUTFormat, TextureWrapMode.Clamp, "Aerial Perspective");
 		ComputeHelper.CreateRenderTexture3D(ref aerialPerspectiveTransmittance, aerialPerspectiveLUTSize, transmittance3DFormat, TextureWrapMode.Clamp, "Transmittance LUT 3D");
 
-		// Assign textures
-		aerialPerspectiveLUTCompute.SetTexture(0, "AerialPerspectiveLuminance", aerialPerspectiveLuminance);
-		aerialPerspectiveLUTCompute.SetTexture(0, "AerialPerspectiveTransmittance", aerialPerspectiveTransmittance);
-		aerialPerspectiveLUTCompute.SetTexture(0, "TransmittanceLUT", transmittanceLUT);
-
-		// Assign constant values
-		aerialPerspectiveLUTCompute.SetInt("size", aerialPerspectiveLUTSize);
-		aerialPerspectiveLUTCompute.SetInt("numScatteringSteps", numAerialScatteringSteps);
+		BindComputeResources();
 	}
 
 	void RenderAerialPerspectiveLUTs(Camera cam)
@@ -367,10 +365,41 @@ public class AtmosphereEffect : PostProcessingEffect
 		GraphicsFormat skyFormat = GraphicsFormat.R16G16B16A16_SFloat;
 		ComputeHelper.CreateRenderTexture(ref sky, skyRenderSize.x, skyRenderSize.y, FilterMode.Bilinear, skyFormat, "Sky", useMipMaps: true);
 
-		skyRenderCompute.SetTexture(0, "TransmittanceLUT", transmittanceLUT);
-		skyRenderCompute.SetTexture(0, "Sky", sky);
-		skyRenderCompute.SetInt("numScatteringSteps", numSkyScatteringSteps);
-		skyRenderCompute.SetInts("size", skyRenderSize.x, skyRenderSize.y);
+		BindComputeResources();
+	}
+
+	/// <summary>
+	/// Re-points the compute shaders at their textures and constants. Cheap, and separate from
+	/// the render textures' creation on purpose.
+	///
+	/// Compute shader bindings do not survive a domain reload or the editor losing focus, and
+	/// nothing else restores them: `EditorShaderHelper` covers focus changes but not every path
+	/// that drops them. Until the per-frame re-init was removed this was masked, because that
+	/// re-ran the whole init - including these binds - on every editor frame. Removing the
+	/// per-frame *dispatch* was worth doing; removing the per-frame *rebind* was not, and it
+	/// showed up immediately as "Property (TransmittanceLUT) at kernel index (0) is not set".
+	///
+	/// So bindings are refreshed on every SetProperties and only the dispatch stays behind the
+	/// dirty flag.
+	/// </summary>
+	void BindComputeResources()
+	{
+		if (skyRenderCompute != null && sky != null)
+		{
+			skyRenderCompute.SetTexture(0, "TransmittanceLUT", transmittanceLUT);
+			skyRenderCompute.SetTexture(0, "Sky", sky);
+			skyRenderCompute.SetInt("numScatteringSteps", numSkyScatteringSteps);
+			skyRenderCompute.SetInts("size", skyRenderSize.x, skyRenderSize.y);
+		}
+
+		if (aerialPerspectiveLUTCompute != null && aerialPerspectiveLuminance != null)
+		{
+			aerialPerspectiveLUTCompute.SetTexture(0, "AerialPerspectiveLuminance", aerialPerspectiveLuminance);
+			aerialPerspectiveLUTCompute.SetTexture(0, "AerialPerspectiveTransmittance", aerialPerspectiveTransmittance);
+			aerialPerspectiveLUTCompute.SetTexture(0, "TransmittanceLUT", transmittanceLUT);
+			aerialPerspectiveLUTCompute.SetInt("size", aerialPerspectiveLUTSize);
+			aerialPerspectiveLUTCompute.SetInt("numScatteringSteps", numAerialScatteringSteps);
+		}
 	}
 
 	// Render the sky to a small texture, which then will be upscaled to reduce expensive raymarching
