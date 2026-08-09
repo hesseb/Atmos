@@ -779,3 +779,25 @@ starting point.
 
 The overlay's `viewing` line reports the live `RenderingManager.ActiveMode` alongside the
 requested profile, so a profile that failed to apply cannot claim on screen that it worked.
+
+### Open thread: art-directed haze *on top of* physically based aerial perspective
+The doubled-up configuration found by accident — `Atmosphere` (PBR sky + scattering-LUT
+aerial perspective) **plus** `AerialPerspectiveSimple` (cheap exponential fog keyed to sun
+elevation) — was judged to look **better** than the physically based aerial perspective alone.
+
+Worth taking seriously rather than filing as a bug, because it is an RQ3-shaped result: the
+physically based path is correct but not art-directable, and a cheap ramp on top restores
+artistic control over distance haze for ~0.05 ms without touching the scattering. That is
+exactly the "how can the physically based method be adapted to work practically" question,
+and it is a hybrid neither arm of the current comparison represents.
+
+To explore when the PBR profiles get detailed attention:
+- Is the improvement the *colour* (art-directed ramp vs derived) or just *more* haze? Test by
+  raising the physically based `aerialPerspectiveStrength` alone and comparing.
+- The PBR aerial perspective is disabled for Earth shadow at 32³ (`START.md` §3) and the LUT
+  is coarse; some of what the cheap fog adds may be covering a resolution artefact.
+- If it survives scrutiny it deserves its own profile (`pbr-hybrid`) and a paragraph, since
+  "keep the physics, add an art-directed term" is a transferable recommendation.
+
+Defaulted `Aerial Perspective.asset` to `enabled: 0` so the authored scene is plain PBR; this
+hybrid needs to be a deliberate profile, not an accident of asset defaults.
