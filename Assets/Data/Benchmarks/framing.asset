@@ -73,7 +73,7 @@ MonoBehaviour:
       rising: 0
       highest: 1
     screenshotFirstAndLast: 0
-    screenshotFrames: 
+    screenshotFrames: fa000000
   - label: steep
     kind: 1
     frames: 500
@@ -122,7 +122,7 @@ MonoBehaviour:
       rising: 0
       highest: 1
     screenshotFirstAndLast: 0
-    screenshotFrames: 
+    screenshotFrames: fa000000
   - label: oblique
     kind: 1
     frames: 500
@@ -171,7 +171,7 @@ MonoBehaviour:
       rising: 0
       highest: 1
     screenshotFirstAndLast: 0
-    screenshotFrames: 
+    screenshotFrames: fa000000
   - label: horizon
     kind: 1
     frames: 500
@@ -220,4 +220,4 @@ MonoBehaviour:
       rising: 0
       highest: 1
     screenshotFirstAndLast: 0
-    screenshotFrames: 
+    screenshotFrames: fa000000

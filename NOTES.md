@@ -324,3 +324,64 @@ frames are `phase = Prewarm` and never enter statistics. `prewarmPosesEvery = 0`
 `screenshots/manifest.csv` records frame index, pass, segment, resolution, camera pose,
 sky fraction and **sun elevation in degrees** — the last is there because it is the caption
 a twilight figure needs and reconstructing it from `dayT` afterwards is painful.
+
+### Self-check mode — where the noise floor comes from
+`BenchmarkRunMode.SelfCheck` replays each profile at least twice in one process (repeats
+are forced to ≥2) and writes `selfcheck.md` alongside the usual outputs.
+
+Two kinds of claim, kept deliberately separate:
+- **Comparability — pass/fail.** Pose hash identical across every pass; scene hash identical
+  *within* each profile (across profiles it may legitimately differ, by the passes each
+  adds). A failure here invalidates the spread below, so it is stated first.
+- **Spread — reported, not judged.** Max-minus-min of GPU median, p99 and 1% low across
+  repeats, per profile and segment. There is deliberately **no threshold** in the report,
+  because what counts as acceptable depends entirely on the size of the effect measured.
+
+The headline is the largest median spread across all segments. Read it as: a difference
+between two renderer configurations smaller than that cannot be distinguished from
+run-to-run variation on this machine.
+
+For calibration, the editor numbers from the earlier two-repeat run were 0.982 / 0.990 ms
+median → **0.008 ms spread (0.81%)**, against a measured atmosphere delta of 0.293–0.314 ms
+— roughly **37×** the noise floor, comfortably resolvable. That editor figure is optimistic;
+re-run in a standalone build before quoting anything, and re-measure whenever the hardware,
+driver or scene changes.
+
+p99 and 1% low columns are typically several times wider than the median column — tail
+statistics are inherently less stable, so a tail difference needs a correspondingly larger
+margin before it means anything. That is why all three are reported rather than just the
+median.
+
+### First real self-check: an editor stall, and what it changed
+`orbit`, 4 passes (pbr/noatmo × 2 repeats), editor. Noise floor **0.030 ms** (1.81%) on the
+worst segment, against a measured atmosphere delta of ~0.570 ms — about **19×**, comfortably
+resolvable. Editor figure; re-measure in a build before quoting.
+
+The interesting part was a **FAIL on scene hash**. Cause, from `frames.csv`:
+
+| frame | wall_ms | gc_alloc | draw calls | triangles | gpu_ms |
+|---|---|---|---|---|---|
+| 356 | **1002.36** | 10 KB | 407 | 2.19 M | 1.86 |
+| 357 | 59.15 | **4.3 MB** | 407 | 2.19 M | 2.01 |
+| 358 | 33.51 | 417 KB | **2443** | **13.15 M** | **0** |
+
+A one-second main-thread stall in the editor (nothing in the harness can block that long),
+then a single frame whose profiler counters absorbed roughly six frames' worth of geometry
+and whose GPU timing was invalid. **1 differing frame out of 4800 compared pairs**;
+`noatmo_r0` vs `noatmo_r1` were byte-identical throughout.
+
+So the check was right that the hashes differed and wrong about what it meant. A binary
+hash comparison cannot distinguish one stall from a systematic difference, and it declared
+a perfectly usable noise floor invalid.
+
+**Fix:** `PassResult` now retains per-measured-frame geometry (draw calls, triangles, LOD
+count, wall ms), and the self-check reports *how many* frames disagreed rather than only
+that the hash did. Under 0.5% differing → `PASS (isolated stalls)`, with the run's worst
+wall-clock frame quoted next to the median so the stall is visible. At or above that →
+`FAIL`, described as systematic. Both cases print the actual counts; the threshold only
+picks the wording.
+
+Consequence for the protocol: **an editor self-check will occasionally eat a stall.** The
+median is robust to it, the p99 and 1% low are not — the wide `pbr / alps` p99 spread
+(1.381 ms vs 0.112 ms on the neighbouring segment) is that one frame. Another reason the
+quotable noise floor has to come from a standalone build.

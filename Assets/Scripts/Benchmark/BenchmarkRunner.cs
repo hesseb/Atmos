@@ -32,7 +32,16 @@ public enum BenchmarkRunMode
 	/// <summary>Produce images. Captures marked frames and reports no statistics - every row
 	/// is written with measured = 0 so a capture run can never be mistaken for a result.
 	/// </summary>
-	Capture
+	Capture,
+	/// <summary>
+	/// Measure the harness rather than the renderer. Replays each profile at least twice in
+	/// one process and reports how far the repeats disagreed.
+	///
+	/// That disagreement is the noise floor: a PBR-vs-baseline delta smaller than it is not
+	/// a result. The thesis needs that number to come from the harness rather than from an
+	/// examiner asking where it is.
+	/// </summary>
+	SelfCheck
 }
 
 [DefaultExecutionOrder(-500)]
@@ -243,12 +252,19 @@ public class BenchmarkRunner : MonoBehaviour
 
 		// Repeats exist to average out measurement noise. A capture run has no measurements,
 		// and every repeat would replay the plan to write byte-identical images over the
-		// previous pass's - so it does exactly one pass per profile.
-		int passRepeats = IsCaptureRun ? 1 : Mathf.Max(1, repeats);
+		// previous pass's - so it does exactly one pass per profile. A self-check is the
+		// opposite case: comparing repeats IS the measurement, so it needs at least two.
+		int passRepeats = IsCaptureRun
+			? 1
+			: Mathf.Max(mode == BenchmarkRunMode.SelfCheck ? 2 : 1, repeats);
 
 		if (IsCaptureRun && repeats > 1)
 		{
 			Debug.Log($"[Benchmark] capture run: ignoring repeats={repeats}, one pass per profile.", this);
+		}
+		else if (mode == BenchmarkRunMode.SelfCheck && passRepeats != repeats)
+		{
+			Debug.Log($"[Benchmark] self-check: raising repeats {repeats} -> {passRepeats}.", this);
 		}
 
 		if (profiles == null || profiles.Length == 0)
