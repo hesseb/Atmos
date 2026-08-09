@@ -464,6 +464,18 @@ public class BenchmarkPlan
 		return sb.ToString();
 	}
 
+	/// <summary>Frames marked for capture. A capture run with none of these is pointless, so
+	/// the runner refuses to start rather than replaying the whole plan for nothing.</summary>
+	public int ScreenshotCount
+	{
+		get
+		{
+			int count = 0;
+			foreach (PlannedFrame f in frames) { if (f.screenshot) { count++; } }
+			return count;
+		}
+	}
+
 	public string Describe()
 	{
 		int measured = 0, screenshots = 0;

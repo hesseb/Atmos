@@ -24,6 +24,17 @@ using UnityEngine;
 /// guarantee - exact frame count, pinned delta time, identical pose hash across runs -
 /// before any statistics exist that could be quietly wrong.
 /// </summary>
+public enum BenchmarkRunMode
+{
+	/// <summary>Produce numbers. Frames marked for a screenshot are flagged in the CSV but
+	/// nothing is captured, because the readback would corrupt their timings.</summary>
+	Timing,
+	/// <summary>Produce images. Captures marked frames and reports no statistics - every row
+	/// is written with measured = 0 so a capture run can never be mistaken for a result.
+	/// </summary>
+	Capture
+}
+
 [DefaultExecutionOrder(-500)]
 public class BenchmarkRunner : MonoBehaviour
 {
@@ -42,6 +53,11 @@ public class BenchmarkRunner : MonoBehaviour
 	public bool interleaveRepeats = true;
 
 	[Header("Setup")]
+	// Timing runs produce the numbers, capture runs produce the images. They are separate
+	// because a screenshot readback stalls the frame it is taken on. Run the same benchmark
+	// in both modes and pair the outputs by frame index - the plan and pose hashes recorded
+	// by each are what certify the two runs rendered the same thing.
+	public BenchmarkRunMode mode = BenchmarkRunMode.Timing;
 	public Vector2Int targetResolution = new Vector2Int(1920, 1080);
 	public bool pinResolution = true;
 	public bool runOnStart;
@@ -57,6 +73,13 @@ public class BenchmarkRunner : MonoBehaviour
 	public bool logProgress = true;
 
 	public bool IsRunning { get; private set; }
+	/// <summary>True when this run captures images instead of producing statistics. The
+	/// writer consults it to blank the measured column - a capture run's frame times are
+	/// polluted by readback stalls and must never reach a table.</summary>
+	public bool IsCaptureRun => mode == BenchmarkRunMode.Capture;
+	public ScreenshotCapture Screenshots { get; private set; }
+	/// <summary>Survives the capture object being released, so run.json can record it.</summary>
+	public int ScreenshotsCaptured { get; private set; }
 	public int FrameCursor { get; private set; }
 	public BenchmarkPlan Plan { get; private set; }
 	public ulong ObservedPoseHash { get; private set; }
@@ -159,13 +182,42 @@ public class BenchmarkRunner : MonoBehaviour
 		passResults.Clear();
 		runFolder = null;
 
+		// Checked before the run folder exists, so a misconfigured capture does not leave an
+		// empty result directory behind.
+		if (IsCaptureRun)
+		{
+			if (Plan.ScreenshotCount == 0)
+			{
+				Debug.LogError($"[Benchmark] capture run, but '{benchmark.id}' marks no frames " +
+					"for a screenshot - it would replay the whole plan and produce nothing. Set " +
+					"screenshotFirstAndLast or screenshotFrames on at least one segment.", this);
+				scope?.Dispose();
+				scope = null;
+				return;
+			}
+
+			AddWarning("CAPTURE_RUN_NOT_MEASURED");
+		}
+
 		if (writeResults)
 		{
 			string root = string.IsNullOrEmpty(outputRootOverride)
 				? BenchmarkWriter.DefaultOutputRoot()
 				: outputRootOverride;
-			runFolder = BenchmarkWriter.BeginRun(Plan, root);
+			runFolder = BenchmarkWriter.BeginRun(Plan, root, mode);
+
+			if (IsCaptureRun) { Screenshots = new ScreenshotCapture(runFolder); }
 		}
+		else if (IsCaptureRun)
+		{
+			Debug.LogError("[Benchmark] capture run with writeResults off - there is nowhere " +
+				"to put the images.", this);
+			scope?.Dispose();
+			scope = null;
+			return;
+		}
+
+		ScreenshotsCaptured = 0;
 
 		expectedDeltaMs = Plan.CaptureDeltaTime * 1000.0;
 		IsRunning = true;
@@ -189,9 +241,19 @@ public class BenchmarkRunner : MonoBehaviour
 	{
 		passPlans.Clear();
 
+		// Repeats exist to average out measurement noise. A capture run has no measurements,
+		// and every repeat would replay the plan to write byte-identical images over the
+		// previous pass's - so it does exactly one pass per profile.
+		int passRepeats = IsCaptureRun ? 1 : Mathf.Max(1, repeats);
+
+		if (IsCaptureRun && repeats > 1)
+		{
+			Debug.Log($"[Benchmark] capture run: ignoring repeats={repeats}, one pass per profile.", this);
+		}
+
 		if (profiles == null || profiles.Length == 0)
 		{
-			for (int r = 0; r < Mathf.Max(1, repeats); r++)
+			for (int r = 0; r < passRepeats; r++)
 			{
 				passPlans.Add(new PassPlan { profile = null, repeat = r, passId = $"asis_r{r}" });
 			}
@@ -200,7 +262,7 @@ public class BenchmarkRunner : MonoBehaviour
 
 		if (interleaveRepeats)
 		{
-			for (int r = 0; r < Mathf.Max(1, repeats); r++)
+			for (int r = 0; r < passRepeats; r++)
 			{
 				foreach (RendererProfile profile in profiles)
 				{
@@ -214,7 +276,7 @@ public class BenchmarkRunner : MonoBehaviour
 			foreach (RendererProfile profile in profiles)
 			{
 				if (profile == null) { continue; }
-				for (int r = 0; r < Mathf.Max(1, repeats); r++)
+				for (int r = 0; r < passRepeats; r++)
 				{
 					passPlans.Add(new PassPlan { profile = profile, repeat = r, passId = $"{profile.id}_r{r}" });
 				}
@@ -327,6 +389,22 @@ public class BenchmarkRunner : MonoBehaviour
 			}
 
 			Records[FrameCursor] = record;
+
+			// After the record is complete, so a failed capture cannot cost us the frame's
+			// data, and while FrameCursor still names this frame. The readback stalls here
+			// for milliseconds - harmless, because a capture run reports no timings, and
+			// captureDeltaTime means the stall does not advance simulated time either.
+			if (Screenshots != null && Plan.frames[FrameCursor].screenshot)
+			{
+				PlannedFrame planned = Plan.frames[FrameCursor];
+				string label = planned.segmentIndex >= 0
+					&& planned.segmentIndex < Plan.segmentLabels.Length
+					? Plan.segmentLabels[planned.segmentIndex] : "";
+
+				Screenshots.CaptureNow(FrameCursor, passPlans[currentPass].passId, planned, label,
+					record.cameraPosition, record.sunDirection, PlanetCentre());
+			}
+
 			frameStateWritten = false;
 			FrameCursor++;
 		}
@@ -399,6 +477,10 @@ public class BenchmarkRunner : MonoBehaviour
 			endOfFrameRoutine = null;
 		}
 
+		// Before the summary: a capture failure has to be in warnings[] by the time run.json
+		// is serialised, or the run would claim a clean sheet it does not have.
+		FinaliseScreenshots();
+
 		if (writeResults && !string.IsNullOrEmpty(runFolder) && passResults.Count > 0)
 		{
 			BenchmarkWriter.WriteRunSummary(this, runFolder, passResults, machineLabel);
@@ -432,6 +514,11 @@ public class BenchmarkRunner : MonoBehaviour
 			endOfFrameRoutine = null;
 		}
 
+		// Idempotent, and reached on the abort path too - an aborted capture should still
+		// leave a manifest for the images that did land, otherwise the folder is a pile of
+		// PNGs with no record of which frame produced which.
+		FinaliseScreenshots();
+
 		// Pass scope first: it was applied on top of the run scope, so it unwinds first.
 		// Missing this on an abort would leave a profile's effect flags modified, and
 		// those are asset state that reaches disk on the next project save.
@@ -441,6 +528,32 @@ public class BenchmarkRunner : MonoBehaviour
 		scope = null;
 		Sampler?.Dispose();
 		Sampler = null;
+	}
+
+	/// <summary>Writes the manifest and folds any capture failures into warnings. Safe to
+	/// call more than once.</summary>
+	void FinaliseScreenshots()
+	{
+		if (Screenshots == null) { return; }
+
+		Screenshots.WriteManifest();
+
+		if (Screenshots.FailureCount > 0)
+		{
+			AddWarning($"SCREENSHOT_FAILURES:{Screenshots.FailureCount}");
+		}
+
+		Debug.Log($"[Benchmark] captured {Screenshots.Count} screenshot(s) to " +
+			$"{Screenshots.Folder}", this);
+		ScreenshotsCaptured = Screenshots.Count;
+		Screenshots = null;
+	}
+
+	/// <summary>World-space centre of the planet, for the observer's local up vector. The
+	/// earth orbits, so this is not the origin.</summary>
+	Vector3 PlanetCentre()
+	{
+		return sceneRefs.Earth != null ? sceneRefs.Earth.transform.position : Vector3.zero;
 	}
 
 	void AddWarning(string warning)

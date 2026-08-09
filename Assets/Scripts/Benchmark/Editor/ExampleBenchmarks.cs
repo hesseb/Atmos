@@ -81,6 +81,13 @@ static class ExampleBenchmarks
 			Hold("oblique", View(Alps, altitude: 20, pitch: 30), 500, Noon()),
 			Hold("horizon", View(Alps, altitude: 20, pitch: 2), 500, Noon())
 		};
+
+		// One image per framing, from the middle of each hold. Not first-and-last: a hold's
+		// endpoints are the same pose, so that would capture the same picture twice.
+		for (int i = 0; i < def.segments.Length; i++)
+		{
+			def.segments[i].screenshotFrames = new[] { def.segments[i].frames / 2 };
+		}
 		Save(def);
 	}
 
@@ -124,6 +131,17 @@ static class ExampleBenchmarks
 			Orbit("alps", View(Alps, altitude: 30, pitch: 55), 360f, 1200, Noon()),
 			Orbit("sahara", View(Sahara, altitude: 30, pitch: 55), 360f, 1200, Noon())
 		};
+
+		// Every 90 degrees of the sweep: four sun-relative framings per terrain type, which
+		// is where the Mie forward lobe shows up as a visible difference.
+		for (int i = 0; i < def.segments.Length; i++)
+		{
+			int frames = def.segments[i].frames;
+			def.segments[i].screenshotFrames = new[]
+			{
+				0, frames / 4, frames / 2, (frames * 3) / 4
+			};
+		}
 		Save(def);
 	}
 
