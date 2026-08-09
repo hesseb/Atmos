@@ -1,0 +1,79 @@
+// Bakes the physically based sky into the baseline's 2D gradient LUT.
+//
+// Deliberately includes AtmosphereCommon.hlsl and calls the same raymarch() the runtime sky
+// compute does, rather than reimplementing the scattering. A reimplementation would mean any
+// difference between the baked baseline and the physically based sky could be a difference
+// in the bake, which is the one thing the comparison cannot tolerate.
+//
+// One dispatch per output row: the sun direction is a shader global set once per dispatch,
+// and each row of the LUT is a different sun elevation.
+#pragma kernel BakeSkyGradientRow
+
+#include "../Atmosphere/Shader Common/AtmosphereCommon.hlsl"
+
+RWTexture2D<float4> Result;
+sampler2D TransmittanceLUT;
+
+uint width;
+uint row;
+int numScatteringSteps;
+
+// The LUT has no azimuth axis, so each texel is the mean radiance over all horizontal
+// directions at that (view elevation, sun elevation). The sun-relative variation this drops -
+// principally the Mie forward lobe - is what the runtime shader's glow term approximates.
+// That split is the honest description of what a 2D sky LUT can and cannot represent.
+int numAzimuthSamples;
+
+// The LUT has no altitude axis either. Everything is baked from one observer height, so the
+// result is correct at that altitude and progressively wrong away from it. This is a real
+// limitation of the technique rather than of this implementation, and it is worth reporting
+// as one: a strategy-game camera ranges over a large fraction of the atmosphere's thickness.
+float bakeAltitude;
+
+float3 observerUp;
+float3 observerEast;
+
+[numthreads(64, 1, 1)]
+void BakeSkyGradientRow (uint3 id : SV_DispatchThreadID)
+{
+	if (id.x >= width) { return; }
+
+	float3 pos = observerUp * (planetRadius + bakeAltitude);
+
+	// U axis: 0 = straight down, 0.5 = horizon, 1 = zenith. Matches the hand-authored
+	// gradient's layout exactly, so the two are interchangeable in the shader.
+	float viewElevation01 = width <= 1 ? 0.5 : id.x / (float)(width - 1);
+	float cosView = viewElevation01 * 2.0 - 1.0;
+	float sinView = sqrt(saturate(1.0 - cosView * cosView));
+
+	float3 north = normalize(cross(observerUp, observerEast));
+
+	const float TWO_PI = 6.28318530718;
+	float3 sum = 0;
+
+	for (int a = 0; a < numAzimuthSamples; a++)
+	{
+		float azimuth = (a + 0.5) * TWO_PI / numAzimuthSamples;
+		float3 horizontal = observerEast * cos(azimuth) + north * sin(azimuth);
+		float3 viewDir = normalize(observerUp * cosView + horizontal * sinView);
+
+		float2 hitInfo = raySphere(0, atmosphereRadius, pos, viewDir);
+		float rayLength = hitInfo.y;
+
+		// Stop at the planet surface. SkyRender.compute does not need this because terrain
+		// covers those pixels in screen space - a bake has nothing to hide behind, and
+		// marching through the planet would put nonsense in the lower half of the LUT.
+		float dstToPlanet = rayIntersectSphere(pos, viewDir, planetRadius);
+		if (dstToPlanet > 0) { rayLength = min(rayLength, dstToPlanet); }
+
+		if (rayLength > 0)
+		{
+			float3 inPoint = pos + viewDir * hitInfo.x;
+			ScatteringResult result = raymarch(inPoint, viewDir, rayLength,
+				numScatteringSteps, TransmittanceLUT, planetRadius);
+			sum += result.luminance;
+		}
+	}
+
+	Result[uint2(id.x, row)] = float4(sum / max(1, numAzimuthSamples), 1);
+}

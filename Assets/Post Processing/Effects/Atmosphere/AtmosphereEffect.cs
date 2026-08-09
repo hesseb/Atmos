@@ -202,6 +202,24 @@ public class AtmosphereEffect : PostProcessingEffect
 		}
 	}
 
+	/// <summary>
+	/// Applies the current atmosphere parameters to an arbitrary compute shader, after making
+	/// sure the LUTs they depend on are up to date.
+	///
+	/// Exists for the baseline renderer's offline sky bake, which evaluates the *same*
+	/// scattering code as the runtime renderer rather than a reimplementation of it. If the
+	/// bake carried its own copy of the physics, a difference between the baked baseline and
+	/// the physically based sky could be a difference in the bake rather than in the
+	/// technique - which is exactly the confound the comparison cannot afford.
+	/// </summary>
+	public void ApplyAtmosphereValuesTo(ComputeShader compute)
+	{
+		// In edit mode SetProperties always takes its init branch, so this also guarantees
+		// transmittanceLUT has been rendered.
+		SetProperties();
+		GetShaderValues().Apply(compute);
+	}
+
 	ShaderValues GetShaderValues()
 	{
 		ShaderValues values = new ShaderValues();
