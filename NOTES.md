@@ -537,3 +537,89 @@ verdict reports `n/a (profiler counters unavailable)` instead of PASS, and both
 This is the general shape of the hazard the plan flagged as "empty cells rather than zeros":
 a reader must never mistake *stripped* for *zero*. `frames.csv` already got that right; the
 derived checks did not.
+
+---
+
+## First authoritative results: development vs release, 1440p, RTX 4090
+
+Full suite (5 benchmarks, pbr + noatmo, 2 repeats = 4 passes each) run from both builds at
+commit `2bcb572`. Both report `authoritative: true`, `resolution 2560x1440 matched`,
+`frame_timing_available`, GPU timing lag 1 frame.
+
+### 1. Release keeps almost all instrumentation — earlier claim was wrong
+
+I had said the Render profiler counters do not survive a release player. **They do.**
+**11 of 13 counters are available in release**; only two are stripped:
+
+- `GC Allocated In Frame`
+- `Gfx Used Memory`
+
+Every Render counter survives — draw calls, batches, SetPass, triangles, vertices, shadow
+casters — so `scene_hash`, the geometry-agreement check and the self-check all work fully in
+a release build. The defensive `countersPresent` handling added for stripped counters never
+triggers here; keep it anyway, it is cheap and the assumption was wrong once already.
+
+**Consequence: release is the better build for the thesis.** Nothing an RQ metric depends on
+is lost. Use development only when per-frame GC allocation matters — which is how the
+editor stall got diagnosed, so it is not worthless.
+
+### 2. The development flag costs essentially nothing on GPU time
+
+Across 26 segment/profile pairs: **median +0.0023 ms, max +0.0276 ms, min −0.0038 ms**.
+Several are negative. This is noise, not overhead — expected, since the flag is CPU-side and
+the metric is GPU. The build choice can be made on instrumentation grounds alone.
+
+### 3. `daycycle` pose hash differs across builds — diagnosed, not a defect
+
+`daycycle` is the only benchmark whose `pose_hash` differs between dev and release. Cause:
+
+- The **plans are byte-identical** (`plan_hash` matches, and a full column diff of `plan.csv`
+  shows zero differences), so the intent was identical.
+- The **camera is bit-identical** in all five benchmarks.
+- The **sun direction** differs by at most **1.3e-6** — a last-bit floating-point difference
+  in the runtime sun transform between build configurations.
+- `MixQuantized` rounds at scale **10000** (1e-4 for every component, including directions —
+  note the plan document said 1e-3 for angles; the code does not). Exactly **3 of 6234**
+  sampled components sit within 1.3e-6 of a rounding boundary and flip buckets. First is row
+  473, `sun_dir_z` −0.56155038 vs −0.56154990, which straddles the .5 midpoint at ×10000.
+
+Only `daycycle` is affected because it is the only benchmark that **moves** the sun: 1800
+measured frames of sun motion is 1800 chances to land on a boundary, whereas the others hold
+it at a single solved value.
+
+**Within** each build all passes agree, in both builds — so the hash does its actual job.
+Cross-build it is brittle by construction: any quantisation has boundaries. **Rule: compare
+`pose_hash` within a build; across builds compare with a tolerance** (the procedure is a
+column diff of `frames.csv` on `cam_*`/`sun_dir_*`, which is what produced the numbers here).
+
+### 4. Atmosphere cost is not monotonic in sky fraction
+
+Release build, absolute GPU cost of the atmosphere (pbr − noatmo), by sky fraction:
+
+| benchmark | segment | sky | pbr | noatmo | cost ms | cost % |
+|---|---|---|---|---|---|---|
+| framing | nadir | 0.00 | 1.223 | 1.017 | +0.205 | 20.2% |
+| framing | steep | 0.05 | 1.277 | 1.066 | +0.211 | 19.8% |
+| framing | oblique | 0.54 | 1.046 | 0.806 | **+0.240** | 29.8% |
+| framing | horizon | 0.97 | 0.439 | 0.281 | +0.158 | 56.4% |
+
+`framing` is the clean comparison — one position, only pitch varies. Cost **peaks at
+intermediate sky fraction**, which is the expected shape: at nadir you pay aerial perspective
+on nearly every pixel and almost no sky raymarch; at the horizon nearly all sky raymarch and
+almost no aerial perspective; in between you pay both.
+
+Note absolute and relative cost tell **opposite** stories — relative cost climbs
+monotonically (20% → 56%) only because the baseline falls faster, terrain being the expensive
+thing. **Report absolute ms for RQ2**; the percentage is a statement about the terrain
+renderer, not the atmosphere.
+
+> **Caveat: no self-check was run on these builds.** The differences between segments
+> (0.035–0.082 ms) are close to the editor noise floor of 0.030 ms, and the real 1440p
+> release noise floor is unmeasured. The non-monotonicity claim needs a self-check before it
+> goes in the report.
+
+### 5. `TIMING_ATTRIBUTION_ANOMALIES:1` on every run, both builds
+One frame per run where the timing stream did not deliver exactly one new timing. Consistent
+across all ten runs, so it is a property of the instrumentation rather than of any benchmark.
+One frame in 400–2400 is not material, but it should be explained before the report rather
+than left as an unexamined warning.
