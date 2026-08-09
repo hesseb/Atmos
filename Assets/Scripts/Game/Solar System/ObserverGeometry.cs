@@ -1,4 +1,7 @@
 using UnityEngine;
+// SolarSystemManager and EarthOrbit live in this namespace, despite this file sitting in the
+// same folder - the folder is not the namespace here.
+using SolarSystem;
 
 /// <summary>
 /// Where the sun is relative to an observer standing on the planet.

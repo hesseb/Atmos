@@ -120,16 +120,28 @@ public class BaselineSkyRenderer : MonoBehaviour
 
 	// ------------------------------------------------------------------ recording
 
-	/// <summary>Records the shading pass. Called by RenderingManager, which owns the buffer.</summary>
-	public void RecordBaselinePass(CommandBuffer cmd)
+	/// <summary>
+	/// Records the shading pass. Called by RenderingManager, which owns the buffer.
+	/// Returns false if the shader is missing, so the caller can drop the buffer rather than
+	/// attach one that would blit with a null material every frame.
+	/// </summary>
+	public bool RecordBaselinePass(CommandBuffer cmd)
 	{
-		SkyPass.Record(cmd, EnsureMaterial(ref baselineMaterial, baselineShader));
+		Material material = EnsureMaterial(ref baselineMaterial, baselineShader);
+		if (material == null) { return false; }
+
+		SkyPass.Record(cmd, material);
+		return true;
 	}
 
 	/// <summary>Records the no-op control pass.</summary>
-	public void RecordNullPass(CommandBuffer cmd)
+	public bool RecordNullPass(CommandBuffer cmd)
 	{
-		SkyPass.Record(cmd, EnsureMaterial(ref nullMaterial, nullShader));
+		Material material = EnsureMaterial(ref nullMaterial, nullShader);
+		if (material == null) { return false; }
+
+		SkyPass.Record(cmd, material);
+		return true;
 	}
 
 	Material EnsureMaterial(ref Material material, Shader shader)
