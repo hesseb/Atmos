@@ -84,6 +84,14 @@ public class AtmosphereEffect : PostProcessingEffect
 	public FilterMode filterMode;
 
 	[Header("Debug")]
+	/// <summary>
+	/// Derived from wavelengthsRGB and wavelengthScale, shown for inspection only - editing it
+	/// does nothing, it is overwritten on the next settings update.
+	///
+	/// It is serialized, so writing it from GetShaderValues dirtied the asset on every call.
+	/// It is now computed into a local and mirrored here once, which keeps the inspector
+	/// readout without the write-back.
+	/// </summary>
 	public Vector3 rayleighCoefficients;
 
 	[Header(("Debug"))]
@@ -174,7 +182,16 @@ public class AtmosphereEffect : PostProcessingEffect
 		{
 			material.SetVector(ShaderParamID.dirToSun, -light.transform.forward);
 		}
-		if (!settingsUpToDate || !Application.isPlaying)
+		// Was `!settingsUpToDate || !Application.isPlaying`, so in edit mode the whole init
+		// branch - including the transmittance LUT dispatch - ran on EVERY frame. That is a
+		// measurement confound and it grows once there is a multiple-scattering LUT to rebuild
+		// too. The dirty flag alone is sufficient: OnValidate sets it on any inspector edit,
+		// OnEnable clears it on load and domain reload, and EditorShaderHelper sets it when the
+		// editor regains focus and compute bindings are lost.
+		//
+		// The null check is the belt: a lost render texture is the one case that would not
+		// otherwise re-trigger, and it costs one reference comparison per frame.
+		if (!settingsUpToDate || transmittanceLUT == null)
 		{
 			sharedAtmosphereValues = GetShaderValues();
 			sharedAtmosphereValues.Apply(material);
@@ -234,8 +251,12 @@ public class AtmosphereEffect : PostProcessingEffect
 		// Arbitrary scale to give nicer range of reasonable values for the scattering constant
 		// Strength of (rayleigh) scattering is dependent on wavelength (~ 1/wavelength^4)
 		Vector3 inverseWavelengths = new Vector3(1 / wavelengthsRGB.x, 1 / wavelengthsRGB.y, 1 / wavelengthsRGB.z);
-		rayleighCoefficients = Pow(inverseWavelengths * wavelengthScale, 4);
-		values.vectors.Add(("rayleighCoefficients", rayleighCoefficients));
+		Vector3 rayleigh = Pow(inverseWavelengths * wavelengthScale, 4);
+		values.vectors.Add(("rayleighCoefficients", rayleigh));
+
+		// Mirror into the serialized debug field only when it has actually changed. Writing it
+		// unconditionally from here marked the asset dirty on every settings update.
+		if (rayleighCoefficients != rayleigh) { rayleighCoefficients = rayleigh; }
 
 		// Mie values
 		values.floats.Add(("mieDensityAvg", mieDensityAvg));
@@ -260,6 +281,9 @@ public class AtmosphereEffect : PostProcessingEffect
 		// Values
 		drawSky.SetFloat("atmosphereThickness", atmosphereThickness);
 		drawSky.SetFloat("planetRadius", bodyRadius);
+		// Unused by the current mapping, but the shared transmittance header declares it and
+		// Bruneton's parameterisation needs it. Setting it now avoids a silent zero later.
+		drawSky.SetFloat("atmosphereRadius", bodyRadius + atmosphereThickness);
 		drawSky.SetFloat("sunDiscSize", sunDiscSize);
 		drawSky.SetFloat("sunDiscBlurA", sunDiscBlurA);
 		drawSky.SetFloat("sunDiscBlurB", sunDiscBlurB);
