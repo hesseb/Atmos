@@ -71,6 +71,12 @@ public class TestbedCamera : MonoBehaviour
 	[Header("Optics")]
 	public float fieldOfView = 60f;
 
+	[Header("Home view")]
+	// The view Reset returns to. Fly somewhere you like, then use the component's
+	// "Set Home To Current View" context menu to capture it.
+	public CameraView homeView = DefaultHomeView;
+	public KeyCode resetKey = KeyCode.Home;
+
 	const float defaultWorldRadius = 150f;
 	bool warnedMissingHeightSettings;
 
@@ -102,6 +108,12 @@ public class TestbedCamera : MonoBehaviour
 	void Update()
 	{
 		if (!inputEnabled) { return; }
+
+		if (Input.GetKeyDown(resetKey))
+		{
+			ResetView();
+			return;
+		}
 
 		if (Input.GetKeyDown(toggleModeKey))
 		{
@@ -315,6 +327,24 @@ public class TestbedCamera : MonoBehaviour
 		public float fieldOfView;
 	}
 
+	static CameraView DefaultHomeView => new CameraView
+	{
+		coordinate = new CoordinateDegrees(0f, 20f),
+		altitude = 10f,
+		pitch = 55f,
+		heading = 0f,
+		fieldOfView = 60f
+	};
+
+	/// <summary>
+	/// Snaps back to <see cref="homeView"/>, switching to Orbit mode. Bound to
+	/// <see cref="resetKey"/>, and the way to recover from getting lost in free-fly.
+	/// </summary>
+	public void ResetView()
+	{
+		SetView(homeView);
+	}
+
 	public CameraView GetView()
 	{
 		return new CameraView
@@ -397,11 +427,36 @@ public class TestbedCamera : MonoBehaviour
 		ApplyPose();
 	}
 
+	[ContextMenu("Reset To Home View")]
+	void ResetViewFromInspector()
+	{
+		ResetView();
+	}
+
+	[ContextMenu("Set Home To Current View")]
+	void SetHomeToCurrentView()
+	{
+		homeView = GetView();
+	}
+
+	// Called when the component is first added, and on Inspector > Reset.
+	void Reset()
+	{
+		homeView = DefaultHomeView;
+	}
+
 	void OnValidate()
 	{
 		minAltitude = Mathf.Max(minAltitude, 0.01f);
 		maxAltitude = Mathf.Max(maxAltitude, minAltitude);
 		altitude = Mathf.Clamp(altitude, minAltitude, maxAltitude);
 		fieldOfView = Mathf.Clamp(fieldOfView, 1f, 179f);
+
+		// A home view serialized before this field existed deserializes to all-zero,
+		// which would reset the camera to the planet surface. Treat that as unset.
+		if (homeView.altitude <= 0f)
+		{
+			homeView = DefaultHomeView;
+		}
 	}
 }
