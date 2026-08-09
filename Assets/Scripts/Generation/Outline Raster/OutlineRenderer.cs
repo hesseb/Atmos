@@ -42,46 +42,12 @@ public class OutlineRenderer : MonoBehaviour
 
 	void CreateLineMesh()
 	{
-		lineSegmentMesh = new Mesh();
-
-		Vector3[] vertices = {
-			new Vector3(0,-0.5f), // bottom left
-			new Vector3(1,-0.5f), // bottom right
-			new Vector3(1,0.5f), // top right
-			new Vector3(0, 0.5f) // top left
-		};
-
-		int[] triangles = { 0, 2, 1, 0, 3, 2 };
-
-		lineSegmentMesh.SetVertices(vertices);
-		lineSegmentMesh.SetTriangles(triangles, 0, true);
+		lineSegmentMesh = LineMeshUtility.CreateLineSegmentMesh();
 	}
 
 	void CreateCircleJoinMesh()
 	{
-		int numIncrements = (int)Mathf.Max(3, circleJoinResolution);
-
-		float angleIncrement = (2 * Mathf.PI) / (numIncrements - 1f);
-		var verts = new Vector3[numIncrements + 1];
-		var tris = new int[(numIncrements - 1) * 3];
-		verts[0] = Vector3.zero;
-
-		for (int i = 0; i < numIncrements; i++)
-		{
-			float currAngle = angleIncrement * i;
-			Vector3 pos = new Vector3(Mathf.Sin(currAngle), Mathf.Cos(currAngle), 0);
-			verts[i + 1] = pos;
-
-			if (i < numIncrements - 1)
-			{
-				tris[i * 3] = 0;
-				tris[i * 3 + 1] = i + 1;
-				tris[i * 3 + 2] = i + 2;
-			}
-		}
-		circleJoinMesh = new Mesh();
-		circleJoinMesh.SetVertices(verts);
-		circleJoinMesh.SetTriangles(tris, 0, true);
+		circleJoinMesh = LineMeshUtility.CreateCircleJoinMesh(circleJoinResolution);
 	}
 
 	public class LineMesh
