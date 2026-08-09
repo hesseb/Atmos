@@ -1,5 +1,6 @@
 // Round joins between the highlight line segments, so corners don't show notches.
-// Companion to Game/Highlight Lines - same blending, horizon cull and soft edge.
+// Companion to Game/Highlight Lines - shares its culling, terrain displacement and
+// shading via HighlightCommon.hlsl.
 Shader "Game/Highlight Line Joins"
 {
 	SubShader
@@ -20,41 +21,13 @@ Shader "Game/Highlight Line Joins"
 			#pragma target 4.5
 
 			#include "UnityCG.cginc"
-			#include "Assets/Scripts/Shader Common/GeoMath.hlsl"
-
-			struct LineSegment {
-				float3 pointA;
-				float3 pointB;
-			};
-
-			StructuredBuffer<LineSegment> lineSegments;
-			float width;
-			float4 colour;
-			float globeRadius;
-			float softness;
-
-			sampler2D HeightMap;
-			float heightMultiplier;
-
-			// See Game/Highlight Lines - keeps the joins on the terrain with the segments.
-			float3 raiseToTerrain(float3 p)
-			{
-				float3 dir = normalize(p);
-				float h = tex2Dlod(HeightMap, float4(pointToUV(dir), 0, 0)).r;
-				return dir * (globeRadius + h * heightMultiplier);
-			}
+			#include "HighlightCommon.hlsl"
 
 			struct v2f
 			{
 				float4 pos : SV_POSITION;
 				float radial : TEXCOORD0; // 0 at the centre, 1 at the rim
 			};
-
-			bool overHorizon(float3 p, float3 camPos, float r)
-			{
-				if (dot(camPos, camPos) <= r * r) { return false; }
-				return dot(p, camPos) <= r * r;
-			}
 
 			v2f vert (appdata_full v, uint instanceID : SV_InstanceID)
 			{
@@ -87,8 +60,7 @@ Shader "Game/Highlight Line Joins"
 
 			float4 frag (v2f i) : SV_Target
 			{
-				float edge = 1 - smoothstep(softness, 1.0, i.radial);
-				return float4(colour.rgb, colour.a * edge);
+				return shadeHighlight(i.radial);
 			}
 
 			ENDCG

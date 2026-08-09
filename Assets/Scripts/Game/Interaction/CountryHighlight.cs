@@ -34,11 +34,17 @@ public class CountryHighlight : MonoBehaviour
 	public Shader joinShader;
 
 	[Header("Appearance")]
-	public Color colour = new Color(1f, 0.88f, 0.45f, 0.9f);
-	// Line width in pixels of screen height.
-	public float widthPixels = 3f;
-	// Fraction of the half-width that stays solid before fading out. Lower = softer glow.
-	[Range(0f, 1f)] public float softness = 0.5f;
+	// Bright core.
+	public Color colour = new Color(1f, 0.96f, 0.80f, 1f);
+	// Darker surround. A single warm line is nearly invisible over pale desert, so the
+	// halo is what guarantees an edge against whatever terrain is underneath.
+	public Color haloColour = new Color(0.10f, 0.05f, 0.02f, 0.85f);
+	// Total line width in pixels of screen height, halo included.
+	public float widthPixels = 7f;
+	// Fraction of the half-width held at the core colour before the halo takes over.
+	[Range(0.05f, 1f)] public float coreFraction = 0.38f;
+	// How much of the outer edge fades to transparent. Higher = softer, glowier.
+	[Range(0.05f, 1f)] public float rimSoftness = 0.55f;
 	public float fadeInDuration = 0.12f;
 	[Range(3, 24)] public int joinResolution = 8;
 	public bool drawJoins = true;
@@ -232,30 +238,36 @@ public class CountryHighlight : MonoBehaviour
 			? Mathf.MoveTowards(fade, 1f, Time.unscaledDeltaTime / fadeInDuration)
 			: 1f;
 
-		Color c = colour;
-		c.a *= fade;
 		float width = widthPixels / Mathf.Max(1f, Screen.height);
 		float radius = GlobeRadius;
 
-		ApplyMaterial(lineMaterial, c, width, radius);
+		ApplyMaterial(lineMaterial, fade, width, radius);
 		Graphics.DrawMeshInstancedIndirect(segmentMesh, 0, lineMaterial, bounds, lineArgsBuffer,
 			0, null, ShadowCastingMode.Off, false, layer, targetCamera);
 
 		if (drawJoins)
 		{
-			ApplyMaterial(joinMaterial, c, width, radius);
+			ApplyMaterial(joinMaterial, fade, width, radius);
 			Graphics.DrawMeshInstancedIndirect(joinMesh, 0, joinMaterial, bounds, joinArgsBuffer,
 				0, null, ShadowCastingMode.Off, false, layer, targetCamera);
 		}
 	}
 
-	void ApplyMaterial(Material material, Color c, float width, float radius)
+	void ApplyMaterial(Material material, float fadeAlpha, float width, float radius)
 	{
-		material.SetColor("colour", c);
+		// Fade multiplies both layers so the halo doesn't linger after the core.
+		Color core = colour;
+		core.a *= fadeAlpha;
+		Color halo = haloColour;
+		halo.a *= fadeAlpha;
+
+		material.SetColor("colour", core);
+		material.SetColor("haloColour", halo);
 		material.SetFloat("width", width);
 		material.SetFloat("globeRadius", radius);
+		material.SetFloat("coreFraction", coreFraction);
 		// smoothstep(edge, edge, x) is degenerate, so keep the two edges apart.
-		material.SetFloat("softness", Mathf.Clamp(softness, 0f, 0.99f));
+		material.SetFloat("rimSoftness", Mathf.Clamp(rimSoftness, 0.05f, 0.99f));
 
 		// Height texture is created during loading, so it can't be bound once at init.
 		// A zero multiplier keeps the glow at sea level if it isn't available.
