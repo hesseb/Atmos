@@ -1045,3 +1045,37 @@ the assembled cube sampled the way the GPU samples it.
 > `baseline-cubemap` showing no sunset is **not** a defect. It is frozen at 25° sun elevation
 > and cannot track the sun; that is the failure mode the variant exists to demonstrate. Only
 > the gradient variants respond to time of day.
+
+### The cubemap seam is a tone-map contour, not geometry — variant parked
+Both orientation checks now agree and continuity is decisive: **direct 0.6332 vs flipped
+0.0028**, a 226x difference. The assembly is correct, and it was already flipped in the
+previous bake — so the cubemap being looked at has been correctly assembled throughout.
+
+The seam is the shared tone map crushing the darker sky to black with a hard edge.
+
+**`toneMap`'s usable input range is about one decade.** The pedestal sits at raw 0.118 (with
+intensity 1.31) and `whitePoint` 1.0 maps to displayed 1.0, so the window is **8.5:1**. The
+sky exceeds that *within a single sun elevation*: measured from the baked gradient at 25° sun,
+the horizon's blue channel is 0.4875 and the zenith's red is 0.0435 — **11:1**. Crushing is
+per channel, so the zenith loses red and green while keeping blue, and where blue crosses too
+the sky goes fully black. A cubemap stores every direction including the anti-solar sky, which
+is darker still, so a large fraction of it is under the pedestal.
+
+The gradient variants escape this because the hand-authored one is inverse-tone-mapped into
+the usable band by construction, and the baked one samples **sunward only**, which is the
+bright end.
+
+**Parked, deliberately.** Fixing it means one of:
+- making the cubemap display-referred (tone mapped at bake time, shader skips `toneMap` for
+  that path) — most faithful to what a skybox actually is, a painted image of finished
+  colours, but it breaks the shared output pipeline that makes the variants comparable;
+- retuning the shared tone map — which would invalidate every measurement taken so far;
+- a gain, which cannot work: the range needing compression is 100:1 against a 8.5:1 window.
+
+All three are decisions with thesis consequences and belong with the RQ1 figure work, not with
+a bug fix. `baseline-cubemap`'s **cost** is already measured and is identical to the gradient's
+to within 0.003 ms, so nothing on the critical path is blocked.
+
+> The wider point is an RQ3 observation about the inherited implementation: a tone map with a
+> one-decade usable window cannot display a physically based sky's true dynamic range, and
+> that constrains every sky variant equally.
