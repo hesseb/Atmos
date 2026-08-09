@@ -33,6 +33,15 @@ public class CountryLabelSystem : MonoBehaviour
 	// 400-unit cull distance that layer 6 (Earth) carries.
 	public int layer = 5;
 	public Color textColour = Color.white;
+
+	[Header("Outline")]
+	// A dark outline is what makes labels legible over pale desert and bright ice alike -
+	// the same contrast problem the border highlight has.
+	public Color outlineColour = new Color(0.03f, 0.02f, 0f, 1f);
+	// TMP scales this by the material's _ScaleRatioA. Much above ~0.4 the outline exceeds
+	// the atlas padding and starts to clip.
+	[Range(0f, 0.6f)] public float outlineWidth = 0.2f;
+	[Range(0f, 1f)] public float outlineSoftness = 0.1f;
 	// Fraction of the country's inscribed circle the text is sized to span.
 	[Range(0.1f, 2f)] public float fitFactor = 0.9f;
 	public float minScale = 0.02f;
@@ -51,8 +60,10 @@ public class CountryLabelSystem : MonoBehaviour
 
 	[Header("Debug")]
 	public bool logInitTime = true;
-	// Escape hatch in case the text renders mirrored on some platform.
-	public bool flipFacing;
+	// TMP's generated text reads correctly from its local -Z, so the object's forward has
+	// to point into the globe for the face to be legible from outside. Determined by
+	// looking at it rather than by reasoning about TMP's winding.
+	public bool flipFacing = true;
 
 	class Label
 	{
@@ -100,12 +111,8 @@ public class CountryLabelSystem : MonoBehaviour
 
 		var timer = System.Diagnostics.Stopwatch.StartNew();
 
-		Material material = labelMaterial;
-		if (material == null)
-		{
-			material = CreateOverlayMaterial();
-			if (material == null) { return; }
-		}
+		Material material = CreateMaterial();
+		if (material == null) { return; }
 
 		container = new GameObject("Labels").transform;
 		container.SetParent(transform, false);
@@ -132,28 +139,69 @@ public class CountryLabelSystem : MonoBehaviour
 	}
 
 	/// <summary>
-	/// Builds a material from the font atlas using TMP's overlay shader, which already
-	/// has the depth state these labels need. The plain Distance Field shader declares
-	/// ZTest [unity_GUIZTestMode] - a global set by Canvas rendering - and there is no
-	/// Canvas in this scene, so its depth behaviour would be whatever happened to be left
-	/// in that global.
+	/// Builds the shared label material, always as a runtime instance.
+	///
+	/// Even when labelMaterial is supplied it is copied rather than used directly, because
+	/// the outline settings are written onto it - writing those to an assigned asset would
+	/// modify that asset on disk.
+	///
+	/// Without one, it derives from the font atlas using TMP's overlay shader, which
+	/// already has the depth state these labels need. The plain Distance Field shader
+	/// declares ZTest [unity_GUIZTestMode], a global set by Canvas rendering, and there is
+	/// no Canvas in this scene - its depth behaviour would be whatever was left in that
+	/// global.
 	/// </summary>
-	Material CreateOverlayMaterial()
+	Material CreateMaterial()
 	{
-		Shader overlay = Shader.Find("TextMeshPro/Distance Field Overlay");
-		if (overlay == null)
+		if (labelMaterial != null)
 		{
-			Debug.LogError($"{nameof(CountryLabelSystem)}: could not find the TMP overlay shader. " +
-				"Assign labelMaterial explicitly, or add the shader to Always Included Shaders.", this);
-			return null;
+			runtimeMaterial = new Material(labelMaterial) { hideFlags = HideFlags.HideAndDontSave };
+		}
+		else
+		{
+			Shader overlay = Shader.Find("TextMeshPro/Distance Field Overlay");
+			if (overlay == null)
+			{
+				Debug.LogError($"{nameof(CountryLabelSystem)}: could not find the TMP overlay " +
+					"shader. Assign labelMaterial explicitly, or add the shader to Always " +
+					"Included Shaders.", this);
+				return null;
+			}
+
+			runtimeMaterial = new Material(fontAsset.material)
+			{
+				shader = overlay,
+				hideFlags = HideFlags.HideAndDontSave
+			};
 		}
 
-		runtimeMaterial = new Material(fontAsset.material)
-		{
-			shader = overlay,
-			hideFlags = HideFlags.HideAndDontSave
-		};
+		ApplyOutline(runtimeMaterial);
 		return runtimeMaterial;
+	}
+
+	/// <summary>
+	/// The TMP SDF shaders have no OUTLINE keyword - the outline is always compiled in and
+	/// driven entirely by _OutlineWidth, which the shader scales by the material's
+	/// _ScaleRatioA. That ratio is already set correctly on the font asset's material, so
+	/// these three properties are all that is needed.
+	/// </summary>
+	// Names taken from TMP_SDF Overlay.shader directly, rather than TMPro.ShaderUtilities,
+	// so this does not depend on which TMP version the package resolves to.
+	static readonly int OutlineColourId = Shader.PropertyToID("_OutlineColor");
+	static readonly int OutlineWidthId = Shader.PropertyToID("_OutlineWidth");
+	static readonly int OutlineSoftnessId = Shader.PropertyToID("_OutlineSoftness");
+
+	void ApplyOutline(Material material)
+	{
+		material.SetColor(OutlineColourId, outlineColour);
+		material.SetFloat(OutlineWidthId, outlineWidth);
+		material.SetFloat(OutlineSoftnessId, outlineSoftness);
+	}
+
+	/// <summary>Re-applies outline settings to the live material, for tuning in play mode.</summary>
+	void OnValidate()
+	{
+		if (Application.isPlaying && runtimeMaterial != null) { ApplyOutline(runtimeMaterial); }
 	}
 
 	Label CreateLabel(CountryLabelData.Entry entry, Material material, float radius)
