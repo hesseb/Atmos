@@ -75,7 +75,7 @@ public class TestbedCamera : MonoBehaviour
 	// The view Reset returns to. Fly somewhere you like, then use the component's
 	// "Set Home To Current View" context menu to capture it.
 	public CameraView homeView = DefaultHomeView;
-	public KeyCode resetKey = KeyCode.Home;
+	public KeyCode resetKey = KeyCode.Backspace;
 
 	const float defaultWorldRadius = 150f;
 	bool warnedMissingHeightSettings;
