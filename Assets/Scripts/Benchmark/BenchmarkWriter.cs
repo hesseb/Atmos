@@ -92,6 +92,9 @@ public static class BenchmarkWriter
 		public string git_commit, git_branch;
 		public bool git_dirty;
 		public string unity_version, product_version;
+		/// <summary>"Timing" or "Capture". A capture run reports no statistics.</summary>
+		public string run_mode;
+		public int screenshots_captured;
 		public bool is_editor, development_build;
 		/// <summary>False for editor runs: editor overhead and an unpinned Game view size
 		/// make those indicative only.</summary>
@@ -128,14 +131,18 @@ public static class BenchmarkWriter
 	/// pass - the plan is common to every pass by construction, which is what makes the
 	/// passes comparable.
 	/// </summary>
-	public static string BeginRun(BenchmarkPlan plan, string outputRoot)
+	public static string BeginRun(BenchmarkPlan plan, string outputRoot, BenchmarkRunMode mode)
 	{
 		GitInfo.TryGet(out string commit, out _, out _);
 
 		string stamp = System.DateTime.Now.ToString("yyyyMMdd-HHmmss", Ci);
 		string shortCommit = string.IsNullOrEmpty(commit) ? "nogit" : commit;
+		// Capture runs are tagged in the folder name: they sit next to timing runs of the
+		// same benchmark and contain a frames.csv that looks identical but carries readback
+		// stalls. Nobody should have to open run.json to tell them apart.
+		string suffix = mode == BenchmarkRunMode.Capture ? "_capture" : "";
 		string runFolder = IOPath.Combine(outputRoot,
-			$"{stamp}_{Sanitise(plan.definition.id)}_{shortCommit}");
+			$"{stamp}_{Sanitise(plan.definition.id)}_{shortCommit}{suffix}");
 
 		Directory.CreateDirectory(runFolder);
 		File.WriteAllText(IOPath.Combine(runFolder, "plan.csv"), plan.ToCsv());
@@ -228,6 +235,11 @@ public static class BenchmarkWriter
 		int count = Mathf.Min(runner.FrameCursor, runner.Records.Length);
 		var sb = new StringBuilder(count * 320);
 
+		// A capture run's frame times carry the screenshot readback stalls, so no row from it
+		// is measured. The rows are still written - the pose columns are the evidence that
+		// the captured images correspond to the timing run's frames.
+		bool measuredRun = !runner.IsCaptureRun;
+
 		sb.Append("frame_index,phase,segment_index,segment_label,segment_frame,measured,")
 		  .Append("sim_time_s,wall_ms,delta_ms,")
 		  .Append("cpu_frame_ms,cpu_main_ms,cpu_render_ms,cpu_present_wait_ms,gpu_ms,timing_valid,")
@@ -254,7 +266,7 @@ public static class BenchmarkWriter
 			  .Append(p.segmentIndex.ToString(Ci)).Append(',')
 			  .Append(label).Append(',')
 			  .Append(p.segmentFrame.ToString(Ci)).Append(',')
-			  .Append(p.phase == BenchmarkPhase.Measure ? '1' : '0').Append(',')
+			  .Append(measuredRun && p.phase == BenchmarkPhase.Measure ? '1' : '0').Append(',')
 			  .Append(F(i * dt)).Append(',')
 			  .Append(F(s.wallMs)).Append(',')
 			  .Append(F(r.deltaMs)).Append(',')
@@ -326,6 +338,10 @@ public static class BenchmarkWriter
 		BenchmarkPlan plan = runner.Plan;
 		int limit = Mathf.Min(runner.FrameCursor, runner.Records.Length);
 		var result = new List<SegmentStats>();
+
+		// No statistics from a capture run. Its frame times are readback stalls; reporting a
+		// median over them would produce a table that looks ordinary and is wrong.
+		if (runner.IsCaptureRun) { return result.ToArray(); }
 
 		for (int seg = 0; seg < plan.segmentLabels.Length; seg++)
 		{
@@ -412,9 +428,12 @@ public static class BenchmarkWriter
 		Camera cam = refs.camera;
 
 		int measured = 0;
-		foreach (PlannedFrame f in plan.frames)
+		if (!runner.IsCaptureRun)
 		{
-			if (f.phase == BenchmarkPhase.Measure) { measured++; }
+			foreach (PlannedFrame f in plan.frames)
+			{
+				if (f.phase == BenchmarkPhase.Measure) { measured++; }
+			}
 		}
 
 		var counters = new List<CounterAvailabilityEntry>();
@@ -439,9 +458,13 @@ public static class BenchmarkWriter
 			git_dirty = dirty,
 			unity_version = Application.unityVersion,
 			product_version = Application.version,
+			run_mode = runner.mode.ToString(),
+			screenshots_captured = runner.ScreenshotsCaptured,
 			is_editor = Application.isEditor,
 			development_build = Debug.isDebugBuild,
-			authoritative = !Application.isEditor,
+			// A capture run is never authoritative regardless of where it ran: every frame it
+			// timed includes a readback stall.
+			authoritative = !Application.isEditor && !runner.IsCaptureRun,
 
 			benchmark = new BenchmarkMeta
 			{
@@ -558,7 +581,19 @@ public static class BenchmarkWriter
 		var sb = new StringBuilder();
 		sb.Append("# Benchmark run `").Append(meta.run_id).Append("`\n\n");
 
-		if (!meta.authoritative)
+		bool capture = meta.run_mode == BenchmarkRunMode.Capture.ToString();
+
+		if (capture)
+		{
+			sb.Append("> **Capture run - no measurements.** This run exists to produce images.\n")
+			  .Append("> Every screenshot forces a GPU-to-CPU readback that stalls the frame it\n")
+			  .Append("> is taken on, so the frame times here are meaningless and every row is\n")
+			  .Append("> marked `measured = 0`. The matching numbers come from a Timing run of\n")
+			  .Append("> the same benchmark; pair them by frame index after checking that the\n")
+			  .Append("> plan and pose hashes agree.\n\n");
+		}
+
+		if (meta.is_editor)
 		{
 			sb.Append("> **Editor run - not authoritative.** Editor overhead and an unpinned Game\n")
 			  .Append("> view size make these numbers indicative only. Use a standalone build for\n")
@@ -581,8 +616,10 @@ public static class BenchmarkWriter
 		  .Append("| benchmark | `").Append(meta.benchmark.id).Append("` |\n")
 		  .Append("| plan hash | `").Append(meta.benchmark.plan_hash).Append("` |\n")
 		  .Append("| pose hash | `").Append(meta.benchmark.pose_hash).Append("` |\n")
+		  .Append("| mode | ").Append(meta.run_mode).Append(" |\n")
 		  .Append("| frames | ").Append(meta.benchmark.total_frames.ToString(Ci))
 		  .Append(" total, ").Append(meta.benchmark.measured_frames.ToString(Ci)).Append(" measured |\n")
+		  .Append(capture ? "| screenshots | " + meta.screenshots_captured.ToString(Ci) + " |\n" : "")
 		  .Append("| resolution | ").Append(meta.resolution.actual_width.ToString(Ci)).Append('x')
 		  .Append(meta.resolution.actual_height.ToString(Ci))
 		  .Append(meta.resolution.matched ? "" : " (**requested " + meta.resolution.requested_width + "x"
@@ -592,6 +629,21 @@ public static class BenchmarkWriter
 		  .Append(meta.hardware.graphics_api).Append(") |\n")
 		  .Append("| Unity | ").Append(meta.unity_version).Append(" |\n")
 		  .Append("| commit | `").Append(meta.git_commit).Append(meta.git_dirty ? " (dirty)" : "").Append("` |\n\n");
+
+		// A capture run has no segment statistics at all, so the timing tables would render
+		// as bare headers. Point at the images instead.
+		if (capture)
+		{
+			sb.Append("## Screenshots\n\n")
+			  .Append("`screenshots/manifest.csv` lists every image with the frame index, ")
+			  .Append("segment, camera pose, sun elevation and sky fraction that produced it. ")
+			  .Append("Filenames are `f<frame>_<pass>_<segment>.png`, so the same frame across ")
+			  .Append("two renderer profiles differs only in the pass component.\n\n");
+
+			AppendReproducibility(sb, passes);
+			AppendCaveats(sb, meta);
+			return sb.ToString();
+		}
 
 		// --- per pass, per segment ---
 		sb.Append("## GPU frame time (ms)\n\n")
@@ -638,14 +690,17 @@ public static class BenchmarkWriter
 
 		AppendComparison(sb, passes);
 		AppendReproducibility(sb, passes);
-
-		if (meta.warnings != null && meta.warnings.Length > 0)
-		{
-			sb.Append("\n## Caveats\n\n");
-			foreach (string w in meta.warnings) { sb.Append("- `").Append(w).Append("`\n"); }
-		}
+		AppendCaveats(sb, meta);
 
 		return sb.ToString();
+	}
+
+	static void AppendCaveats(StringBuilder sb, RunMetadata meta)
+	{
+		if (meta.warnings == null || meta.warnings.Length == 0) { return; }
+
+		sb.Append("\n## Caveats\n\n");
+		foreach (string w in meta.warnings) { sb.Append("- `").Append(w).Append("`\n"); }
 	}
 
 	/// <summary>

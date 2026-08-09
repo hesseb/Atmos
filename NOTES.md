@@ -272,3 +272,55 @@ references, which `Component > Reset` would.
 - The atmosphere's deviations from the pre-study theory are listed in `START.md` §3 and in
   the root `CLAUDE.md`. That list is the seed of RQ3's answer — every item is either a
   finding or a defect, and it will not be reconstructable later.
+
+---
+
+## Session — benchmark harness: screenshots (milestone 3, step 8)
+
+### Timing and capture are separate runs, by design
+`BenchmarkRunner.mode` is `Timing` or `Capture`, and only a capture run writes PNGs.
+
+`ScreenCapture.CaptureScreenshotAsTexture` forces a full GPU-to-CPU readback. That stalls
+the frame it is taken on and the one after it, so capturing inside a timing run would
+corrupt the exact frames a figure is meant to illustrate — typically the twilight and
+horizon frames, which are the expensive ones and therefore the interesting ones.
+
+Splitting them is only legitimate because **world state at plan index `i` is a pure
+function of `i`**: the plan is fully resolved before the first frame renders and replayed
+identically per pass, so the image captured at frame N *is* the image the timing run
+rendered at frame N. The evidence for that claim is `plan_hash` and `pose_hash`, which both
+runs record — **check they agree before putting a figure next to a number.** `scene_hash`
+should also match between a timing and a capture run of the same benchmark, since a
+readback changes no geometry.
+
+Consequences, all enforced in code:
+- A capture run writes `measured = 0` on every row and produces no segment statistics.
+- `authoritative` is false for a capture run regardless of editor or build.
+- Repeats are ignored (they would rewrite byte-identical images).
+- The run folder is suffixed `_capture` so it cannot be confused at a glance.
+- A capture run over a benchmark with no marked frames is refused rather than replaying
+  the whole plan to produce nothing.
+
+`superSize` is fixed at 1 and must stay there: a supersized capture re-renders at a
+different resolution, which changes both FXAA and the atmosphere's per-pixel cost, so it
+would no longer be the image that was measured.
+
+### Prewarm looks like a bug and is not
+The visible burst of camera movement before a benchmark settles is the prewarm phase
+stepping a decimated sample of the run's own poses (`content/prewarmPosesEvery` frames,
+~0.5 s for a 2400-frame run). It exists because the project has no `ShaderVariantCollection`,
+so D3D11 pipeline-state creation would otherwise land inside the measured window. Those
+frames are `phase = Prewarm` and never enter statistics. `prewarmPosesEvery = 0` disables it.
+
+### Screenshot frames on the example benchmarks
+- `daycycle` — first and last of each sun sweep (6 images). The RQ1 set: the sun moves, so
+  the endpoints differ.
+- `framing` — one mid-hold image per pitch (4). *Not* first-and-last: a hold's endpoints are
+  the same pose, which would capture the same picture twice.
+- `orbit` — every 90° of each sweep (8), for sun-relative framings where the Mie forward
+  lobe shows.
+- `smoke`, `altitude` — none.
+
+`screenshots/manifest.csv` records frame index, pass, segment, resolution, camera pose,
+sky fraction and **sun elevation in degrees** — the last is there because it is the caption
+a twilight figure needs and reconstructing it from `dayT` afterwards is painful.
