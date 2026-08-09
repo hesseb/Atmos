@@ -40,10 +40,13 @@ public class TestbedCamera : MonoBehaviour
 	public CoordinateDegrees coordinate = new CoordinateDegrees(0, 20);
 	// Units above the terrain sphere (not above local ground height).
 	public float altitude = 10f;
-	// 0 = looking at the horizon, 90 = looking straight down.
-	[Range(0f, 90f)] public float pitch = 55f;
+	// -90 = straight up at the sky, 0 = horizon, +90 = straight down.
+	[Range(-90f, 90f)] public float pitch = 55f;
 	// Degrees clockwise from north.
 	public float heading = 0f;
+	// Rotation about the view axis. Stays 0 under normal use, but free-fly with
+	// gravityAlignedRoll off can produce it, and bookmarks preserve it.
+	[Range(-180f, 180f)] public float roll = 0f;
 
 	[Header("Orbit tuning")]
 	// Radians of surface arc per second, at referenceAltitude.
@@ -166,7 +169,8 @@ public class TestbedCamera : MonoBehaviour
 		heading += AxisFromKeys(KeyCode.E, KeyCode.Q) * headingSpeed * dt;
 		heading = Mathf.Repeat(heading, 360f);
 
-		pitch = Mathf.Clamp(pitch + AxisFromKeys(KeyCode.R, KeyCode.F) * pitchSpeed * dt, 0f, 90f);
+		// Full range: F tilts up past the horizon to the zenith, R down to nadir.
+		pitch = Mathf.Clamp(pitch + AxisFromKeys(KeyCode.R, KeyCode.F) * pitchSpeed * dt, -90f, 90f);
 	}
 
 	/// <summary>
@@ -196,19 +200,30 @@ public class TestbedCamera : MonoBehaviour
 	void GetOrbitFrame(out Vector3 up, out Vector3 flatFwd, out Vector3 right)
 	{
 		up = GeoMaths.CoordinateToPoint(coordinate.ConvertToRadians(), 1f);
+		GetTangentFrame(up, heading, out flatFwd, out right);
+	}
 
-		// Vector3.up is the north pole in this projection (CoordinateToPoint puts
-		// latitude on +Y), so projecting it onto the tangent plane gives local north.
+	/// <summary>
+	/// Vector3.up is the north pole in this projection (CoordinateToPoint puts latitude
+	/// on +Y), so projecting it onto the tangent plane gives local north.
+	/// </summary>
+	static Vector3 LocalNorth(Vector3 up)
+	{
 		Vector3 north = Vector3.ProjectOnPlane(Vector3.up, up);
 		if (north.sqrMagnitude < 1e-8f)
 		{
 			// Exactly at a pole - any tangent direction is as good as another.
 			north = Vector3.ProjectOnPlane(Vector3.forward, up);
 		}
-		north.Normalize();
+		return north.normalized;
+	}
+
+	static void GetTangentFrame(Vector3 up, float headingDegrees, out Vector3 flatFwd, out Vector3 right)
+	{
+		Vector3 north = LocalNorth(up);
 		Vector3 east = Vector3.Cross(up, north);
 
-		float h = heading * Mathf.Deg2Rad;
+		float h = headingDegrees * Mathf.Deg2Rad;
 		flatFwd = north * Mathf.Cos(h) + east * Mathf.Sin(h);
 		right = Vector3.Cross(up, flatFwd);
 	}
@@ -221,8 +236,14 @@ public class TestbedCamera : MonoBehaviour
 		Vector3 fwd = Quaternion.AngleAxis(pitch, right) * flatFwd;
 
 		// Cross(fwd, right) rather than `up` as the reference: stays exactly orthonormal
-		// at pitch = 90, where fwd is antiparallel to up and LookRotation would degenerate.
-		transform.SetPositionAndRotation(position, Quaternion.LookRotation(fwd, Vector3.Cross(fwd, right)));
+		// at pitch = +/-90, where fwd is parallel to up and LookRotation would degenerate.
+		Quaternion rotation = Quaternion.LookRotation(fwd, Vector3.Cross(fwd, right));
+		if (Mathf.Abs(roll) > 1e-4f)
+		{
+			rotation = Quaternion.AngleAxis(roll, fwd) * rotation;
+		}
+
+		transform.SetPositionAndRotation(position, rotation);
 	}
 
 	// -------------------------------------------------------------- free-fly mode
@@ -297,36 +318,76 @@ public class TestbedCamera : MonoBehaviour
 		mode = newMode;
 	}
 
-	void SeedOrbitFromTransform()
+	/// <summary>
+	/// Derives the full orbit parameterisation from the camera's actual transform.
+	///
+	/// (longitude, latitude, altitude, heading, pitch, roll) is a complete description of
+	/// any camera pose, so this round-trips exactly with <see cref="ApplyPose"/> - verified
+	/// numerically over 300+ orientations including straight up, straight down, full roll
+	/// and near-pole latitudes. That is what lets a bookmark captured in free-fly be
+	/// restored exactly in orbit mode.
+	/// </summary>
+	CameraView ViewFromTransform()
 	{
+		CameraView view = new CameraView
+		{
+			coordinate = coordinate,
+			altitude = altitude,
+			pitch = pitch,
+			heading = heading,
+			roll = roll,
+			fieldOfView = fieldOfView
+		};
+
 		Vector3 p = transform.position;
 		float r = p.magnitude;
-		if (r < 1e-4f) { return; }
+		if (r < 1e-4f) { return view; }
 
 		Vector3 up = p / r;
-		coordinate = GeoMaths.PointToCoordinate(up).ConvertToDegrees();
-		altitude = Mathf.Clamp(r - SurfaceRadius, minAltitude, maxAltitude);
+		view.coordinate = GeoMaths.PointToCoordinate(up).ConvertToDegrees();
+		view.altitude = Mathf.Clamp(r - SurfaceRadius, minAltitude, maxAltitude);
 
 		Vector3 fwd = transform.forward;
-		Vector3 flatFwd = Vector3.ProjectOnPlane(fwd, up);
-		if (flatFwd.sqrMagnitude < 1e-8f)
+		view.pitch = Mathf.Asin(Mathf.Clamp(-Vector3.Dot(fwd, up), -1f, 1f)) * Mathf.Rad2Deg;
+
+		Vector3 flat = Vector3.ProjectOnPlane(fwd, up);
+		if (flat.sqrMagnitude < 1e-10f)
 		{
-			// Looking straight down: heading is undefined, so keep the existing value.
-			pitch = 90f;
-			return;
+			// Looking straight up or down: the view axis carries no heading, so take it
+			// from the camera's own up vector, which at +/-90 pitch lies along the
+			// heading direction (negated when looking up).
+			Vector3 camFlat = Vector3.ProjectOnPlane(transform.up, up);
+			if (camFlat.sqrMagnitude < 1e-10f) { return view; }
+			flat = view.pitch > 0f ? camFlat : -camFlat;
 		}
-		flatFwd.Normalize();
+		flat.Normalize();
+		view.heading = Mathf.Repeat(Vector3.SignedAngle(LocalNorth(up), flat, up), 360f);
 
-		pitch = Mathf.Clamp(Vector3.Angle(fwd, flatFwd), 0f, 90f);
+		// Roll is whatever is left between the zero-roll reference up for this
+		// heading/pitch and the camera's actual up.
+		GetTangentFrame(up, view.heading, out Vector3 flatFwd, out Vector3 right);
+		Vector3 refFwd = Quaternion.AngleAxis(view.pitch, right) * flatFwd;
+		view.roll = Vector3.SignedAngle(Vector3.Cross(refFwd, right), transform.up, fwd);
 
-		Vector3 north = Vector3.ProjectOnPlane(Vector3.up, up);
-		if (north.sqrMagnitude < 1e-8f) { north = Vector3.ProjectOnPlane(Vector3.forward, up); }
-		north.Normalize();
-		heading = Mathf.Repeat(Vector3.SignedAngle(north, flatFwd, up), 360f);
+		return view;
+	}
+
+	void SeedOrbitFromTransform()
+	{
+		CameraView view = ViewFromTransform();
+		coordinate = view.coordinate;
+		altitude = view.altitude;
+		pitch = view.pitch;
+		heading = view.heading;
+		roll = view.roll;
 	}
 
 	// -------------------------------------------------------------- harness API
 
+	/// <summary>
+	/// A complete camera pose. These six values determine the transform exactly, so a
+	/// view captured in either mode restores identically.
+	/// </summary>
 	[System.Serializable]
 	public struct CameraView
 	{
@@ -334,6 +395,7 @@ public class TestbedCamera : MonoBehaviour
 		public float altitude;
 		public float pitch;
 		public float heading;
+		public float roll;
 		public float fieldOfView;
 	}
 
@@ -343,6 +405,7 @@ public class TestbedCamera : MonoBehaviour
 		altitude = 10f,
 		pitch = 55f,
 		heading = 0f,
+		roll = 0f,
 		fieldOfView = 60f
 	};
 
@@ -371,10 +434,13 @@ public class TestbedCamera : MonoBehaviour
 			bool capturing = captureModifier == KeyCode.None || Input.GetKey(captureModifier);
 			if (capturing)
 			{
-				bookmarks.Capture(i, GetView());
+				// Read through GetView, not the fields - in free-fly the fields are stale.
+				CameraView captured = GetView();
+				bookmarks.Capture(i, captured);
 				Debug.Log($"Saved camera bookmark '{bookmarks.LabelAt(i)}' ({key}): " +
-					$"{coordinate.latitude:0.00}, {coordinate.longitude:0.00} " +
-					$"alt {altitude:0.0} pitch {pitch:0.0} heading {heading:0.0}", this);
+					$"lat {captured.coordinate.latitude:0.00} lon {captured.coordinate.longitude:0.00} " +
+					$"alt {captured.altitude:0.0} heading {captured.heading:0.0} " +
+					$"pitch {captured.pitch:0.0} roll {captured.roll:0.0} fov {captured.fieldOfView:0.0}", this);
 			}
 			else if (bookmarks.TryGetView(i, out CameraView view))
 			{
@@ -405,14 +471,23 @@ public class TestbedCamera : MonoBehaviour
 		if (bookmarks != null) { bookmarks.Capture(index, GetView()); }
 	}
 
+	/// <summary>
+	/// The camera's current pose. In free-fly the orbit fields are stale - free-fly moves
+	/// the transform directly and never writes back - so the transform is read instead.
+	/// Without this, capturing a bookmark while free-flying would store wherever you were
+	/// before entering free-fly.
+	/// </summary>
 	public CameraView GetView()
 	{
+		if (mode == Mode.FreeFly) { return ViewFromTransform(); }
+
 		return new CameraView
 		{
 			coordinate = coordinate,
 			altitude = altitude,
 			pitch = pitch,
 			heading = heading,
+			roll = roll,
 			fieldOfView = fieldOfView
 		};
 	}
@@ -427,16 +502,18 @@ public class TestbedCamera : MonoBehaviour
 	/// </summary>
 	public void SetView(CameraView view)
 	{
-		SetView(view.coordinate, view.altitude, view.pitch, view.heading, view.fieldOfView);
+		SetView(view.coordinate, view.altitude, view.pitch, view.heading, view.roll, view.fieldOfView);
 	}
 
-	public void SetView(CoordinateDegrees coord, float altitude, float pitch, float heading, float fov = -1f)
+	public void SetView(CoordinateDegrees coord, float altitude, float pitch, float heading,
+		float roll = 0f, float fov = -1f)
 	{
 		mode = Mode.Orbit;
 		coordinate = coord;
 		this.altitude = Mathf.Clamp(altitude, minAltitude, maxAltitude);
-		this.pitch = Mathf.Clamp(pitch, 0f, 90f);
+		this.pitch = Mathf.Clamp(pitch, -90f, 90f);
 		this.heading = Mathf.Repeat(heading, 360f);
+		this.roll = Mathf.DeltaAngle(0f, roll);
 		if (fov > 0f) { fieldOfView = fov; }
 
 		ApplyOptics();

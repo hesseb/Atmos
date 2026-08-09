@@ -175,7 +175,7 @@ MonoBehaviour:
   camTest: {fileID: 0}
   debug_dst: 4.0198226
   freezeOrbit: 0
---- !u!43 &431675226
+--- !u!43 &301744264
 Mesh:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -800,7 +800,7 @@ MeshFilter:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1389253764}
-  m_Mesh: {fileID: 431675226}
+  m_Mesh: {fileID: 301744264}
 --- !u!1 &1433245418
 GameObject:
   m_ObjectHideFlags: 0
@@ -1214,6 +1214,8 @@ MonoBehaviour:
     heading: 0
     fieldOfView: 60
   resetKey: 8
+  bookmarks: {fileID: 11400000, guid: e4750ca0ef052c64ab59835231ab6974, type: 2}
+  captureModifier: 304
 --- !u!1 &1737174887
 GameObject:
   m_ObjectHideFlags: 0
