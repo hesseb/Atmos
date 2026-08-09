@@ -169,9 +169,14 @@ public class BaselineSkyRenderer : MonoBehaviour
 		if (skyCubemap != null) { material.SetTexture("SkyCubemap", skyCubemap); }
 		if (blueNoise != null) { material.SetTexture("BlueNoise", blueNoise); }
 
-		Vector3 planetCentre = PlanetCentre();
+		Vector3 planetCentre = ObserverGeometry.PlanetCentre(ref planet);
+		Vector3 dirToSun = ObserverGeometry.DirectionToSun(ref sun);
+
 		material.SetVector("planetCentre", planetCentre);
-		material.SetFloat("sunElevation01", SunElevation01(activeCamera, planetCentre));
+		// Computed once per frame on the CPU rather than per pixel: it does not vary across
+		// the screen, and the whole point of the baseline is that it is cheap.
+		material.SetFloat("sunElevation01", ObserverGeometry.SunElevation01(
+			activeCamera.transform.position, planetCentre, dirToSun));
 		material.SetFloat("skyIntensity", skyIntensity);
 
 		material.SetColor("sunColour", sunColour);
@@ -191,39 +196,4 @@ public class BaselineSkyRenderer : MonoBehaviour
 		material.SetFloat("ditherStrength", ditherStrength);
 	}
 
-	Vector3 PlanetCentre()
-	{
-		if (planet != null) { return planet.position; }
-
-		SolarSystemManager solarSystem = FindFirstObjectByType<SolarSystemManager>();
-		if (solarSystem != null && solarSystem.earth != null)
-		{
-			planet = solarSystem.earth.transform;
-			return planet.position;
-		}
-		return Vector3.zero;
-	}
-
-	/// <summary>
-	/// The sun's height above the observer's local horizon, remapped to 0..1 across the full
-	/// -90..+90 degrees. This is the gradient LUT's V axis.
-	///
-	/// Computed once per frame on the CPU rather than per pixel - it does not vary across the
-	/// screen, and the whole point of the baseline is that it is cheap.
-	/// </summary>
-	float SunElevation01(Camera activeCamera, Vector3 planetCentre)
-	{
-		if (sun == null)
-		{
-			GameObject sunObject = GameObject.FindGameObjectWithTag("Sun");
-			sun = sunObject != null ? sunObject.GetComponent<Light>() : null;
-		}
-		if (sun == null) { return 0.5f; }
-
-		Vector3 up = activeCamera.transform.position - planetCentre;
-		if (up.sqrMagnitude < 1e-8f) { return 0.5f; }
-
-		Vector3 dirToSun = -sun.transform.forward;
-		return Mathf.Clamp01(Vector3.Dot(dirToSun, up.normalized) * 0.5f + 0.5f);
-	}
 }
