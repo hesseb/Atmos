@@ -20,6 +20,7 @@ Shader "Game/Highlight Line Joins"
 			#pragma target 4.5
 
 			#include "UnityCG.cginc"
+			#include "Assets/Scripts/Shader Common/GeoMath.hlsl"
 
 			struct LineSegment {
 				float3 pointA;
@@ -31,6 +32,17 @@ Shader "Game/Highlight Line Joins"
 			float4 colour;
 			float globeRadius;
 			float softness;
+
+			sampler2D HeightMap;
+			float heightMultiplier;
+
+			// See Game/Highlight Lines - keeps the joins on the terrain with the segments.
+			float3 raiseToTerrain(float3 p)
+			{
+				float3 dir = normalize(p);
+				float h = tex2Dlod(HeightMap, float4(pointToUV(dir), 0, 0)).r;
+				return dir * (globeRadius + h * heightMultiplier);
+			}
 
 			struct v2f
 			{
@@ -48,14 +60,17 @@ Shader "Game/Highlight Line Joins"
 			{
 				v2f o;
 
-				float3 worldCentre = lineSegments[instanceID].pointA;
+				float3 seaLevelCentre = lineSegments[instanceID].pointA;
 
-				if (overHorizon(worldCentre, _WorldSpaceCameraPos, globeRadius))
+				// Horizon test on the sea-level point - overHorizon assumes |p| = R.
+				if (overHorizon(seaLevelCentre, _WorldSpaceCameraPos, globeRadius))
 				{
 					o.pos = float4(0, 0, -2, 1);
 					o.radial = 0;
 					return o;
 				}
+
+				float3 worldCentre = raiseToTerrain(seaLevelCentre);
 
 				float flipY = _ProjectionParams.x;
 				float aspect = _ScreenParams.y / _ScreenParams.x;

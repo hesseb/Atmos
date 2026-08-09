@@ -27,6 +27,7 @@ Shader "Game/Highlight Lines"
 			#pragma target 4.5
 
 			#include "UnityCG.cginc"
+			#include "Assets/Scripts/Shader Common/GeoMath.hlsl"
 
 			struct LineSegment {
 				float3 pointA;
@@ -38,6 +39,22 @@ Shader "Game/Highlight Lines"
 			float4 colour;
 			float globeRadius;
 			float softness;
+
+			// Terrain height, so the glow can sit on the ground rather than at sea level.
+			sampler2D HeightMap;
+			float heightMultiplier;
+
+			// The country polygons are sea-level lon/lat, but the baked border meshes
+			// follow the terrain (measured: a quarter of their vertices sit above 150.05,
+			// up to 153.17). Left at sea level the glow drifts off the drawn border by
+			// dr/tan(elevation) - negligible looking straight down, ~20 units at a
+			// grazing angle over mountains. Lifting to the same height removes it.
+			float3 raiseToTerrain(float3 p)
+			{
+				float3 dir = normalize(p);
+				float h = tex2Dlod(HeightMap, float4(pointToUV(dir), 0, 0)).r;
+				return dir * (globeRadius + h * heightMultiplier);
+			}
 
 			struct v2f
 			{
@@ -59,14 +76,19 @@ Shader "Game/Highlight Lines"
 				v2f o;
 
 				LineSegment segment = lineSegments[instanceID];
-				float3 a = segment.pointA;
-				float3 b = segment.pointB;
 
-				// Cull the whole segment if either end is beyond the horizon. Slightly
-				// conservative - it drops segments straddling the horizon - which reads
-				// more cleanly than letting half a segment sink through the planet.
-				if (overHorizon(a, _WorldSpaceCameraPos, globeRadius) ||
-					overHorizon(b, _WorldSpaceCameraPos, globeRadius))
+				// Horizon test on the sea-level points, since overHorizon assumes |p| = R.
+				// Testing the raised points against R would cull a little early; that
+				// errs toward hiding rather than letting geometry punch through the limb.
+				bool hidden = overHorizon(segment.pointA, _WorldSpaceCameraPos, globeRadius)
+					|| overHorizon(segment.pointB, _WorldSpaceCameraPos, globeRadius);
+
+				float3 a = raiseToTerrain(segment.pointA);
+				float3 b = raiseToTerrain(segment.pointB);
+
+				// Slightly conservative - it drops segments straddling the horizon - which
+				// reads more cleanly than letting half a segment sink through the planet.
+				if (hidden)
 				{
 					// Collapse every vertex to one point: a zero-area triangle rasterises
 					// nothing, regardless of clipping behaviour.

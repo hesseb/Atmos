@@ -14,6 +14,18 @@ public class WorldLookup : MonoBehaviour
 	// Small map containing normalized height values
 	RenderTexture heightLookup;
 
+	/// <summary>
+	/// Normalised terrain height, equirectangular, sampled with the same mapping as
+	/// GeoMath.hlsl's pointToUV. World radius at a point is
+	/// worldRadius + sample * heightMultiplier.
+	///
+	/// This is the only terrain height texture that survives loading -
+	/// TerrainHeightProcessor.Release() frees the source map once the bootstrap finishes,
+	/// whereas this copy lives until OnDestroy. Anything needing terrain height on the GPU
+	/// after load should use this.
+	/// </summary>
+	public RenderTexture HeightLookup => heightLookup;
+
 	// Persistent buffer for the async path. Allocating one per query would mean a
 	// ComputeBuffer per frame for anything polling this (e.g. mouse hover).
 	ComputeBuffer asyncResultBuffer;

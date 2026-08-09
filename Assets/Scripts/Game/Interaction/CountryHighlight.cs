@@ -26,6 +26,10 @@ public class CountryHighlight : MonoBehaviour
 	public GlobePicker picker;
 	public CountryData countryData;
 	public TerrainGeneration.TerrainHeightSettings heightSettings;
+	// Supplies the terrain height texture the shaders use to sit the glow on the ground
+	// rather than at sea level. Optional - without it the glow stays at sea level and
+	// drifts off the drawn borders at shallow camera angles.
+	public WorldLookup worldLookup;
 	public Shader lineShader;
 	public Shader joinShader;
 
@@ -66,6 +70,7 @@ public class CountryHighlight : MonoBehaviour
 	void OnEnable()
 	{
 		if (picker == null) { picker = GetComponent<GlobePicker>(); }
+		if (worldLookup == null) { worldLookup = FindObjectOfType<WorldLookup>(); }
 		Initialise();
 
 		if (picker != null)
@@ -251,6 +256,20 @@ public class CountryHighlight : MonoBehaviour
 		material.SetFloat("globeRadius", radius);
 		// smoothstep(edge, edge, x) is degenerate, so keep the two edges apart.
 		material.SetFloat("softness", Mathf.Clamp(softness, 0f, 0.99f));
+
+		// Height texture is created during loading, so it can't be bound once at init.
+		// A zero multiplier keeps the glow at sea level if it isn't available.
+		RenderTexture heightMap = worldLookup != null ? worldLookup.HeightLookup : null;
+		if (heightMap != null)
+		{
+			material.SetTexture("HeightMap", heightMap);
+			material.SetFloat("heightMultiplier",
+				heightSettings != null ? heightSettings.heightMultiplier : 0f);
+		}
+		else
+		{
+			material.SetFloat("heightMultiplier", 0f);
+		}
 	}
 
 	void OnDestroy()
