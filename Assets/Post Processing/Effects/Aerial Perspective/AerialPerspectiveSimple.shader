@@ -51,12 +51,23 @@ Shader "Hidden/AerialPerspectiveSimple"
 				float viewLength = length(i.viewVector);
 				float nonlin_depth = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, i.uv);
 				float sceneDepth = LinearEyeDepth(nonlin_depth) * viewLength;
-				//return sceneDepth / depthMinMax.x; 
+
+				float4 col = tex2D(_MainTex, i.uv);
+
+				// Aerial perspective is what the atmosphere does to distant TERRAIN. The sky
+				// already contains its own scattering, so fogging it double-counts.
+				//
+				// This matters twice over. Visually: at the far plane the exponential leaves
+				// only 40% of the sky, so 60% of it was being replaced by the haze colour.
+				// And for the comparison: the physically based pass skips sky pixels
+				// explicitly (Atmosphere.shader's `if (sceneDepth >= farClipPlane)` has an
+				// empty body), so without this the two techniques were doing different jobs
+				// and the difference was being attributed to the technique.
+				if (sceneDepth >= _ProjectionParams.z) { return col; }
+
 				float depth = (sceneDepth-depthMinMax.x) / (depthMinMax.y - depthMinMax.x);
 				float transmittance = exp(-depth * strength);
 
-				float4 col = tex2D(_MainTex, i.uv);
-				
 				return col * transmittance + atmoCol * (1-transmittance);
 			}
 			ENDCG
