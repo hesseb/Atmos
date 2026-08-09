@@ -240,21 +240,44 @@ public class TestbedCamera : MonoBehaviour
 		right = Vector3.Cross(up, flatFwd);
 	}
 
-	void ApplyPose()
+	/// <summary>
+	/// World pose for a view, without needing a camera instance.
+	///
+	/// Public and static so the benchmark harness can predict, off the clock, exactly the
+	/// pose a planned frame will produce - the plan and the camera must not be able to
+	/// disagree, so they share this one implementation.
+	/// </summary>
+	public static void ComputePose(CameraView view, float surfaceRadius,
+		out Vector3 position, out Quaternion rotation)
 	{
-		GetOrbitFrame(out Vector3 up, out Vector3 flatFwd, out Vector3 right);
+		Vector3 up = GeoMaths.CoordinateToPoint(view.coordinate.ConvertToRadians(), 1f);
+		GetTangentFrame(up, view.heading, out Vector3 flatFwd, out Vector3 right);
 
-		Vector3 position = up * (SurfaceRadius + altitude);
-		Vector3 fwd = Quaternion.AngleAxis(pitch, right) * flatFwd;
+		position = up * (surfaceRadius + view.altitude);
+		Vector3 fwd = Quaternion.AngleAxis(view.pitch, right) * flatFwd;
 
 		// Cross(fwd, right) rather than `up` as the reference: stays exactly orthonormal
 		// at pitch = +/-90, where fwd is parallel to up and LookRotation would degenerate.
-		Quaternion rotation = Quaternion.LookRotation(fwd, Vector3.Cross(fwd, right));
-		if (Mathf.Abs(roll) > 1e-4f)
+		rotation = Quaternion.LookRotation(fwd, Vector3.Cross(fwd, right));
+		if (Mathf.Abs(view.roll) > 1e-4f)
 		{
-			rotation = Quaternion.AngleAxis(roll, fwd) * rotation;
+			rotation = Quaternion.AngleAxis(view.roll, fwd) * rotation;
 		}
+	}
 
+	void ApplyPose()
+	{
+		var view = new CameraView
+		{
+			coordinate = coordinate,
+			altitude = altitude,
+			pitch = pitch,
+			heading = heading,
+			roll = roll,
+			fieldOfView = fieldOfView
+		};
+
+		ComputePose(view, SurfaceRadius, out Vector3 position, out Quaternion rotation);
 		transform.SetPositionAndRotation(position, rotation);
 	}
 
