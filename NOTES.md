@@ -505,3 +505,35 @@ resolution are both recorded in `run.json` with a `matched` flag.
 > If the display is smaller than 2560x1440 the window will not fit. Either lower
 > `defaultScreenWidth/Height`, or set `fullscreenMode` back to 1/2 and accept the display's
 > own resolution as the measurement resolution.
+
+### Release build option, and the stripped-counter trap it exposed
+`Testbed → Benchmark → Build Standalone Player (Development | Release)`. Each kind builds
+into its own `<product>-<kind>/` subfolder — a player is an exe plus a `_Data` folder and
+several DLLs, so building both into one directory would have the second overwrite the
+first, and results live beside the exe so they would mix too.
+
+What actually differs:
+- **Frame timings survive release.** `FrameTimingManager` is not a development-build
+  feature; it needs `enableFrameTimingStats`, which this project sets. So the primary RQ2
+  metric is available either way.
+- **`ProfilerRecorder` counters are the open question.** Unity strips much of the profiler
+  from a release player. Build both, run the same benchmark, and diff `counters_available`
+  in the two `run.json` files — that turns an assumption into a measured fact, and the
+  frame-time difference between them is the cost of the development flag.
+
+**The trap:** when the counters are stripped they read **zero**, not absent. Three checks
+would have read that as agreement:
+1. The self-check's geometry comparison — every frame zero, every pass identical, confident
+   `PASS` having compared nothing.
+2. `scene_hash` — partially degraded rather than destroyed, since `lod_high_res` comes from
+   `SimpleLodSystem` and is unaffected. Two profiles drawing genuinely different geometry
+   could still share a hash.
+3. Nothing in `warnings[]` said the counters were missing.
+
+All three now handle it: a new `COUNTERS_UNAVAILABLE:<n>/<total>` warning, the geometry
+verdict reports `n/a (profiler counters unavailable)` instead of PASS, and both
+`selfcheck.md` and `summary.md` carry an explicit banner saying a match is not evidence.
+
+This is the general shape of the hazard the plan flagged as "empty cells rather than zeros":
+a reader must never mistake *stripped* for *zero*. `frames.csv` already got that right; the
+derived checks did not.
