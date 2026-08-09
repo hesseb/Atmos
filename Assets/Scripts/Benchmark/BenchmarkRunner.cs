@@ -92,6 +92,9 @@ public class BenchmarkRunner : MonoBehaviour
 	Coroutine endOfFrameRoutine;
 	int deltaDriftFrames;
 	double expectedDeltaMs;
+	// Set by Update once it has written a frame's plan state, cleared by the end-of-frame
+	// reader once it has recorded that frame. Keeps the two exactly in step.
+	bool frameStateWritten;
 
 	struct PassPlan { public RendererProfile profile; public int repeat; public string passId; }
 
@@ -241,6 +244,7 @@ public class BenchmarkRunner : MonoBehaviour
 		Sampler = new FrameSampler();
 		FrameCursor = 0;
 		deltaDriftFrames = 0;
+		frameStateWritten = false;
 
 		if (logProgress)
 		{
@@ -273,12 +277,22 @@ public class BenchmarkRunner : MonoBehaviour
 		sceneRefs.solarSystem.SetTimes(frame.dayT, frame.monthT, frame.yearT);
 		// SetView applies the transform synchronously, so onPreCull this frame sees it.
 		sceneRefs.testbedCamera.SetView(frame.view);
+
+		// Hand off to the end-of-frame reader. Without this the reader would record any
+		// frame it happened to see, including ones where this method never ran.
+		frameStateWritten = true;
 	}
 
 	/// <summary>
 	/// Reads back what actually happened, after rendering. The pose hash is built from the
 	/// observed transform rather than the planned one - otherwise it would only prove the
 	/// plan equals itself, and would miss a stray input or a camera regression.
+	///
+	/// Records a frame only once Update has written that frame's plan state. Two frames in
+	/// a run have no such state: the one on which StartRun was invoked - a context menu
+	/// fires mid-frame, so the first end-of-frame arrives before Update has run - and the
+	/// one on which a pass ends and the next begins. Recording those would shift every
+	/// subsequent row by one and skip plan frame 0.
 	/// </summary>
 	IEnumerator EndOfFrameLoop()
 	{
@@ -286,7 +300,9 @@ public class BenchmarkRunner : MonoBehaviour
 		{
 			yield return waitForEndOfFrame;
 
-			if (!IsRunning || FrameCursor >= Plan.Length) { yield break; }
+			if (!IsRunning) { yield break; }
+			if (!frameStateWritten) { continue; }
+			if (Records == null || FrameCursor >= Records.Length) { continue; }
 
 			Transform camT = sceneRefs.camera.transform;
 
@@ -311,6 +327,7 @@ public class BenchmarkRunner : MonoBehaviour
 			}
 
 			Records[FrameCursor] = record;
+			frameStateWritten = false;
 			FrameCursor++;
 		}
 	}
