@@ -221,6 +221,28 @@ ScatteringResult raymarch(float3 rayPos, float3 rayDir, float rayLength, int num
 
 	float stepSize = rayLength / numSteps;
 
+	// Sample at the midpoint of each segment rather than its start.
+	//
+	// The loop evaluated density at rayPos and only then advanced, which is a left-Riemann sum.
+	// On a decaying profile that OVERestimates - the exact mirror of the right-Riemann bias
+	// already fixed in getSunTransmittance, which underestimated. One was found and the other
+	// left in place.
+	//
+	// It is not a small correction, because the error scales with step/H and the Mie scale
+	// height is now 1.32 world units:
+	//
+	//   sky, 256 steps        Rayleigh +5.7%    Mie  +41.5%   ->  midpoint -0.1% / -2.2%
+	//   aerial persp, 20      Rayleigh +48.6%   Mie +470.1%   ->  midpoint -3.0% / -66.7%
+	//
+	// Mie is the species concentrated in the lowest few units of atmosphere, so the overstated
+	// term is precisely the horizon haze.
+	//
+	// The aerial perspective figures are still poor after this: 20 steps over a 150-unit clip
+	// distance cannot resolve a 1.32-unit layer at all. That is a step-count problem, and the
+	// fix is the incremental single-pass march, which buys the steps back by dropping the
+	// per-slice re-march from O(N^2) to O(N).
+	rayPos += rayDir * (stepSize * 0.5);
+
 	// cosTheta = 1 looking straight at the sun, which is where a forward-scattering phase must
 	// peak. Rayleigh's (1 + cos^2) is symmetric so its sign never mattered; Mie's does.
 	float cosTheta = dot(rayDir, dirToSun);

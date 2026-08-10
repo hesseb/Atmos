@@ -111,6 +111,29 @@ static class AtmosphereReference
 		return new Vector3((float)r, (float)g, (float)b);
 	}
 
+	/// <summary>
+	/// The integral as `raymarch` computed it before midpoint sampling: sampling at the *start*
+	/// of each segment, which is a left-Riemann sum and systematically OVERestimates optical
+	/// depth for a decreasing profile - the exact mirror of the right-Riemann bias above.
+	///
+	/// Kept so the harness can report the size of what was corrected rather than asserting it
+	/// from a comment. The error scales with step/H, so it is worst for Mie, whose scale height
+	/// is smallest and whose density sits lowest - i.e. along the horizon paths where it showed.
+	/// </summary>
+	public static Vector3 VerticalOpticalDepthLeftRiemann(AtmosphereEffect a, int steps)
+	{
+		double r = 0, g = 0, b = 0;
+		double dh = a.atmosphereThickness / (double)steps;
+
+		for (int i = 0; i < steps; i++)
+		{
+			Vector3 e = Extinction(a, (float)(i * dh));
+			r += e.x * dh; g += e.y * dh; b += e.z * dh;
+		}
+
+		return new Vector3((float)r, (float)g, (float)b);
+	}
+
 	// ------------------------------------------------------------------ phases
 
 	public static double RayleighPhase(float cosTheta)
