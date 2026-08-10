@@ -34,6 +34,10 @@ public class WorldScaleController : MonoBehaviour
 	public SimpleLodSystem lodSystem;
 	public Camera renderCamera;
 
+	[Tooltip("Holds one terrain copy per planet scale, so relief stays at its authored " +
+		"world-unit height instead of scaling with the globe.")]
+	public LodMeshLoader terrainLoader;
+
 	[Tooltip("Cycles to the next preset. F5 and F6 belong to the benchmark HUD.")]
 	public KeyCode cycleKey = KeyCode.F7;
 
@@ -69,6 +73,7 @@ public class WorldScaleController : MonoBehaviour
 	{
 		if (testbedCamera == null) { testbedCamera = FindFirstObjectByType<TestbedCamera>(); }
 		if (lodSystem == null) { lodSystem = FindFirstObjectByType<SimpleLodSystem>(); }
+		if (terrainLoader == null) { terrainLoader = FindFirstObjectByType<LodMeshLoader>(); }
 		if (renderCamera == null) { renderCamera = testbedCamera != null ? testbedCamera.GetComponent<Camera>() : Camera.main; }
 
 		// The camera already holds it, and it must be the SAME asset instance or the camera would
@@ -188,6 +193,19 @@ public class WorldScaleController : MonoBehaviour
 			if (testbedCamera != null)
 			{
 				scope.Set(() => testbedCamera.maxAltitude, v => testbedCamera.maxAltitude = v, testbedCamera.maxAltitude * k);
+			}
+
+			// Shadows are cast over a world-space distance, so an unscaled shadow distance would
+			// leave a x16 planet with shadows only in the few units nearest the camera.
+			scope.Set(() => QualitySettings.shadowDistance, v => QualitySettings.shadowDistance = v,
+				QualitySettings.shadowDistance * k);
+
+			// The terrain copy whose relief was pre-divided by this scale, so the x k transform
+			// leaves mountains at their authored height rather than k times it.
+			if (terrainLoader != null && !terrainLoader.SelectScale(k))
+			{
+				Debug.LogWarning($"[WorldScale] no terrain copy for scale {k}; relief will scale " +
+					"with the planet. Add it to LodMeshLoader.planetScales.", this);
 			}
 		}
 

@@ -69,7 +69,11 @@ public class SimpleLodSystem : MonoBehaviour
 			int count = 0;
 			for (int i = 0; i < renderers.Count; i++)
 			{
-				if (renderers[i].ShowingHighRes) { count++; }
+				// Active copies only: terrain exists once per planet scale and only one is enabled,
+				// so counting the rest would inflate the figure the benchmark uses as evidence that
+				// two configurations rendered the same terrain workload.
+				if (renderers[i].ShowingHighRes && renderers[i].highRes != null
+					&& renderers[i].highRes.gameObject.activeInHierarchy) { count++; }
 			}
 			return count;
 		}
@@ -110,6 +114,9 @@ public class SimpleLodSystem : MonoBehaviour
 
 	void Process(RenderGroup renderer)
 	{
+		// Terrain now exists once per planet scale, with only the selected copy active.
+		if (renderer.highRes == null || !renderer.highRes.gameObject.activeInHierarchy) { return; }
+
 		bool showHighRes = false;
 		switch (mode)
 		{

@@ -403,6 +403,11 @@ MonoBehaviour:
   useStaticBatching: 1
   loadOnStart: 0
   lodSystem: {fileID: 1620373749}
+  planetScales:
+  - 1
+  - 4
+  - 16
+  heightSettings: {fileID: 11400000, guid: 159ce22bf92aee440ad10625d3e3a8e9, type: 2}
 --- !u!1 &876897986
 GameObject:
   m_ObjectHideFlags: 0
@@ -2033,5 +2038,6 @@ MonoBehaviour:
   heightSettings: {fileID: 0}
   lodSystem: {fileID: 0}
   renderCamera: {fileID: 0}
+  terrainLoader: {fileID: 0}
   cycleKey: 288
   applyOnStart: 1

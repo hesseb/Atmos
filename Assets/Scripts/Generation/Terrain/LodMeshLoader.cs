@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using Seb.Meshing;
+using TerrainGeneration;
 
 public class LodMeshLoader : MonoBehaviour
 {
@@ -47,7 +48,7 @@ public class LodMeshLoader : MonoBehaviour
 
 		for (int i = 0; i < meshRenderers.Length; i++)
 		{
-			var renderObject = MeshHelper.CreateRendererObject(meshData[i].name, meshData[i], material, parent: transform, gameObject.layer);
+			var renderObject = MeshHelper.CreateRendererObject(meshData[i].name, meshData[i], material, parent: parent, gameObject.layer);
 
 			meshRenderers[i] = renderObject.renderer;
 			allObjects[i] = renderObject.gameObject;
@@ -60,7 +61,7 @@ public class LodMeshLoader : MonoBehaviour
 
 		if (useStaticBatching)
 		{
-			StaticBatchingUtility.Combine(allObjects, gameObject);
+			StaticBatchingUtility.Combine(allObjects, parent.gameObject);
 		}
 
 		return meshRenderers;
