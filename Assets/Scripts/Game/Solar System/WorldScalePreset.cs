@@ -31,6 +31,28 @@ public class WorldScalePreset : ScriptableObject
 	[TextArea(2, 5)]
 	public string description;
 
+	[Header("Planet")]
+	/// <summary>
+	/// Uniform scale applied to the World root, and to every radius derived from it.
+	///
+	/// This is the honest planet-size dial: it moves the actual geometry, so the globe really is
+	/// bigger and the horizon really is flatter. The atmosphere's scale height stays fixed in
+	/// world units, so R/H - the only thing horizon air mass depends on - grows with it, and air
+	/// mass grows as its square root.
+	///
+	/// Free at runtime because the terrain is not generated at play time: `LodMeshLoader`
+	/// deserialises pre-baked meshes, so there is nothing to recompute and both scales are the
+	/// *same* terrain, which makes the comparison controlled rather than two separate bakes.
+	///
+	/// **Caveat worth stating in the report.** A uniform scale scales the relief too, so at 4x
+	/// the mountains are 12 world units rather than 3 against an unchanged 8.8-unit scale height.
+	/// A real planet four times larger would not have four times taller mountains, so this
+	/// exaggerates how far peaks stand out of the haze. Fixing that properly means re-baking the
+	/// terrain at a different worldRadius with the same heightMultiplier - the offline generator
+	/// can do it, at the cost of a second copy of the mesh data.
+	/// </summary>
+	public float planetScale = 1;
+
 	[Header("Atmosphere")]
 	[Tooltip("Column depth in world units. The planet's radius in kilometres is " +
 		"150 * 100 / this, since the column is defined to be Earth's 100 km.")]
@@ -60,7 +82,7 @@ public class WorldScalePreset : ScriptableObject
 	public float KilometresPerUnit => 100f / Mathf.Max(1e-4f, atmosphereThickness);
 
 	/// <summary>Planet radius in kilometres, for a globe of the given world-unit radius.</summary>
-	public float PlanetRadiusKm(float bodyRadius) => bodyRadius * KilometresPerUnit;
+	public float PlanetRadiusKm(float bodyRadius) => bodyRadius * planetScale * KilometresPerUnit;
 
 	/// <summary>
 	/// Chapman horizon air mass, sqrt(pi*R / 2H) - the amplification of the slant path to the
@@ -70,6 +92,6 @@ public class WorldScalePreset : ScriptableObject
 	public float HorizonAirMass(float bodyRadius, float rayleighDensityAvg)
 	{
 		float scaleHeight = Mathf.Max(1e-4f, rayleighDensityAvg * atmosphereThickness);
-		return Mathf.Sqrt(Mathf.PI * bodyRadius / (2f * scaleHeight));
+		return Mathf.Sqrt(Mathf.PI * bodyRadius * planetScale / (2f * scaleHeight));
 	}
 }

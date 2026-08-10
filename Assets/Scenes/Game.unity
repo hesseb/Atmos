@@ -2026,7 +2026,12 @@ MonoBehaviour:
   presets:
   - {fileID: 11400000, guid: 3c81f47ab29e05e4d9a17206b8f4c3d1, type: 2}
   - {fileID: 11400000, guid: 9f2b6d0c74a13ae4b85c9127e6d0af38, type: 2}
+  - {fileID: 11400000, guid: 1a5e83c0b9d47f24aa03e6178d92b4c7, type: 2}
   atmosphere: {fileID: 0}
   testbedCamera: {fileID: 1735868801}
+  worldRoot: {fileID: 0}
+  heightSettings: {fileID: 0}
+  lodSystem: {fileID: 0}
+  renderCamera: {fileID: 0}
   cycleKey: 288
   applyOnStart: 1

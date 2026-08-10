@@ -10,10 +10,11 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 5d7e21ac9b3f04e4ab6182c05a7f9e13, type: 3}
-  m_Name: practical-136km
+  m_Name: planet-x16
   m_EditorClassIdentifier: 
-  id: practical-136km
-  description: Playable. Air mass is only 5.2 so density carries most of the sunset. 3.0 is a stated compromise - matching Earth's horizon would need 6.84, which leaves the zenith transmitting 0.16 against Earth's 0.77 and smears the sun disc into the haze.
+  id: planet-x16
+  description: Sixteen times the radius. Air mass 20.7, approaching Earth's 35.4 - and clearly impractical: a sixteenth of the content in view, and relief scaled with the planet so peaks tower over the haze.
+  planetScale: 16
   atmosphereThickness: 110
   densityMultiplier: 3
   intensity: 1.602
