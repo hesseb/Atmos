@@ -46,6 +46,7 @@ static class AtmosphereValidation
 		failures += CheckWavelengthLaw(report, atmosphere);
 		failures += CheckExtinctionPositive(report, atmosphere);
 		failures += CheckOpticalDepth(report, atmosphere);
+		failures += CheckMarchQuadrature(report, atmosphere);
 		failures += CheckToneMapBand(report, atmosphere);
 		failures += CheckIlluminanceBookkeeping(report, atmosphere);
 		failures += CheckSunDisc(report, atmosphere);
@@ -233,6 +234,51 @@ static class AtmosphereValidation
 		Vector3 rayleighOnly = AtmosphereReference.VerticalOpticalDepth(a, 200000, rayleighOnly: true);
 		return Assert(report, "Rayleigh vertical optical depth matches beta*H closed form",
 			rayleighOnly.z, closedRayleigh, 1e-4);
+	}
+
+	/// <summary>
+	/// How well the view march's step count resolves each species.
+	///
+	/// `raymarch` sampled at the start of each segment - a left-Riemann sum, which overestimates
+	/// a decaying profile, and the mirror of the right-Riemann bias `getSunTransmittance` had.
+	/// Both are now midpoint. This reports what that was worth, at the configured step counts,
+	/// so the step counts themselves are justified on the record rather than by assertion.
+	///
+	/// Measured down a vertical column, which is the mild case: a horizon path traverses far
+	/// more of the dense lower atmosphere per unit of ray length, so the real error along one is
+	/// larger than the figure printed here.
+	/// </summary>
+	static int CheckMarchQuadrature(StringBuilder report, AtmosphereEffect a)
+	{
+		report.Append("\n## View march quadrature\n\n");
+
+		Vector3 exact = AtmosphereReference.VerticalOpticalDepth(a, 200000);
+		int worstSteps = 0;
+		float worstError = 0f;
+
+		foreach (int steps in new[] { a.numSkyScatteringSteps, a.numAerialScatteringSteps })
+		{
+			Vector3 mid = AtmosphereReference.VerticalOpticalDepth(a, steps);
+			Vector3 left = AtmosphereReference.VerticalOpticalDepthLeftRiemann(a, steps);
+
+			float midErr = 100f * Mathf.Abs(1f - mid.z / exact.z);
+			float leftErr = 100f * Mathf.Abs(1f - left.z / exact.z);
+
+			report.Append($"- {steps} steps: midpoint {F(midErr)}% error in blue, "
+				+ $"left-Riemann {F(leftErr)}% <- what it did before\n");
+
+			if (midErr > worstError) { worstError = midErr; worstSteps = steps; }
+		}
+
+		report.Append($"- Mie scale height {F(a.mieDensityAvg * a.atmosphereThickness)} u is the "
+			+ "binding constraint; Rayleigh is resolved at both step counts\n");
+
+		// A warning rather than a failure: the aerial perspective's step count is genuinely too
+		// low for the Mie layer, and the fix is the incremental march that makes steps cheap,
+		// not a number change here.
+		return worstError < 5f
+			? Pass(report, "both step counts resolve the density profile")
+			: Warn(report, $"{worstSteps} steps leaves {F(worstError)}% quadrature error in blue");
 	}
 
 	/// <summary>

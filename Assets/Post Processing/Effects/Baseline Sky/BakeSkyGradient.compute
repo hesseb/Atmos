@@ -1,4 +1,4 @@
-// Header revision this file was last rebuilt against: stage 2 (Rayleigh phase + sunIlluminance).
+// Header revision this file was last rebuilt against: stage 2b (midpoint sampling in raymarch).
 
 // Bakes the physically based sky into the baseline's 2D gradient LUT.
 //

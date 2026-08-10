@@ -16,7 +16,7 @@ MonoBehaviour:
   - assetPath: Assets/Post Processing/Effects/Baseline Sky/Textures/SkyGradientBaked.exr
     recipe: 0
     hash: 0x1577ea9e93ac8185
-    bakedUtc: 2026-08-10 00:11:50Z
+    bakedUtc: 2026-08-10 00:18:18Z
     inputs: 'bodyRadius=150
 
       atmosphereThickness=110
@@ -71,7 +71,7 @@ MonoBehaviour:
   - assetPath: Assets/Post Processing/Effects/Baseline Sky/Textures/SkyCubemap.asset
     recipe: 0
     hash: 0x1577ea9e93ac8185
-    bakedUtc: 2026-08-10 00:11:54Z
+    bakedUtc: 2026-08-10 00:18:22Z
     inputs: 'bodyRadius=150
 
       atmosphereThickness=110
@@ -123,13 +123,13 @@ MonoBehaviour:
 '
   - assetPath: Assets/Post Processing/Effects/Baseline Sky/Textures/SkyGradient.exr
     recipe: 1
-    hash: 0x841d28f4205ac2ec
-    bakedUtc: 2026-08-10 00:12:00Z
-    inputs: 'intensity=1.31
+    hash: 0xd53035fd354d17f0
+    bakedUtc: 2026-08-10 00:18:28Z
+    inputs: 'intensity=1.602
 
       contrast=1.45
 
-      whitePoint=1
+      whitePoint=2.5
 
       bakeWidth=128
 
