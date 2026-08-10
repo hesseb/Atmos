@@ -21,9 +21,12 @@ Shader "Custom/Ocean"
 		// what actually takes saturation out.
 		_Saturation("Saturation", Range(0,1)) = 1
 		_Specular("Specular", Float) = 0
-		_FresnelCol("Fresnel Col", Color) = (0,0,0,0)
-		_FresnelWeight("Fresnel Weight", Float) = 0
-		_FresnelPower("Fresnel Power", Float) = 0
+		// NIGHT-ONLY. In daylight the silhouette is handled by the physical Fresnel reflection, so
+		// this fades to nothing above the terminator - changing it will look like it does nothing
+		// unless the sun is down. It exists because the sky view LUT has no moonlight or starlight.
+		_FresnelCol("Night Rim Colour", Color) = (0,0,0,0)
+		_FresnelWeight("Night Rim Weight", Float) = 0
+		_FresnelPower("Night Rim Power", Float) = 0
 		_TestParams("Test Params", Vector) = (0,0,0,0)
 
 		[Header(Atmosphere)]
@@ -38,7 +41,7 @@ Shader "Custom/Ocean"
 		// noise at planet scale, and a rough surface reflects the average sky rather than a mirror.
 		_ReflectionWaveWeight("Reflection Wave Weight", Range(0,1)) = 0.25
 		// Skylight on the water body. The dial to reach for if the ocean is too dark or too flat.
-		_SkyAmbientWeight("Sky Ambient Weight", Range(0,2)) = 0.5
+		_SkyAmbientWeight("Sky Ambient Weight", Range(0,2)) = 0.1
 		// The old flat rim, now night-only and declared non-physical.
 		_NightRimStrength("Night Rim Strength", Range(0,2)) = 1
 
@@ -346,16 +349,23 @@ Shader "Custom/Ocean"
 				// approximation, since the hemisphere is really dominated by mid-elevations, but a
 				// defensible one at one texture fetch.
 				//
-				// Multiplicative, not additive: irradiance times albedo is what a diffuse body does,
-				// and `_OceanCol` is the closest thing here to an albedo. That has a consequence
-				// worth being clear about - under an orange sky, blue water goes dark rather than
-				// orange, which is what real water does. The dramatic sunset colour on water comes
-				// from the SPECULAR path (Fresnel and the glint), not from the body.
+				// ADDITIVE, not multiplicative, and that is not the lazy choice - it is the correct
+				// one for what this map actually is.
+				//
+				// Irradiance times albedo would be right if `_OceanCol` were an albedo. It is not:
+				// it is a baked LIT-APPEARANCE map, with deep blue, shallow blue and chlorophyll
+				// already resolved into a finished colour. Multiplying it by blue skylight squares
+				// the blue - it took the map's blue-to-red ratio from 5:1 to 10:1, which reads as
+				// an aggressively oversaturated ocean.
+				//
+				// Adding keeps the structure the flat `_Ambient` had, which looked right, and
+				// replaces its hand-picked constant with the sky's own colour - so the water lifts
+				// toward whatever the sky is doing instead of toward a fixed blue.
 				//
 				// Not attenuated by `sunVisibility`: that is the sun's shadow map, and skylight does
 				// not arrive from the sun's direction.
 				float3 skyAmbient = sampleSkyViewSafe(sphereNormal, sphereNormal, sunDir) * _SkyAmbientWeight;
-				float3 bodyLit = saturate(oceanCol * (shading * sunVisibility + skyAmbient));
+				float3 bodyLit = saturate(saturate(oceanCol * shading) * sunVisibility + skyAmbient);
 
 				// ---- Sky reflection ----
 				//
