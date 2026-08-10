@@ -179,10 +179,16 @@ public class WorldScaleController : MonoBehaviour
 			scope.Add(() => atmosphere.MarkSettingsDirty());
 		}
 
-		// Planet geometry. Everything below derives from the same scale, so they cannot drift.
+		// Planet geometry. Everything derives from the same scale, so nothing can drift.
+		//
+		// At method scope because the camera block below needs them too. baseRadius is the
+		// authored radius: the scope is disposed before this point, so worldRadius has already
+		// been restored and reads as authored rather than as a previously scaled value.
+		float k = Mathf.Max(1e-3f, preset.planetScale);
+		float baseRadius = heightSettings != null ? heightSettings.worldRadius : 150f;
+
 		if (!Mathf.Approximately(preset.planetScale, 1f) || worldRoot != null)
 		{
-			float k = Mathf.Max(1e-3f, preset.planetScale);
 
 			// The World transform is deliberately NOT scaled. The planet radius is baked into the
 			// mesh vertices instead - see PlanetRelief.Correct. Terrain, outlines and ocean are
@@ -199,14 +205,8 @@ public class WorldScaleController : MonoBehaviour
 				scope.Set(() => worldRoot.localScale, v => worldRoot.localScale = v, Vector3.one);
 			}
 
-			// The authored radius, read before the scope overwrites it - Set captures the current
-			// value as the undo, and cycling disposes first, so this is always the authored one.
 			// worldRadius drives the camera's surface radius, the picker, the labels, the country
-			// highlight and the city-light generator, so it has to agree with the baked meshes.
-			// The authored radius, read before the scope overwrites it. Cycling disposes the
-			// previous scope first, so this is always the authored value rather than a scaled one.
-			float baseRadius = heightSettings != null ? heightSettings.worldRadius : 150f;
-
+			// highlight and the city lights, so it has to agree with the baked meshes.
 			if (heightSettings != null)
 			{
 				scope.Set(() => heightSettings.worldRadius, v => heightSettings.worldRadius = v, baseRadius * k);
