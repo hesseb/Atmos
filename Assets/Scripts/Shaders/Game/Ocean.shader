@@ -50,6 +50,16 @@ Shader "Custom/Ocean"
 		// The old flat rim, now night-only and declared non-physical.
 		_NightRimStrength("Night Rim Strength", Range(0,2)) = 1
 
+		[Header(City Lights)]
+		_CityLightField("City Light Field", 2D) = "black" {}
+		_CityLightCol("City Light Colour", Color) = (0.443, 0.312, 0.190, 1)
+		_CitySpillStrength("Spill Strength", Range(0, 4)) = 1
+		_CityStreakStrength("Streak Strength", Range(0, 16)) = 4
+		_CityGlintStrength("Glint Strength", Range(0, 16)) = 4
+		_CityGlintSmoothness("Glint Smoothness", Range(0.005, 0.3)) = 0.06
+		_CityStreakReach("Streak Reach (radians)", Range(0.002, 0.08)) = 0.02
+		_CityFadeMip("Zoom Fade Mip", Range(0, 10)) = 4
+
 		[Header(Foam)]
 		[NoScaleOffset] _FoamDistanceMap ("Foam Distance Map", 2D) = "white" {}
 		_FoamDst ("Foam Dst", Range(0,1)) = 1
@@ -130,6 +140,16 @@ Shader "Custom/Ocean"
 			float _SkyAmbientWeight, _NightRimStrength;
 			float4 _NightAmbient;
 			float _MoonGlintSmoothness;
+
+			sampler2D _CityLightField;
+			float4 _CityLightField_TexelSize;
+			float4 _CityLightCol;
+			float _CitySpillStrength, _CityStreakStrength, _CityGlintStrength;
+			float _CityGlintSmoothness, _CityStreakReach, _CityFadeMip;
+
+			// Six taps is enough for a streak that reads at the reach this is tuned for, and the loop
+			// is unrolled, so this is six texture fetches rather than a real loop.
+			#define CITY_STREAK_STEPS 6
 
 			// Published by SolarSystem.Moon. Position, not direction: at 811 world units against a
 			// 150-unit planet the moon is not far enough away to be directional.
@@ -360,7 +380,50 @@ Shader "Custom/Ocean"
 				// model rather than being something this renderer got wrong.
 				float3 nightAmbient = _NightAmbient.rgb * smoothstep(0.0, 0.15, nightT);
 
-				float3 bodyLit = saturate(saturate(oceanCol * shading) * sunVisibility + skyAmbient + oceanCol * nightAmbient);
+				// ---- City light field ----
+				//
+				// Baked by Testbed > Generation > Bake City Light Field from the same NASA night-lights
+				// map the 151,601 city light instances were rejection-sampled from, so this agrees with
+				// the lights actually drawn without the shader having to touch their buffer.
+				//
+				//   rg  bearing to the surrounding light, in the local east/north basis
+				//   b   the glow, stored as its square root for precision in the darks
+				//   a   angular distance to the nearest lit land (unused so far)
+				//
+				// Deliberately NOT gated on skyReflectionStrength, unlike every other term added to this
+				// shader recently. City lights are emissive scene dressing, not atmosphere; gating them
+				// would make the baseline and physically based images differ in something other than the
+				// sky, which is the exact failure that gate exists to prevent.
+				float4 cityField = tex2D(_CityLightField, texCoord);
+				float cityGlow = cityField.b * cityField.b;
+
+				// Matched to nightAmbient's ramp so the water lights up with the same curve the rest of
+				// the night side does. The city lights themselves fade in on their own turn-on animation,
+				// so the two are close but not identical - see the note in NOTES.md.
+				float cityNight = smoothstep(0.0, 0.15, nightT);
+
+				// The bearing, decoded into world space. east is degenerate at the poles, where any basis
+				// will do - there is no ocean there to light.
+				float3 cityEast = abs(sphereNormal.y) > 0.9999 ? float3(1, 0, 0) : normalize(cross(float3(0, 1, 0), sphereNormal));
+				float3 cityNorth = cross(sphereNormal, cityEast);
+				float2 cityBearing = cityField.rg * 2 - 1;
+				float3 cityDir = cityEast * cityBearing.x + cityNorth * cityBearing.y;
+
+				// Zoom fade for the two view-dependent terms. calculateGeoMipLevel measures how much
+				// angular span one screen pixel covers, so it is exactly 'how zoomed out are we' and is
+				// free of both world scale and screen resolution - which a world-space altitude threshold
+				// would not be, since F7 multiplies every distance in the scene by up to sixteen.
+				float cityFieldMip = calculateGeoMipLevel(texCoord, _CityLightField_TexelSize.zw);
+				float cityZoomFade = 1 - smoothstep(_CityFadeMip, _CityFadeMip + 2, cityFieldMip);
+
+				// The spill: light landing ON the water from the city, so it belongs with the other body
+				// terms and takes the same form as nightAmbient - the ocean's own colour lifted by a light
+				// it is being bathed in. This is the term that stops a harbour reading as a black void
+				// beside a bright city, and unlike the streak and glint it does not depend on view angle,
+				// so it survives at any altitude.
+				float3 citySpill = _CityLightCol.rgb * cityGlow * _CitySpillStrength * cityNight;
+
+				float3 bodyLit = saturate(saturate(oceanCol * shading) * sunVisibility + skyAmbient + oceanCol * (nightAmbient + citySpill));
 
 				// ---- Sky reflection ----
 				//
@@ -432,6 +495,50 @@ Shader "Custom/Ocean"
 				float3 moonTransmittance = sampleLightColour(sphereNormal, moonDir);
 				float moonHighlight = saturate(calculateSpecular(waveNormal, viewDir, moonDir, _MoonGlintSmoothness));
 				oceanCol += moonHighlight * moonLightColour.rgb * moonTransmittance;
+
+				// ---- City lights on the water ----
+				//
+				// The streak: the mirror direction projected onto the local tangent plane, walked across
+				// the glow field in angular steps. Where the reflected ray points at a city the taps pile
+				// up into a bright column, which is the harbour-at-night look; where it points at open
+				// water they all read zero and nothing appears.
+				//
+				// Angular steps rather than steps in UV, for the same reason the bake gathers that way:
+				// a fixed UV step is a different distance on the globe at every latitude, and streaks
+				// would visibly bend toward the poles. It also makes the reach scale-free under F7.
+				//
+				// tex2Dlod with an explicit mip is mandatory here - tex2D inside a loop derives its mip
+				// from neighbouring fragments' UVs, which in a march are unrelated to this one's.
+				float3 cityTangent = reflectDir - sphereNormal * dot(reflectDir, sphereNormal);
+				float cityTangentLen = length(cityTangent);
+				float3 cityMarchDir = cityTangentLen > 1e-4 ? cityTangent / cityTangentLen : cityEast;
+
+				float cityStreak = 0;
+				[unroll]
+				for (int cityStep = 0; cityStep < CITY_STREAK_STEPS; cityStep++)
+				{
+					float t = (cityStep + 0.5) / CITY_STREAK_STEPS;
+					float angle = t * _CityStreakReach;
+					float3 q = sphereNormal * cos(angle) + cityMarchDir * sin(angle);
+					// Squared per tap, not after summing: the field stores sqrt(glow), so accumulating
+					// the stored values and squaring once would be a different quantity entirely.
+					float g = tex2Dlod(_CityLightField, float4(pointToUV(q), 0, cityFieldMip)).b;
+					cityStreak += g * g * (1 - t);
+				}
+				cityStreak /= CITY_STREAK_STEPS;
+
+				// Multiplied by the Fresnel term because this IS a reflection and should obey the same
+				// energy split as the sky - which also puts it at the grazing angles where a real streak
+				// forms, and takes it away when looking straight down, where there would not be one.
+				oceanCol += cityStreak * _CityLightCol.rgb * _CityStreakStrength * fresnelReflectance * cityNight * cityZoomFade;
+
+				// The glint, on the same machinery as the sun and moon. The field's direction channels
+				// give the bearing to the surrounding light; cities sit at sea level, so that bearing is
+				// very nearly horizontal, tilted a little toward the zenith here so the specular lobe is
+				// reachable at the angles a strategy camera actually looks from.
+				float3 cityLightDir = normalize(cityDir + sphereNormal * 0.15);
+				float cityHighlight = saturate(calculateSpecular(waveNormal, viewDir, cityLightDir, _CityGlintSmoothness));
+				oceanCol += cityHighlight * cityGlow * _CityLightCol.rgb * _CityGlintStrength * cityNight * cityZoomFade;
 
 				// # Apply foam
 				float4 foam = calculateFoam(texCoord, pointOnUnitSphere, viewDir);

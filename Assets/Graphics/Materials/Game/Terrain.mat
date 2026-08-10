@@ -9,6 +9,8 @@ Material:
   m_PrefabAsset: {fileID: 0}
   m_Name: Terrain
   m_Shader: {fileID: 4800000, guid: 7393c6c0f9cec1949a1f7e27ef2876c3, type: 3}
+  m_Parent: {fileID: 0}
+  m_ModifiedSerializedProperties: 0
   m_ValidKeywords: []
   m_InvalidKeywords: []
   m_LightmapFlags: 4
@@ -17,6 +19,7 @@ Material:
   m_CustomRenderQueue: -1
   stringTagMap: {}
   disabledShaderPasses: []
+  m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3
     m_TexEnvs:
@@ -107,11 +110,13 @@ Material:
     - _GlossyReflections: 1
     - _Metallic: 0
     - _Mode: 0
+    - _MoonLightWeight: 1
     - _OcclusionStrength: 1
     - _Parallax: 0.02
     - _ShadingPow: 1.41
     - _ShadowColourBlend: 0.209
     - _ShadowStrength: 0.7
+    - _SkyAmbientWeight: 0.15
     - _SmoothnessTextureChannel: 0
     - _Specular: 0.07
     - _SpecularHighlights: 1
@@ -122,7 +127,7 @@ Material:
     - _ZWrite: 1
     m_Colors:
     - _Ambient: {r: 0.3942323, g: 0.3669455, b: 0.5849056, a: 0}
-    - _AmbientNight: {r: 0.39607844, g: 0.36862746, b: 0.58431375, a: 0}
+    - _AmbientNight: {r: 0.16082224, g: 0.18404894, b: 0.24528289, a: 0}
     - _CityLightAmbient: {r: 0.4433962, g: 0.312395, b: 0.19032574, a: 1}
     - _Color: {r: 1, g: 1, b: 1, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
@@ -133,3 +138,4 @@ Material:
     - _TestParams: {r: 11, g: 1.41, b: 2.5, a: 0}
     - _Tint: {r: 1, g: 1, b: 1, a: 1}
   m_BuildTextureStacks: []
+  m_AllowLocking: 1

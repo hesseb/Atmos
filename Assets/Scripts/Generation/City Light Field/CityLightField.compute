@@ -1,0 +1,124 @@
+#pragma kernel BakeCityLightField
+
+#include "Assets/Scripts/Shader Common/GeoMath.hlsl"
+
+// Bakes the field that lets the ocean know where the cities are.
+//
+// The city lights themselves are 151,601 point instances in a StructuredBuffer, which no per-pixel
+// ocean shader can iterate. But those points were rejection-sampled from the NASA night-lights map
+// (CityLightSpawner.compute picks the brightest of up to 1000 samples weighted by it), so a field
+// derived from that same map agrees with the drawn points by construction.
+//
+// Output, per texel:
+//   RG  direction toward the surrounding light, in the local east/north tangent basis, *0.5+0.5
+//   B   the glow itself - lightmap brightness averaged over a disc, weighted toward the near side
+//   A   angular distance to the nearest lit texel, normalised by maxAngle (1 if nothing was found)
+//
+// B is stored as sqrt(B) so an 8-bit target keeps precision in the darks, where the whole effect
+// lives. The ocean squares it on read. Do not import this texture as sRGB - RG is a direction and
+// would be mangled by a transfer curve.
+
+Texture2D<float4> LightMap;
+SamplerState my_linear_repeat_sampler;
+
+RWTexture2D<float4> Result;
+
+uint2 outputSize;
+float2 lightMapSize;
+
+// The gather is done in ANGULAR space - offsets are rotations of the sphere point, not steps in UV.
+// That is what makes it free of equirectangular distortion: a ring of samples is a true circle on
+// the globe at every latitude, the seam at u=0 needs no special case, and the result is invariant
+// under the F7 world-scale toggle because an angle does not care how big the planet is.
+int numRadialSteps;
+int numAngularSteps;
+float minAngle;         // inner radius of the gather; also the softening on the falloff
+float maxAngle;         // outer radius - beyond this a city contributes nothing
+float falloffPower;
+float litThreshold;     // lightmap value above which a texel counts as "a city" for the A channel
+
+// The bake is dispatched in horizontal bands rather than in one go. At the default settings this is
+// well over a billion texture samples, and a single dispatch that long trips Windows' GPU watchdog
+// and resets the driver mid-bake. Bands keep each dispatch short.
+uint rowStart;
+
+static const float TAU = 6.28318530718;
+
+[numthreads(8, 8, 1)]
+void BakeCityLightField(uint3 id : SV_DispatchThreadID)
+{
+	uint2 texel = uint2(id.x, id.y + rowStart);
+	if (texel.x >= outputSize.x || texel.y >= outputSize.y) { return; }
+
+	float2 uv = (texel + 0.5) / (float2)outputSize;
+	float3 p = uvToPointOnSphere(uv);
+
+	// Local east/north basis. Degenerate exactly at the poles, where any basis will do - there are
+	// no cities there and no ocean shader will ask.
+	float3 poleAxis = float3(0, 1, 0);
+	float3 east = abs(p.y) > 0.9999 ? float3(1, 0, 0) : normalize(cross(poleAxis, p));
+	float3 north = cross(p, east);
+
+	// One texel of the source map, as an angle. Used to pick a mip below.
+	float texelAngle = PI / max(1, lightMapSize.y);
+
+	float total = 0;
+	float weightTotal = 0;
+	float2 dirAccum = 0;
+	float nearestLit = maxAngle;
+
+	// Radii are geometrically spaced, so the near field - which carries almost all the weight - gets
+	// as many rings as the far field. Linear spacing would spend most of its samples out where the
+	// falloff has already killed the contribution.
+	float ratio = maxAngle / max(1e-6, minAngle);
+	float logRatio = log(ratio);
+
+	for (int ri = 0; ri < numRadialSteps; ri++)
+	{
+		float t = (ri + 0.5) / numRadialSteps;
+		float r = minAngle * pow(ratio, t);
+		float dr = r * logRatio / numRadialSteps;   // d/dt of the geometric spacing
+
+		// Area element r*dr, times an art-directed falloff. minAngle doubles as the softening that
+		// keeps the falloff finite at the centre.
+		float weight = pow(r + minAngle, -falloffPower) * r * dr;
+
+		// The ring has circumference 2*pi*r but only numAngularSteps samples on it, so at large r
+		// consecutive samples are far apart and would step straight over whole cities. Sampling a
+		// mip whose texels are as wide as the gap makes each sample an average of what it skipped -
+		// without this the far field is pure aliasing and the glow shimmers between bakes.
+		float sampleGap = TAU * r / max(1, numAngularSteps);
+		float lod = max(0, log2(max(1, sampleGap / texelAngle)));
+
+		for (int ai = 0; ai < numAngularSteps; ai++)
+		{
+			float theta = (ai + 0.5) * TAU / numAngularSteps;
+			float2 tangent = float2(cos(theta), sin(theta));
+
+			// Rotate p by angle r toward `tangent`. Exact on the sphere, no small-angle assumption.
+			float3 offsetDir = east * tangent.x + north * tangent.y;
+			float3 q = p * cos(r) + offsetDir * sin(r);
+
+			float3 lit = LightMap.SampleLevel(my_linear_repeat_sampler, pointToUV(q), lod).rgb;
+			float luminance = dot(lit, float3(0.299, 0.587, 0.114));
+
+			total += luminance * weight;
+			dirAccum += tangent * luminance * weight;
+			if (luminance > litThreshold) { nearestLit = min(nearestLit, r); }
+		}
+
+		weightTotal += weight * numAngularSteps;
+	}
+
+	// Normalised by the weight, so B is a proximity-weighted *average* of the light map rather than
+	// an unbounded sum - it lands in roughly [0,1] and survives an 8-bit target. Water far from any
+	// city still comes out dark, because the heavily weighted near rings see nothing.
+	float glow = total / max(1e-6, weightTotal);
+
+	// A near-zero accumulator means either no light at all or light arriving equally from all sides.
+	// Both are cases where there is no meaningful direction, so say so rather than normalising noise.
+	float dirLength = length(dirAccum);
+	float2 direction = dirLength > 1e-8 ? dirAccum / dirLength : float2(0, 0);
+
+	Result[texel] = float4(direction * 0.5 + 0.5, sqrt(saturate(glow)), nearestLit / maxAngle);
+}
