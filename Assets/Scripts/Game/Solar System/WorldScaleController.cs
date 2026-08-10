@@ -288,21 +288,27 @@ public class WorldScaleController : MonoBehaviour
 
 		if (testbedCamera != null)
 		{
-			// Both speeds are absolute rates, and both misbehave on a scaled planet - in opposite
-			// directions, which is why one correction cannot serve both.
+			// Panning is an ARC rate, so the surface speed it produces is arc * R and grows in
+			// direct proportion to the planet.
 			//
-			// Panning is an arc rate, so the surface speed it produces is arc * R and grows with
-			// the planet. The visible width is the horizon, sqrt(2*R*h), which grows only as
-			// sqrt(R). Apparent speed therefore scales as R/sqrt(R) = sqrt(R), and panning felt
-			// four times too fast at x16.
+			// What it should be measured against is how much ground is on screen - and at the
+			// altitudes actually used, that is set by the field of view, not by the planet. At
+			// altitude 10 with a 60 degree FOV the view spans about 11.5 units of ground whether
+			// the horizon is 55 units away or 219. So the visible width does NOT grow with the
+			// planet, and the apparent speed goes as R itself.
 			//
-			// Flying is a world-unit rate, independent of R, against that same widening view - so
-			// it feels slower by the same factor.
-			float speedCorrection = Mathf.Sqrt(Mathf.Max(1e-3f, preset.planetScale));
-
+			// An earlier version divided by sqrt(planetScale), reasoning from the horizon
+			// distance. That is the right measure only when zoomed far enough out for the planet
+			// to limit the view, which is not where the camera spends its time - and it left
+			// panning four times too fast at x16.
+			//
+			// Flying needs no correction at all: it is a world-unit rate scaled by altitude, and
+			// the visible width is also proportional to altitude, so the two already cancel and
+			// nothing about the planet enters.
 			scope.Set(() => testbedCamera.referenceAltitude, v => testbedCamera.referenceAltitude = v, preset.referenceAltitude);
-			scope.Set(() => testbedCamera.panSpeed, v => testbedCamera.panSpeed = v, preset.panSpeed / speedCorrection);
-			scope.Set(() => testbedCamera.flySpeed, v => testbedCamera.flySpeed = v, preset.flySpeed * speedCorrection);
+			scope.Set(() => testbedCamera.panSpeed, v => testbedCamera.panSpeed = v,
+				preset.panSpeed / Mathf.Max(1e-3f, preset.planetScale));
+			scope.Set(() => testbedCamera.flySpeed, v => testbedCamera.flySpeed = v, preset.flySpeed);
 			// Orbit mode re-applies the pose every frame, so writing the field is enough to move
 			// the camera. Free-fly derives altitude from the transform instead and will not
 			// jump - which is the right behaviour, since a preset should not teleport a camera
