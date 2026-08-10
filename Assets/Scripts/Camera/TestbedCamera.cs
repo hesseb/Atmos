@@ -399,6 +399,12 @@ public class TestbedCamera : MonoBehaviour
 		float comfortable = Mathf.Clamp(modeSwitchAltitude, minAltitude, maxAltitude);
 		float current = transform.position.magnitude - SurfaceRadius;
 		if (current < comfortable) { SetAltitudeAboveSurface(comfortable); }
+
+		// Temporary, to find out why this appears to have no effect.
+		Debug.Log($"[TestbedCamera] -> {mode}: surfaceRadius {SurfaceRadius:F1}, was {current:F1}, " +
+			$"modeSwitchAltitude {modeSwitchAltitude:F1}, clamped to {comfortable:F1} " +
+			$"(min {minAltitude:F1}, max {maxAltitude:F1}), now altitude {altitude:F1} " +
+			$"at radius {transform.position.magnitude:F1}", this);
 	}
 
 	/// <summary>
