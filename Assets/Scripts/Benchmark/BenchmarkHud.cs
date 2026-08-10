@@ -440,10 +440,44 @@ public class BenchmarkHud : MonoBehaviour
 			$"  size        {sizeLine}\n" +
 			$"  viewing     {PreviewName()}\n" +
 			$"  post        {EnabledEffects()}\n" +
+			WorldScaleLine() +
 			$"  {KeyName(cycleBenchmarkKey)} benchmark   {KeyName(cycleModeKey)} mode   " +
 			$"{KeyName(cycleProfileKey)} view   {KeyName(runKey)} run   " +
-			$"{KeyName(toggleOverlayKey)} hide" +
+			$"{KeyName(toggleOverlayKey)} hide" + WorldScaleKeyHint() +
 			(string.IsNullOrEmpty(lastMessage) ? "" : $"\n  {lastMessage}");
+	}
+
+	/// <summary>
+	/// The world scale in effect, or nothing at all when no controller is present.
+	///
+	/// Resolved on demand rather than cached: the controller is not required for a benchmark,
+	/// and a run left as authored should show no scale line at all rather than a stale one.
+	/// </summary>
+	string WorldScaleLine()
+	{
+		string status = WorldScale != null ? WorldScale.StatusLine : null;
+		return string.IsNullOrEmpty(status) ? "" : $"  world       {status}\n";
+	}
+
+	string WorldScaleKeyHint()
+	{
+		return WorldScale != null ? $"   {KeyName(WorldScale.cycleKey)} scale" : "";
+	}
+
+	WorldScaleController worldScaleCached;
+	bool worldScaleSearched;
+
+	WorldScaleController WorldScale
+	{
+		get
+		{
+			if (!worldScaleSearched)
+			{
+				worldScaleSearched = true;
+				worldScaleCached = FindFirstObjectByType<WorldScaleController>();
+			}
+			return worldScaleCached;
+		}
 	}
 
 	/// <summary>

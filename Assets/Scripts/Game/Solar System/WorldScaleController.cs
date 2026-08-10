@@ -340,6 +340,9 @@ public class WorldScaleController : MonoBehaviour
 		Debug.Log($"[WorldScale] {preset.id}: {Summary(preset)}", this);
 	}
 
+	/// <summary>Compact scale readout for the HUD, or null when the scene is as authored.</summary>
+	public string StatusLine => Current != null ? Summary(Current) : null;
+
 	/// <summary>One line for the log and the HUD - the numbers the presets actually differ in.</summary>
 	public string Summary(WorldScalePreset preset)
 	{
@@ -351,7 +354,11 @@ public class WorldScaleController : MonoBehaviour
 		float km = preset.PlanetRadiusKm(baseRadius);
 		float airMass = preset.HorizonAirMass(baseRadius, atmosphere.rayleighDensityAvg);
 
-		return $"planet x{preset.planetScale:F1} = {km:F0} km, air mass {airMass:F1} (Earth 35.4), "
-			+ $"density x{preset.densityMultiplier:F2}";
+		// InvariantCulture: this machine is sv-SE, where a bare float renders with a decimal
+		// comma, and this string goes both on screen and into the log.
+		var ci = System.Globalization.CultureInfo.InvariantCulture;
+		return $"{preset.id}  x{preset.planetScale.ToString("0.#", ci)} = {km.ToString("F0", ci)} km, "
+			+ $"air mass {airMass.ToString("F1", ci)} (Earth 35.4), "
+			+ $"density x{preset.densityMultiplier.ToString("0.##", ci)}";
 	}
 }
