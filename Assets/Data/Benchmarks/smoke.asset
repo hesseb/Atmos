@@ -34,7 +34,7 @@ MonoBehaviour:
         coordinate:
           longitude: 8
           latitude: 46.5
-        altitude: 4.55
+        altitude: 25
         pitch: 55
         heading: 0
         roll: 0
@@ -48,7 +48,7 @@ MonoBehaviour:
         coordinate:
           longitude: 8
           latitude: 46.5
-        altitude: 4.55
+        altitude: 25
         pitch: 55
         heading: 0
         roll: 0
@@ -83,7 +83,7 @@ MonoBehaviour:
         coordinate:
           longitude: 8
           latitude: 46.5
-        altitude: 4.55
+        altitude: 25
         pitch: 90
         heading: 0
         roll: 0
@@ -97,7 +97,7 @@ MonoBehaviour:
         coordinate:
           longitude: 8
           latitude: 46.5
-        altitude: 4.55
+        altitude: 25
         pitch: 90
         heading: 0
         roll: 0

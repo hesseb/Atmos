@@ -1448,6 +1448,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1735868800}
   - component: {fileID: 1735868801}
+  - component: {fileID: 1735868850}
   m_Layer: 0
   m_Name: Camera Controller
   m_TagString: Untagged
@@ -1491,18 +1492,18 @@ MonoBehaviour:
   coordinate:
     longitude: 0
     latitude: 20
-  altitude: 2
+  altitude: 10
   pitch: 55
   heading: 0
   roll: 0
-  panSpeed: 0.07
-  referenceAltitude: 2
+  panSpeed: 0.35
+  referenceAltitude: 10
   headingSpeed: 60
   pitchSpeed: 40
   zoomSensitivity: 1.5
   minAltitude: 0.5
   maxAltitude: 250
-  flySpeed: 4
+  flySpeed: 20
   boostMultiplier: 5
   slowMultiplier: 0.2
   scaleFlySpeedWithAltitude: 1
@@ -1514,7 +1515,7 @@ MonoBehaviour:
     coordinate:
       longitude: -1.12
       latitude: 36.76
-    altitude: 7.3
+    altitude: 40
     pitch: 70
     heading: 0
     roll: 0
@@ -2010,3 +2011,22 @@ SceneRoots:
   - {fileID: 1755095013}
   - {fileID: 1712829206}
   - {fileID: 1433245419}
+--- !u!114 &1735868850
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1735868799}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8b04e6f1d2a75c34996318bd07e5fa29, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::WorldScaleController
+  presets:
+  - {fileID: 11400000, guid: 3c81f47ab29e05e4d9a17206b8f4c3d1, type: 2}
+  - {fileID: 11400000, guid: 9f2b6d0c74a13ae4b85c9127e6d0af38, type: 2}
+  atmosphere: {fileID: 0}
+  testbedCamera: {fileID: 1735868801}
+  cycleKey: 288
+  applyOnStart: 1
