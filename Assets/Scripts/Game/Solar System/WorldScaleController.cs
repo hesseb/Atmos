@@ -309,6 +309,13 @@ public class WorldScaleController : MonoBehaviour
 			scope.Set(() => testbedCamera.panSpeed, v => testbedCamera.panSpeed = v,
 				preset.panSpeed / Mathf.Max(1e-3f, preset.planetScale));
 			scope.Set(() => testbedCamera.flySpeed, v => testbedCamera.flySpeed = v, preset.flySpeed);
+
+			// The altitude a mode switch lands at scales WITH the planet, unlike the others.
+			// Terrain grows with the scale while the field of view does not, so holding it fixed
+			// would show a sixteenth of the content at x16 - which is unusable for orienting,
+			// even though the shrinking view is itself the finding.
+			scope.Set(() => testbedCamera.modeSwitchAltitude, v => testbedCamera.modeSwitchAltitude = v,
+				preset.modeSwitchAltitude * Mathf.Max(1e-3f, preset.planetScale));
 			// Moved rather than just assigned, and last, after the new surface radius is in place.
 			//
 			// Writing the field alone only works in Orbit mode: free-fly treats the transform as

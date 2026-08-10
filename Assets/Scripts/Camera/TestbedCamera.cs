@@ -52,6 +52,11 @@ public class TestbedCamera : MonoBehaviour
 	// Radians of surface arc per second, at referenceAltitude.
 	public float panSpeed = 0.35f;
 	public float referenceAltitude = 10f;
+
+	[Tooltip("Minimum altitude to come out of a camera mode switch at. Only ever raises, so a " +
+		"camera already further out keeps its height. Scaled with the planet by the world scale " +
+		"controller, since terrain grows with it and the field of view does not.")]
+	public float modeSwitchAltitude = 40f;
 	public float headingSpeed = 60f;
 	public float pitchSpeed = 40f;
 	public float zoomSensitivity = 1.5f;
@@ -387,10 +392,11 @@ public class TestbedCamera : MonoBehaviour
 		// that ended up at or under the surface reappears pinned to it at the closest possible
 		// zoom, which means re-orienting by hand after every toggle.
 		//
-		// referenceAltitude is the height this camera is tuned around - its pan and fly speeds
-		// are expressed relative to it - so it is the natural floor, and the world-scale presets
-		// already set it per planet size.
-		float comfortable = Mathf.Clamp(referenceAltitude, minAltitude, maxAltitude);
+		// A dedicated value rather than referenceAltitude, which is a *speed* reference and is
+		// too low to orient from: at 10 units a 60 degree field of view spans only 11.5 units
+		// of ground, and terrain features grow with the planet while the field of view does
+		// not - so at x16 that is a twentieth of what the same altitude shows at x1.
+		float comfortable = Mathf.Clamp(modeSwitchAltitude, minAltitude, maxAltitude);
 		float current = transform.position.magnitude - SurfaceRadius;
 		if (current < comfortable) { SetAltitudeAboveSurface(comfortable); }
 	}

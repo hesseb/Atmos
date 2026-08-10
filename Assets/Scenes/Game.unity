@@ -1507,6 +1507,7 @@ MonoBehaviour:
   heading: 0
   roll: 0
   panSpeed: 0.35
+  modeSwitchAltitude: 40
   referenceAltitude: 10
   headingSpeed: 60
   pitchSpeed: 40
