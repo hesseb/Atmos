@@ -1511,14 +1511,31 @@ So the **136 km planet is the default again**, with the shortfall carried by `de
 = 6.84` rather than 2.92. Both scales are now `WorldScalePreset` assets under
 `Assets/Data/WorldScales`, cycled live with **F7** by `WorldScaleController`:
 
-| preset | planet | air mass | density | camera |
-|---|---|---|---|---|
-| `practical-136km` | 136 km | 5.2 | **6.84x** | altitude 10 |
-| `physical-750km` | 750 km | 12.1 | **2.92x** | altitude 2 |
+| preset | thickness | air mass | zenith T | horizon tau | horizon T | camera |
+|---|---|---|---|---|---|---|
+| `practical-136km` | 110 u | 5.2 | 0.452 | 4.11 | 0.016 | altitude 10 |
+| `physical-750km` | 20 u | 12.1 | 0.452 | **9.64** | **0.00007** | altitude 4 |
+| Earth | - | 35.4 | 0.767 | 9.37 | 0.00009 | - |
 
-Both match Earth's *horizon* optical depth in blue. What differs is how much of that comes from
-geometry and how much from a multiplier - which is exactly the comparison, and now a keypress
-rather than a paragraph.
+**Both run the same `densityMultiplier` of 3.0, so the only variable is geometry.** The sky
+overhead is identical between them; the limb is what changes, and the limb is the sunset. That
+is a controlled comparison rather than two separately tuned looks, and it isolates exactly what
+the planet's proportions contribute.
+
+**What a preset does NOT change is the planet.** `bodyRadius` is 150 world units in both and the
+terrain is byte-identical - which is precisely why this can be swapped on a key with no mesh
+rebuild. What moves is `atmosphereThickness`, so the scale height goes 8.8 -> 1.6 units and R/H
+goes 17 -> 94. That ratio is the only thing horizon air mass depends on, so the physics is real,
+but the kilometre labels ("136 km", "750 km") are a convention laid on top of it - 1 unit =
+100/thickness km - and not a change in geometry. Making the *planet* genuinely larger, so more
+terrain is visible at a flatter horizon, means `worldRadius` and a terrain regeneration. That is
+a different lever from air mass and has not been touched.
+
+An earlier version of these presets set the small one to 6.84, the value that matches Earth's
+horizon exactly. It reads as fuzzy: the zenith transmits 0.16 against Earth's 0.77, and Mie is
+scaled by the same factor so the forward glow smears the sun disc. That is the trade stated in
+one observation - on a small planet you can match Earth's zenith or Earth's horizon, not both -
+and 3.0 is the stated compromise.
 
 Every change goes through a `RestoreScope`, disposed on preset change and on disable, because
 `AtmosphereEffect` is a ScriptableObject and anything written to it in the editor reaches disk.
@@ -1528,8 +1545,8 @@ terrain meshes, which a keypress should not do. The consequence - mountains stan
 haze at the larger scale - is left visible, since it is part of what makes that scale
 impractical.
 
-The tone map is per preset, since vertical optical depth differs several-fold between them.
-Both start at intensity 1.602 and will need separate tuning.
+The tone map is per preset. It matters less now that both share a density, since vertical
+optical depth is the same in each, but the two differ in how much light the limb returns.
 
 **For the report.** This is a concrete RQ3 answer rather than a failure: an Earth-calibrated
 physically based atmosphere and a strategy-game camera want incompatible planet sizes, the trade

@@ -29,7 +29,7 @@ MonoBehaviour:
   mieCoefficient: 0.3996
   mieAbsorption: 0.44
   mieAsymmetry: 0.8
-  densityMultiplier: 6.8380
+  densityMultiplier: 3
   sunIlluminance: 12.566371
   ozonePeakDensityAltitude: 0.25
   ozoneDensityFalloff: 6.66667
