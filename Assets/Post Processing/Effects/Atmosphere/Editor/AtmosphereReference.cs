@@ -59,6 +59,58 @@ static class AtmosphereReference
 			+ OzoneAbsorption(a) * (ozoneDensity / a.atmosphereThickness);
 	}
 
+	// ---------------------------------------------------------------- Bruneton mapping mirror
+
+	static float LutUnitToSubUv(float unit, float size) => 0.5f / size + unit * (1f - 1f / size);
+	static float LutSubUvToUnit(float uv, float size) => (uv - 0.5f / size) / (1f - 1f / size);
+
+	/// <summary>Mirror of `transmittanceLutUv`. Radius and cosine to LUT coordinates.</summary>
+	public static Vector2 TransmittanceLutUv(AtmosphereEffect a, float radius, float cosZenith)
+	{
+		float rt = a.bodyRadius + a.atmosphereThickness;
+		radius = Mathf.Clamp(radius, a.bodyRadius, rt);
+
+		float h = Mathf.Sqrt(Mathf.Max(0f, rt * rt - a.bodyRadius * a.bodyRadius));
+		float rho = Mathf.Sqrt(Mathf.Max(0f, radius * radius - a.bodyRadius * a.bodyRadius));
+
+		float discriminant = radius * radius * (cosZenith * cosZenith - 1f) + rt * rt;
+		float d = Mathf.Max(0f, -radius * cosZenith + Mathf.Sqrt(Mathf.Max(0f, discriminant)));
+
+		float dMin = rt - radius;
+		float dMax = rho + h;
+
+		float xMu = dMax > dMin ? (d - dMin) / (dMax - dMin) : 0f;
+		float xR = h > 0f ? rho / h : 0f;
+
+		return new Vector2(LutUnitToSubUv(Mathf.Clamp01(xMu), a.transmittanceLUTSize.x),
+			LutUnitToSubUv(Mathf.Clamp01(xR), a.transmittanceLUTSize.y));
+	}
+
+	/// <summary>Mirror of `transmittanceLutParams`. LUT coordinates back to radius and cosine.</summary>
+	public static void TransmittanceLutParams(AtmosphereEffect a, Vector2 uv, out float radius, out float cosZenith)
+	{
+		float rt = a.bodyRadius + a.atmosphereThickness;
+		float unitX = LutSubUvToUnit(uv.x, a.transmittanceLUTSize.x);
+		float unitY = LutSubUvToUnit(uv.y, a.transmittanceLUTSize.y);
+
+		float h = Mathf.Sqrt(Mathf.Max(0f, rt * rt - a.bodyRadius * a.bodyRadius));
+		float rho = h * unitY;
+		radius = Mathf.Sqrt(rho * rho + a.bodyRadius * a.bodyRadius);
+
+		float dMin = rt - radius;
+		float dMax = rho + h;
+		float d = dMin + unitX * (dMax - dMin);
+
+		cosZenith = d <= 0f ? 1f : (h * h - rho * rho - d * d) / (2f * radius * d);
+		cosZenith = Mathf.Clamp(cosZenith, -1f, 1f);
+	}
+
+	/// <summary>The horizon cosine at a radius: the lowest direction that still misses the ground.</summary>
+	public static float HorizonCosine(AtmosphereEffect a, float radius)
+	{
+		return -Mathf.Sqrt(Mathf.Max(0f, 1f - a.bodyRadius * a.bodyRadius / (radius * radius)));
+	}
+
 	/// <summary>
 	/// Mie extinction alone, scattering plus absorption.
 	///

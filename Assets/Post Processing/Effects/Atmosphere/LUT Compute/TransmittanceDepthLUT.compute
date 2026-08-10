@@ -1,7 +1,7 @@
 #pragma kernel CreateTransmittanceLUT
 #include "../Shader Common/AtmosphereCommon.hlsl"
 
-// Header revision this file was last rebuilt against: stage 5 (resumable march segments).
+// Header revision this file was last rebuilt against: stage 4 (Bruneton transmittance mapping).
 
 // Unity does not reliably rebuild a .compute when an included .hlsl changes - the include is
 // not tracked as an import dependency. If the atmosphere's output looks uniformly scaled or
@@ -21,7 +21,10 @@ uint height;
 [numthreads(8,8,1)]
 void CreateTransmittanceLUT (uint2 id : SV_DispatchThreadID)
 {
-	float2 uv = id / float2(width - 1, height - 1);
+	// Texel centres, not id/(size-1). The sampler reads texel centre u*N - 0.5, so writing at
+	// id/(N-1) made write and read agree only at u = 0.5. lutUnitToSubUv is the other half of
+	// this pair; transmittanceLutParams undoes it.
+	float2 uv = (id + 0.5) / float2(width, height);
 
 	// Through the shared inverse mapping, so what is written here and what
 	// sampleTransmittanceLUT reads can never disagree.

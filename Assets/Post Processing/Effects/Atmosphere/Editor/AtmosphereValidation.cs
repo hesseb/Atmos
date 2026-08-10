@@ -46,6 +46,7 @@ static class AtmosphereValidation
 		failures += CheckWavelengthLaw(report, atmosphere);
 		failures += CheckExtinctionPositive(report, atmosphere);
 		failures += CheckOpticalDepth(report, atmosphere);
+		failures += CheckTransmittanceMapping(report, atmosphere);
 		failures += CheckMarchQuadrature(report, atmosphere);
 		failures += CheckToneMapBand(report, atmosphere);
 		failures += CheckIlluminanceBookkeeping(report, atmosphere);
@@ -236,6 +237,74 @@ static class AtmosphereValidation
 		Vector3 rayleighOnly = AtmosphereReference.VerticalOpticalDepth(a, 200000, rayleighOnly: true);
 		return Assert(report, "Rayleigh vertical optical depth matches beta*H closed form",
 			rayleighOnly.z, closedRayleigh, 1e-4);
+	}
+
+	/// <summary>
+	/// The transmittance LUT's mapping must round-trip.
+	///
+	/// This is the whole risk of a reparameterisation: the compute writes through the inverse and
+	/// every reader goes through the forward map, so if they disagree the LUT is filled correctly
+	/// and read from the wrong place. The result is a plausible sky, not a broken one, which is
+	/// why it needs an assertion rather than an eyeball.
+	///
+	/// Also checks the property that motivates Bruneton's mapping at all: u = 1 is the horizon,
+	/// so the entire texture width is spent on rays that miss the ground.
+	/// </summary>
+	static int CheckTransmittanceMapping(StringBuilder report, AtmosphereEffect a)
+	{
+		report.Append("\n## Transmittance LUT mapping\n\n");
+
+		float worstRadius = 0f, worstCosine = 0f;
+
+		for (int i = 0; i <= 32; i++)
+		{
+			for (int j = 0; j <= 32; j++)
+			{
+				// Through texel centres, which is the domain the mapping is defined on.
+				var uv = new Vector2(
+					(i / 32f) * (1f - 1f / a.transmittanceLUTSize.x) + 0.5f / a.transmittanceLUTSize.x,
+					(j / 32f) * (1f - 1f / a.transmittanceLUTSize.y) + 0.5f / a.transmittanceLUTSize.y);
+
+				AtmosphereReference.TransmittanceLutParams(a, uv, out float radius, out float cosZenith);
+				Vector2 back = AtmosphereReference.TransmittanceLutUv(a, radius, cosZenith);
+
+				worstRadius = Mathf.Max(worstRadius, Mathf.Abs(back.y - uv.y));
+				worstCosine = Mathf.Max(worstCosine, Mathf.Abs(back.x - uv.x));
+			}
+		}
+
+		// At u = 1 the ray grazes the horizon by construction. Checking it at both ends of the
+		// altitude range is what confirms no ground-intersecting ray is representable.
+		float rt = a.bodyRadius + a.atmosphereThickness;
+		float groundErr, topErr;
+		{
+			AtmosphereReference.TransmittanceLutParams(a, new Vector2(1f - 0.5f / a.transmittanceLUTSize.x, 0.5f / a.transmittanceLUTSize.y),
+				out float r0, out float mu0);
+			groundErr = Mathf.Abs(mu0 - AtmosphereReference.HorizonCosine(a, r0));
+
+			AtmosphereReference.TransmittanceLutParams(a, new Vector2(1f - 0.5f / a.transmittanceLUTSize.x, 1f - 0.5f / a.transmittanceLUTSize.y),
+				out float r1, out float mu1);
+			topErr = Mathf.Abs(mu1 - AtmosphereReference.HorizonCosine(a, r1));
+		}
+
+		report.Append($"- {a.transmittanceLUTSize.x}x{a.transmittanceLUTSize.y}, "
+				+ $"Rt/Rg = {F(rt / a.bodyRadius)} against Earth's 1.0157\n")
+			.Append("- fraction of the old linear-in-mu width spent on rays through the planet, "
+				+ "which this mapping does not store at all:\n");
+
+		foreach (float radius in new[] { a.bodyRadius, a.bodyRadius + a.atmosphereThickness * 0.5f, rt })
+		{
+			float horizon = AtmosphereReference.HorizonCosine(a, radius);
+			report.Append($"    r = {F(radius)}: horizon cosine {F(horizon)}, "
+				+ $"{F(100f * (horizon * 0.5f + 0.5f))}% wasted\n");
+		}
+
+		int failures = 0;
+		failures += Assert(report, "mapping round-trips in the distance coordinate", worstCosine, 0.0, 1e-5);
+		failures += Assert(report, "mapping round-trips in the altitude coordinate", worstRadius, 0.0, 1e-5);
+		failures += Assert(report, "u = 1 is the horizon at ground level", groundErr, 0.0, 1e-4);
+		failures += Assert(report, "u = 1 is the horizon at the top of the atmosphere", topErr, 0.0, 1e-4);
+		return failures;
 	}
 
 	/// <summary>

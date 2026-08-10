@@ -302,6 +302,10 @@ public class AtmosphereEffect : PostProcessingEffect
 		values.floats.Add(("planetRadius", bodyRadius));
 		values.floats.Add(("terrestrialClipDst", bodyRadius));
 
+		// The transmittance mapping divides by this on both the write and the read, so it has to
+		// be one value rather than two int uniforms that could drift apart.
+		values.vectors.Add(("transmittanceLutSize", new Vector2(transmittanceLUTSize.x, transmittanceLUTSize.y)));
+
 		// The shader now works in absolute altitude and per-world-unit coefficients, so the
 		// inspector's normalised fields are converted here rather than inside the march.
 		//
@@ -359,9 +363,11 @@ public class AtmosphereEffect : PostProcessingEffect
 		// Values
 		drawSky.SetFloat("atmosphereThickness", atmosphereThickness);
 		drawSky.SetFloat("planetRadius", bodyRadius);
-		// Unused by the current mapping, but the shared transmittance header declares it and
-		// Bruneton's parameterisation needs it. Setting it now avoids a silent zero later.
+		// Bruneton's parameterisation needs both of these. The radius was already being set in
+		// anticipation; the size is new, and a silent zero here would divide the whole mapping
+		// by nothing and put every sample in one corner of the LUT.
 		drawSky.SetFloat("atmosphereRadius", bodyRadius + atmosphereThickness);
+		drawSky.SetVector("transmittanceLutSize", new Vector2(transmittanceLUTSize.x, transmittanceLUTSize.y));
 		drawSky.SetFloat("sunDiscSize", sunDiscSize);
 		drawSky.SetFloat("sunDiscBlurA", sunDiscBlurA);
 		drawSky.SetFloat("sunDiscBlurB", sunDiscBlurB);

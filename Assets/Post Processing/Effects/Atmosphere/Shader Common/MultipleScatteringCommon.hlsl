@@ -25,15 +25,7 @@ float groundAlbedo;
 // touching all four raymarch call sites.
 sampler2D MultipleScatteringLUT;
 
-// Half-texel inset. Texel *centres* map to the ends of the parameter domain, so both endpoints
-// are exactly representable and bilinear filtering never extrapolates past them.
-//
-// Note the transmittance LUT does NOT do this - it writes at id/(size-1) and reads at raw uv,
-// which are consistent only at uv = 0.5 and differ by up to half a texel at the edges. That is
-// a real if small defect, left alone here because the Bruneton reparameterisation rewrites
-// that mapping wholesale and fixing it twice would only obscure which change did what.
-float2 msUnitToSubUv(float2 unit, float2 size) { return 0.5 / size + unit * (1.0 - 1.0 / size); }
-float2 msSubUvToUnit(float2 uv, float2 size) { return (uv - 0.5 / size) / (1.0 - 1.0 / size); }
+// Half-texel inset comes from LutMapping.hlsl, via TransmittanceCommon.hlsl.
 
 /// Maps a radius and a sun-zenith cosine to multiple-scattering LUT coordinates.
 ///
@@ -43,12 +35,12 @@ float2 msSubUvToUnit(float2 uv, float2 size) { return (uv - 0.5 / size) / (1.0 -
 float2 multipleScatteringLutUv(float radius, float cosSunZenith) {
 	float2 unit = float2(saturate(cosSunZenith * 0.5 + 0.5),
 	                     saturate((radius - planetRadius) / atmosphereThickness));
-	return msUnitToSubUv(unit, multipleScatteringLutSize);
+	return lutUnitToSubUv(unit, multipleScatteringLutSize);
 }
 
 /// The inverse, used by the compute that fills the LUT.
 void multipleScatteringLutParams(float2 uv, out float radius, out float cosSunZenith) {
-	float2 unit = msSubUvToUnit(uv, multipleScatteringLutSize);
+	float2 unit = lutSubUvToUnit(uv, multipleScatteringLutSize);
 	cosSunZenith = unit.x * 2.0 - 1.0;
 	radius = planetRadius + unit.y * atmosphereThickness;
 }

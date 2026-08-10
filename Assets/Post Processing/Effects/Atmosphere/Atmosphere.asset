@@ -38,7 +38,7 @@ MonoBehaviour:
   sunDiscBlurA: 32.95
   sunDiscBlurB: 3.1
   transmittanceLUTCompute: {fileID: 7200000, guid: cca6f912a2bba8340ba53132e1b235a1, type: 3}
-  transmittanceLUTSize: {x: 128, y: 64}
+  transmittanceLUTSize: {x: 256, y: 64}
   multipleScatteringLUTCompute: {fileID: 7200000, guid: 7a3f1c92be40d5b4a9e6c81f2d370465, type: 3}
   multipleScatteringLUTSize: {x: 32, y: 32}
   multipleScatteringStrength: 1
