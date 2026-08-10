@@ -345,9 +345,20 @@ Shader "Custom/Ocean"
 				// contrast pivot is a pedestal, so adding would SUBTRACT from the ocean at night.
 				oceanCol = lerp(bodyLit, skyReflection, fresnelReflectance);
 
-				// The glint sits on top of the sky rather than being multiplied down by it: it is
-				// the sun's own reflection, and it is already shadow- and visibility-weighted.
-				oceanCol = lerp(oceanCol, glintCol, saturate(specularHighlight));
+				// The glint ADDS to the sky reflection rather than lerping toward it.
+				//
+				// A lerp is wrong here as soon as the glint can be dark. sampleTransmittanceLUT
+				// returns exactly 0 once the sun crosses the geometric horizon - correct, the sun
+				// is occluded - but the specular lobe is a function of the half-vector and does not
+				// know that, so it stays wide open. Lerping toward a black glint therefore punched
+				// a dark hole in the middle of the bright orange sky reflection at exactly the
+				// moment the sunset looked best.
+				//
+				// Adding is also the physically sensible reading: the sky view LUT deliberately
+				// omits the sun's disc, so the glint is the missing part of the same reflection
+				// rather than a competing one. When the sun sets it contributes nothing and the sky
+				// reflection is left untouched.
+				oceanCol += saturate(specularHighlight) * glintCol;
 
 				// # Apply foam
 				float4 foam = calculateFoam(texCoord, pointOnUnitSphere, viewDir);
