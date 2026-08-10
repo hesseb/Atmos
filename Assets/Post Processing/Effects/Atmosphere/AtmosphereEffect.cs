@@ -318,6 +318,9 @@ public class AtmosphereEffect : PostProcessingEffect
 		values.floats.Add(("atmosphereThickness", atmosphereThickness));
 		values.floats.Add(("atmosphereRadius", bodyRadius + atmosphereThickness));
 		values.floats.Add(("planetRadius", bodyRadius));
+		// A first value only. RenderAerialPerspectiveLUTs overrides this every frame with a
+		// camera-dependent distance - see AerialPerspectiveFarDistance. It stays here so the
+		// offline bakers, which never run that path, get something finite.
 		values.floats.Add(("terrestrialClipDst", bodyRadius));
 
 		// The transmittance mapping divides by this on both the write and the read, so it has to
@@ -461,6 +464,29 @@ public class AtmosphereEffect : PostProcessingEffect
 		BindComputeResources();
 	}
 
+	/// <summary>
+	/// Far end of the aerial perspective LUT's depth axis, for this frame's camera.
+	///
+	/// It used to be `bodyRadius`, a constant with no relationship to how far away the
+	/// atmosphere is. That survived a 110-unit atmosphere against a 150-unit far distance; at
+	/// 20 units thick it does not. From 2 units altitude the entire visible scene reaches 24.6
+	/// units, which is six of the thirty-two slices, and depth varies radially when looking at a
+	/// sphere - so the interpolation between those six reads as concentric banding. From high
+	/// altitude the opposite: terrain sits past the far distance, every pixel clamps to the last
+	/// slice, and the planet becomes one flat dark disc.
+	///
+	/// Camera altitude plus the horizon chord covers both the terrain and the air in front of
+	/// it at any altitude, so the slices always span the range that actually varies.
+	/// </summary>
+	float AerialPerspectiveFarDistance(Camera cam)
+	{
+		float atmosphereRadius = bodyRadius + atmosphereThickness;
+		float horizonChord = Mathf.Sqrt(Mathf.Max(0f, atmosphereRadius * atmosphereRadius - bodyRadius * bodyRadius));
+		float altitude = cam.transform.position.magnitude - bodyRadius;
+
+		return Mathf.Max(atmosphereThickness, altitude + horizonChord);
+	}
+
 	void RenderAerialPerspectiveLUTs(Camera cam)
 	{
 		// Assign dynamic values
@@ -468,6 +494,14 @@ public class AtmosphereEffect : PostProcessingEffect
 		aerialPerspectiveLUTCompute.SetFloat(ShaderParamID.nearClip, cam.nearClipPlane);
 		aerialPerspectiveLUTCompute.SetFloat(ShaderParamID.farClip, cam.farClipPlane);
 		aerialPerspectiveLUTCompute.SetVector(ShaderParamID.dirToSun, -light.transform.forward);
+
+		// Both sides of the depth mapping, every frame. The compute writes the slices and the
+		// composite reads them, so a disagreement here puts the fog at the wrong distance -
+		// which is why it is set in one place rather than at each end.
+		float farDistance = AerialPerspectiveFarDistance(cam);
+		aerialPerspectiveLUTCompute.SetFloat("terrestrialClipDst", farDistance);
+		if (material != null) { material.SetFloat("terrestrialClipDst", farDistance); }
+
 		// 2D, over (x, y) only: each thread now walks the depth slices itself, so dispatching
 		// over the volume would launch `size` threads per column all writing the same voxels.
 		ComputeHelper.Dispatch(aerialPerspectiveLUTCompute, aerialPerspectiveLUTSize, aerialPerspectiveLUTSize, 1);
