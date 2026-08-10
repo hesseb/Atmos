@@ -379,6 +379,20 @@ public class TestbedCamera : MonoBehaviour
 
 		if (newMode == Mode.Orbit) { SeedOrbitFromTransform(); }
 		mode = newMode;
+
+		// Come out of the switch at a height that can be flown from.
+		//
+		// Free-fly does not maintain `altitude` - the transform is authoritative there and the
+		// field is only derived on the way back, through a Clamp to minAltitude. So a camera
+		// that ended up at or under the surface reappears pinned to it at the closest possible
+		// zoom, which means re-orienting by hand after every toggle.
+		//
+		// referenceAltitude is the height this camera is tuned around - its pan and fly speeds
+		// are expressed relative to it - so it is the natural floor, and the world-scale presets
+		// already set it per planet size.
+		float comfortable = Mathf.Clamp(referenceAltitude, minAltitude, maxAltitude);
+		float current = transform.position.magnitude - SurfaceRadius;
+		if (current < comfortable) { SetAltitudeAboveSurface(comfortable); }
 	}
 
 	/// <summary>
