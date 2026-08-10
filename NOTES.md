@@ -1585,3 +1585,54 @@ physically based atmosphere and a strategy-game camera want incompatible planet 
 between them is a measurable curve (air mass grows as sqrt of radius, so the coefficient fudge
 falls as 1/sqrt), and the practical resolution is to keep the playable geometry and name the
 compensation instead of hiding it in six constants.
+
+---
+
+## Session summary: Hillaire alignment + world scale
+
+All five planned stages landed, plus a runtime world-scale system that was not in the original
+plan and turned out to be the more interesting result.
+
+**Physics (stages 1-5).** Absolute-altitude density profiles and physical constants; the Rayleigh
+phase restored with an explicit `sunIlluminance`; Hillaire's multiple-scattering LUT; Bruneton's
+transmittance parameterisation at 256x64; and the aerial perspective marched once per ray rather
+than once per slice. Along the way: midpoint sampling in `raymarch` (the mirror of a bias already
+fixed in `getSunTransmittance`), a numerically stable `integralFactor`, ground clipping, and the
+half-texel write/read mismatch in both 2D LUTs.
+
+**World scale.** `planetScale` on a preset uniformly rescales the planet by baking the radius
+into the mesh vertices - x1 / x4 / x16 on F7, with relief, outlines, city lights, labels, camera
+speeds, culling distances and the moon all following. The atmosphere's scale height stays fixed
+in world units, so R/H and therefore horizon air mass grow with the planet, which is the whole
+point.
+
+### Bugs found in the process, worth remembering
+- **Static batching bakes renderer bounds in world space at combine time.** Scaling a parent
+  transform therefore leaves chunks culled at their old positions. Baking the scale into vertices
+  avoids the problem entirely.
+- **`layerCullDistances` culls per layer by distance regardless of the frustum**, and
+  `RenderSettingsController` applies it in Awake - so anything set later is overwritten. This,
+  not the far clip, was the terrain disappearing.
+- **`LinearEyeDepth * viewLength` is a radial distance, and viewLength is exactly 1 at screen
+  centre.** Testing it against the far plane makes the sky/geometry decision a coin flip in a
+  disc at the middle of the screen. Test eye depth instead.
+- **The moon orbits at 811 units against a 600-unit cull distance**, so the shipped scene never
+  draws it. It is unfinished and renders as a grey disc; widening the cull to reach it exposes it.
+- Unity does not track `.hlsl` includes as import dependencies for `.compute`.
+- CRLF files silently defeat LF-patterned scripted edits, with no error.
+
+### Open before the next milestone
+1. Re-run `Testbed -> Atmosphere -> Validate`. Geometry and density both moved after the last
+   clean report, and the sunset-geometry check is new.
+2. **Regenerate the three baked baseline assets.** They were baked at `densityMultiplier` 6.84
+   and it is now 3, so the stamp will report `BAKE_STALE` on any run - and `baseline-baked` is
+   supposed to be the physically based sky flattened, so a stale bake corrupts RQ1.
+3. Tone mapping is shared between presets at intensity 1.602 / whitePoint 2.5. Zenith
+   transmittance is 0.45 against Earth's 0.77, so it may want per-preset retuning.
+4. Benchmark poses are back at their authored altitudes but have not been re-judged against the
+   current atmosphere.
+
+### Still deferred, with reasons already recorded
+Non-uniform stepping, the SkyView LUT and sky-pass depth rejection all belong to the optimization
+phase; the cubemap variant's tone-map decision and the art-directed haze hybrid are parked; the
+report sections come with the report.
