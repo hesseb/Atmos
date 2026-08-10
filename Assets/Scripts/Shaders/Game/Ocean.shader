@@ -42,6 +42,11 @@ Shader "Custom/Ocean"
 		_ReflectionWaveWeight("Reflection Wave Weight", Range(0,1)) = 0.25
 		// Skylight on the water body. The dial to reach for if the ocean is too dark or too flat.
 		_SkyAmbientWeight("Sky Ambient Weight", Range(0,2)) = 0.1
+		// Starlight and airglow. A sun-only atmosphere model has no night sky illumination at all,
+		// so without this the ocean is mathematically black once the sun is down.
+		_NightAmbient("Night Ambient", Color) = (0.012, 0.019, 0.035, 1)
+		// Moonlight glint. Sharper than the sun s because the moon is a smaller disc.
+		_MoonGlintSmoothness("Moon Glint Smoothness", Range(0.005, 0.3)) = 0.04
 		// The old flat rim, now night-only and declared non-physical.
 		_NightRimStrength("Night Rim Strength", Range(0,2)) = 1
 
@@ -132,6 +137,13 @@ Shader "Custom/Ocean"
 			float _GlintTransmittanceWeight;
 			float _ReflectionStrength, _WaterF0, _ReflectionWaveWeight;
 			float _SkyAmbientWeight, _NightRimStrength;
+			float4 _NightAmbient;
+			float _MoonGlintSmoothness;
+
+			// Published by SolarSystem.Moon. Position, not direction: at 811 world units against a
+			// 150-unit planet the moon is not far enough away to be directional.
+			float4 moonPosition;
+			float4 moonLightColour;   // already scaled by phase
 
 			// 1 when the physically based sky is the one being drawn, 0 otherwise. Published by
 			// RenderingManager. Without it the baseline and null sky modes would reflect whatever
@@ -230,7 +242,10 @@ Shader "Custom/Ocean"
 			// through toneMap's pedestal would come back as about -0.05 rather than 0.
 			float3 sampleSkyViewSafe(float3 up, float3 dir, float3 sunDir) {
 				if (planetRadius <= 0 || skyReflectionStrength <= 0) { return 0; }
-				return toneMap(sampleSkyView(up, dir, sunDir)) * skyReflectionStrength;
+				// max(0): toneMap(0) is about -0.05, because the contrast pivot is a pedestal. Without
+				// this the sky terms SUBTRACT at night, when the LUT is genuinely zero - so a black
+				// ocean was being pushed below black rather than merely left alone.
+				return max(0, toneMap(sampleSkyView(up, dir, sunDir))) * skyReflectionStrength;
 			}
 
 			float calculateSpecular(float3 normal, float3 viewDir, float3 sunDir, float smoothness) {
@@ -365,7 +380,19 @@ Shader "Custom/Ocean"
 				// Not attenuated by `sunVisibility`: that is the sun's shadow map, and skylight does
 				// not arrive from the sun's direction.
 				float3 skyAmbient = sampleSkyViewSafe(sphereNormal, sphereNormal, sunDir) * _SkyAmbientWeight;
-				float3 bodyLit = saturate(saturate(oceanCol * shading) * sunVisibility + skyAmbient);
+				// Starlight and airglow, faded in as the sun goes down.
+				//
+				// The atmosphere model is sun-only: with the sun below the horizon the sky LUT is
+				// genuinely zero, the shading term is zero, sunVisibility is forced to zero and the
+				// glint's transmittance is exactly zero. Every source the ocean has goes to nothing
+				// at once, which is why night was pure black rather than dark.
+				//
+				// Declared non-physical, like the night rim, and for the same reason: what it stands
+				// for - integrated starlight and airglow - is simply outside a single-sun scattering
+				// model rather than being something this renderer got wrong.
+				float3 nightAmbient = _NightAmbient.rgb * smoothstep(0.0, 0.15, nightT);
+
+				float3 bodyLit = saturate(saturate(oceanCol * shading) * sunVisibility + skyAmbient + oceanCol * nightAmbient);
 
 				// ---- Sky reflection ----
 				//
@@ -422,6 +449,23 @@ Shader "Custom/Ocean"
 				// rather than a competing one. When the sun sets it contributes nothing and the sky
 				// reflection is left untouched.
 				oceanCol += saturate(specularHighlight) * glintCol;
+
+				// Moon glint, on exactly the same machinery as the sun's.
+				//
+				// The direction is computed per pixel from the moon's position rather than taken as
+				// a constant, because at 811 units against a 150-unit planet it swings about ten
+				// degrees across the visible globe - the scale a glint path is drawn at.
+				//
+				// The transmittance lookup does the horizon test for free: sampleTransmittanceLUT
+				// returns exactly zero once the moon is below the local horizon, so the glint
+				// appears and disappears with moonrise and moonset without a separate check, and
+				// reddens near the horizon the same way the sun's does.
+				float3 moonDir = normalize(moonPosition.xyz - i.worldPos);
+				float3 moonTransmittance = planetRadius > 0
+					? sampleTransmittanceLUT(TransmittanceLUT, seaLevelPos, moonDir)
+					: 1;
+				float moonHighlight = saturate(calculateSpecular(waveNormal, viewDir, moonDir, _MoonGlintSmoothness));
+				oceanCol += moonHighlight * moonLightColour.rgb * moonTransmittance;
 
 				// # Apply foam
 				float4 foam = calculateFoam(texCoord, pointOnUnitSphere, viewDir);

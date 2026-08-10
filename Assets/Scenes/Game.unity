@@ -172,6 +172,9 @@ MonoBehaviour:
   size: 16.5
   resolution: 15
   moonRenderer: {fileID: 1389253766}
+  moonLightColour: {r: 0.85, g: 0.89, b: 1, a: 1}
+  moonLightIntensity: 0.06
+  sunLight: {fileID: 876897987}
   camTest: {fileID: 0}
   debug_dst: 4.0198226
   freezeOrbit: 0
