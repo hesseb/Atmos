@@ -1,4 +1,6 @@
-using System.IO;
+// No `using System.IO` - Assets/Scripts/Types/Shape.cs declares a `Path` struct in the global
+// namespace, and a global type beats a using-imported one, so System.IO.Path would resolve to that
+// instead. Fully qualified below rather than aliased, so the next reader does not have to wonder.
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
@@ -177,8 +179,8 @@ namespace Generation
 			byte[] png = texture.EncodeToPNG();
 			DestroyImmediate(texture);
 
-			Directory.CreateDirectory(Path.GetDirectoryName(outputPath));
-			File.WriteAllBytes(outputPath, png);
+			System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(outputPath));
+			System.IO.File.WriteAllBytes(outputPath, png);
 			AssetDatabase.ImportAsset(outputPath, ImportAssetOptions.ForceUpdate);
 			ApplyImportSettings(outputPath);
 
