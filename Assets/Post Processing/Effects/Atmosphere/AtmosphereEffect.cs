@@ -50,6 +50,24 @@ public class AtmosphereEffect : PostProcessingEffect
 	/// </summary>
 	[Range(0, 0.99f)] public float mieAsymmetry = 0.8f;
 
+	[Header("Density")]
+	/// <summary>
+	/// Multiplies every scattering and absorption coefficient at once - i.e. how much denser
+	/// this atmosphere is than Earth's, at the same composition and the same vertical structure.
+	///
+	/// This exists because the planet is too small for Earth-calibrated coefficients to produce
+	/// a sunset. Reddening needs blue extinguished along the slant path to the horizon, and the
+	/// amplification of that path over the vertical one is sqrt(pi*R/2H) - about 12 here against
+	/// Earth's 35, because the planet is 750 km rather than 6371. The shortfall has to be made up
+	/// somewhere, and density is the honest place: one named number with a stated reason, rather
+	/// than six constants quietly bent away from their published values.
+	///
+	/// The value is not free either. It is set so the horizon optical depth in blue matches
+	/// Earth's, which is the quantity a sunset is actually made of - the validation harness
+	/// reports both and the ratio between them.
+	/// </summary>
+	public float densityMultiplier = 1;
+
 	[Header("Illumination")]
 	/// <summary>
 	/// Illuminance arriving at the top of the atmosphere. 4*PI is the value at which the
@@ -320,7 +338,7 @@ public class AtmosphereEffect : PostProcessingEffect
 		// Strength of (rayleigh) scattering is dependent on wavelength (~ 1/wavelength^4)
 		Vector3 inverseWavelengths = new Vector3(1 / wavelengthsRGB.x, 1 / wavelengthsRGB.y, 1 / wavelengthsRGB.z);
 		Vector3 rayleigh = Pow(inverseWavelengths * wavelengthScale, 4);
-		values.vectors.Add(("rayleighCoefficients", rayleigh / thickness));
+		values.vectors.Add(("rayleighCoefficients", rayleigh * densityMultiplier / thickness));
 
 		// Mirror into the serialized debug field only when it has actually changed. Writing it
 		// unconditionally from here marked the asset dirty on every settings update.
@@ -328,8 +346,8 @@ public class AtmosphereEffect : PostProcessingEffect
 
 		// Mie values
 		values.floats.Add(("mieScaleHeight", mieDensityAvg * thickness));
-		values.floats.Add(("mieCoefficient", mieCoefficient / thickness));
-		values.floats.Add(("mieAbsorption", mieAbsorption / thickness));
+		values.floats.Add(("mieCoefficient", mieCoefficient * densityMultiplier / thickness));
+		values.floats.Add(("mieAbsorption", mieAbsorption * densityMultiplier / thickness));
 		values.floats.Add(("mieAsymmetry", mieAsymmetry));
 
 		// Dimensionless, so no thickness conversion - it multiplies in-scatter, never optical
@@ -348,7 +366,7 @@ public class AtmosphereEffect : PostProcessingEffect
 		// its half-width in world units is thickness / falloff.
 		values.floats.Add(("ozonePeakAltitude", ozonePeakDensityAltitude * thickness));
 		values.floats.Add(("ozoneHalfWidth", thickness / Mathf.Max(1e-4f, ozoneDensityFalloff)));
-		values.vectors.Add(("ozoneAbsorption", ozoneAbsorption * ozoneStrength * 0.1f / thickness));
+		values.vectors.Add(("ozoneAbsorption", ozoneAbsorption * ozoneStrength * densityMultiplier * 0.1f / thickness));
 
 		return values;
 	}

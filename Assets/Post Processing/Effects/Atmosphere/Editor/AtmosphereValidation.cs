@@ -46,6 +46,7 @@ static class AtmosphereValidation
 		failures += CheckWavelengthLaw(report, atmosphere);
 		failures += CheckExtinctionPositive(report, atmosphere);
 		failures += CheckOpticalDepth(report, atmosphere);
+		failures += CheckSunsetGeometry(report, atmosphere);
 		failures += CheckTransmittanceMapping(report, atmosphere);
 		failures += CheckMarchQuadrature(report, atmosphere);
 		failures += CheckToneMapBand(report, atmosphere);
@@ -72,6 +73,19 @@ static class AtmosphereValidation
 	/// </summary>
 	static float KilometresPerUnit(AtmosphereEffect a) => 100f / a.atmosphereThickness;
 
+	/// <summary>
+	/// Chord length of a horizon-grazing ray from the surface, sqrt(Rt^2 - Rg^2).
+	///
+	/// Derived rather than written down: it was a hardcoded 212, correct for the 136 km planet
+	/// and wrong by 2.6x the moment the geometry moved. A constant in a report that exists to
+	/// catch drift is exactly the wrong place for one.
+	/// </summary>
+	static float HorizonRayLength(AtmosphereEffect a)
+	{
+		float rt = a.bodyRadius + a.atmosphereThickness;
+		return Mathf.Sqrt(Mathf.Max(0f, rt * rt - a.bodyRadius * a.bodyRadius));
+	}
+
 	static void AppendParameters(StringBuilder report, AtmosphereEffect a)
 	{
 		float km = KilometresPerUnit(a);
@@ -93,8 +107,8 @@ static class AtmosphereValidation
 				"so **curvature is not to scale** even though the vertical structure now is\n")
 			.Append($"- sky steps {a.numSkyScatteringSteps}; aerial {a.aerialStepsPerSlice} per slice " +
 				$"x {a.aerialPerspectiveLUTSize} slices = {a.aerialStepsPerSlice * a.aerialPerspectiveLUTSize} total; " +
-				$"a sky ray from the ground to the horizon is ~212 units, i.e. " +
-				$"{F(212f / a.numSkyScatteringSteps)} units per step against a Mie scale height of " +
+				$"a sky ray from the ground to the horizon is {F(HorizonRayLength(a))} units, i.e. " +
+				$"{F(HorizonRayLength(a) / a.numSkyScatteringSteps)} units per step against a Mie scale height of " +
 				$"{F(a.mieDensityAvg * a.atmosphereThickness)}\n\n");
 	}
 
@@ -237,6 +251,52 @@ static class AtmosphereValidation
 		Vector3 rayleighOnly = AtmosphereReference.VerticalOpticalDepth(a, 200000, rayleighOnly: true);
 		return Assert(report, "Rayleigh vertical optical depth matches beta*H closed form",
 			rayleighOnly.z, closedRayleigh, 1e-4);
+	}
+
+	/// <summary>
+	/// The quantity a sunset is actually made of.
+	///
+	/// Reddening needs blue extinguished along the slant path to the horizon, not along the
+	/// vertical column - and the amplification between them is a property of the *geometry*,
+	/// sqrt(pi*R/2H), which no choice of coefficients can alter. That is why Earth-calibrated
+	/// constants produced no sunset here and why the deviation had to be named rather than
+	/// tuned away: this planet's slant paths are simply shorter.
+	///
+	/// So the check is not "do the coefficients match Hillaire" - they deliberately do not - but
+	/// "does the horizon optical depth match Earth's", which is what the eye actually sees.
+	/// </summary>
+	static int CheckSunsetGeometry(StringBuilder report, AtmosphereEffect a)
+	{
+		report.Append("\n## Sunset geometry\n\n");
+
+		float km = KilometresPerUnit(a);
+		float scaleHeight = a.rayleighDensityAvg * a.atmosphereThickness;
+		float airMass = Mathf.Sqrt(Mathf.PI * a.bodyRadius / (2f * scaleHeight));
+
+		Vector3 vertical = AtmosphereReference.VerticalOpticalDepth(a, 200000);
+		Vector3 horizon = vertical * airMass;
+
+		// Earth, through the same Chapman approximation and Bruneton's coefficients.
+		const float earthAirMass = 35.4f;
+		var earthHorizon = new Vector3(0.0464f * earthAirMass, 0.1085f * earthAirMass, 0.2648f * earthAirMass);
+
+		report.Append($"- planet {F(a.bodyRadius * km)} km against Earth's 6371, so horizon air mass is "
+				+ $"{F(airMass)} against Earth's {F(earthAirMass)}\n")
+			.Append($"- densityMultiplier {F(a.densityMultiplier)}, i.e. this air is that much denser than Earth's\n")
+			.Append($"- vertical optical depth ({F(vertical.x)}, {F(vertical.y)}, {F(vertical.z)}), "
+				+ "Earth (0.046, 0.109, 0.265)\n")
+			.Append($"- horizon optical depth ({F(horizon.x)}, {F(horizon.y)}, {F(horizon.z)}), "
+				+ $"Earth ({F(earthHorizon.x)}, {F(earthHorizon.y)}, {F(earthHorizon.z)})\n")
+			.Append($"- blue transmitted at the horizon {F(Mathf.Exp(-horizon.z))}, "
+				+ $"Earth {F(Mathf.Exp(-earthHorizon.z))} - low is what makes a sunset red\n")
+			.Append($"- red transmitted at the horizon {F(Mathf.Exp(-horizon.x))}, "
+				+ $"Earth {F(Mathf.Exp(-earthHorizon.x))} - high is what makes it bright\n");
+
+		// Blue is the channel that has to die; a 20% band is well inside what is visible.
+		float ratio = horizon.z / earthHorizon.z;
+		return Mathf.Abs(ratio - 1f) < 0.2f
+			? Pass(report, $"blue horizon optical depth is {F(ratio)}x Earth's")
+			: Warn(report, $"blue horizon optical depth is {F(ratio)}x Earth's, so sunsets will not read as Earth-like");
 	}
 
 	/// <summary>

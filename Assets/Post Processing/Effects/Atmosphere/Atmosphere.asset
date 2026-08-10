@@ -18,7 +18,7 @@ MonoBehaviour:
   sunColTest: {r: 0, g: 0, b: 0, a: 0}
   light: {fileID: 0}
   bodyRadius: 150
-  atmosphereThickness: 110
+  atmosphereThickness: 20
   atmosphereShader: {fileID: 4800000, guid: 8108d0319e05d334593582429a931fb0, type: 3}
   testParams: {x: 1.7, y: 2.74, z: 2.7, w: 81.29}
   aerialStepsPerSlice: 6
@@ -29,6 +29,7 @@ MonoBehaviour:
   mieCoefficient: 0.3996
   mieAbsorption: 0.44
   mieAsymmetry: 0.8
+  densityMultiplier: 2.9159
   sunIlluminance: 12.566371
   ozonePeakDensityAltitude: 0.25
   ozoneDensityFalloff: 6.66667

@@ -6,7 +6,7 @@ namespace TerrainGeneration
 	public class TerrainHeightSettings : ScriptableObject
 	{
 		public float worldRadius = 150;
-		public float heightMultiplier = 3;
+		public float heightMultiplier = 1.76;
 	}
 
 }

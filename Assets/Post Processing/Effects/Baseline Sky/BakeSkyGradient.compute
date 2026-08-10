@@ -1,4 +1,4 @@
-// Header revision this file was last rebuilt against: stage 4 (Bruneton transmittance mapping).
+// Header revision this file was last rebuilt against: 750 km planet + densityMultiplier.
 
 // Bakes the physically based sky into the baseline's 2D gradient LUT.
 //
