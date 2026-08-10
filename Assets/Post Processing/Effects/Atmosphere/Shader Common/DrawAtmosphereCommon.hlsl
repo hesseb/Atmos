@@ -1,3 +1,8 @@
+// Guarded because SurfaceLighting.hlsl now pulls this in as well, so a shader that includes
+// both it and this header directly would otherwise redeclare every uniform below.
+#ifndef DRAW_ATMOSPHERE_COMMON_INCLUDED
+#define DRAW_ATMOSPHERE_COMMON_INCLUDED
+
 // Tone mapping
 float intensity;
 float contrast;
@@ -75,3 +80,5 @@ float3 blueNoiseDither(float3 col, float2 uv, float strength) {
 
 	return col + weightedNoise;
 }
+
+#endif
