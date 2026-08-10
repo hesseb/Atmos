@@ -119,7 +119,7 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
---- !u!43 &57987840
+--- !u!43 &67313830
 Mesh:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -1032,7 +1032,7 @@ MeshFilter:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1389253764}
-  m_Mesh: {fileID: 57987840}
+  m_Mesh: {fileID: 67313830}
 --- !u!1 &1433245418
 GameObject:
   m_ObjectHideFlags: 0

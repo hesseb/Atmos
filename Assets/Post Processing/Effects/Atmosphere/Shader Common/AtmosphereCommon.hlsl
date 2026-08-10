@@ -21,6 +21,16 @@ float ozonePeakAltitude;
 float ozoneHalfWidth;
 float3 ozoneAbsorption;
 
+// Illuminance arriving at the top of the atmosphere from the sun.
+//
+// The implementation had no such term at all: absolute scale was absorbed partly by the free
+// `wavelengthScale` and partly by the display-side `intensity`. With no slot for it, the only
+// way to set the sky's brightness was to distort something that also carries physics.
+//
+// It is not free in Hillaire's formulation - L = E * sum(sigma_s * P * T_sun * T_view) ds - and
+// it is what makes normalising the phase possible. See the note in `raymarch`.
+float sunIlluminance;
+
 // Other
 float3 dirToSun;
 float terrestrialClipDst;
@@ -71,9 +81,20 @@ ScatteringParameters getScatteringValues(float3 rayPos) {
 	return scattering;
 }
 
-// Thanks to https://www.shadertoy.com/view/slSXRW
+// Asymmetry parameter of the Mie phase function: 0 is isotropic, ->1 is sharply forward.
+// Was hardcoded at 0.8 inside getMiePhase. Exposing it is partly so it can be authored, and
+// partly so the validation harness can drive it to 0, where Cornette-Shanks must reduce
+// exactly to the Rayleigh phase - a cross-check that validates both functions at once.
+float mieAsymmetry;
+
+// Cornette-Shanks, not Henyey-Greenstein. Thanks to https://www.shadertoy.com/view/slSXRW
+//
+// Worth flagging for the report: the pre-study's background presents HG and Schlick, so this
+// is a third function that section does not cover. It is the better choice - CS is normalised,
+// reduces to Rayleigh at g = 0, and unlike HG has the correct (1 + cos^2) angular dependence -
+// but the report has to introduce it rather than have the code quietly disagree with the text.
 float getMiePhase(float cosTheta) {
-	const float g = 0.8;
+	float g = mieAsymmetry;
 	const float scale = 3.0/(8.0*PI);
 	
 	float num = (1.0-g*g)*(1.0+cosTheta*cosTheta);
@@ -200,9 +221,22 @@ ScatteringResult raymarch(float3 rayPos, float3 rayDir, float rayLength, int num
 
 	float stepSize = rayLength / numSteps;
 
+	// cosTheta = 1 looking straight at the sun, which is where a forward-scattering phase must
+	// peak. Rayleigh's (1 + cos^2) is symmetric so its sign never mattered; Mie's does.
 	float cosTheta = dot(rayDir, dirToSun);
-	//float rayleighPhaseValue = getRayleighPhase(-cosTheta);
-	float rayleighPhaseValue = 1;
+
+	// This was `float rayleighPhaseValue = 1;`, with the correct call commented out above it.
+	//
+	// That single line is the reason the sky appeared to need unphysical constants. A normalised
+	// phase averages 1/(4*PI) over the sphere, so substituting 1 inflates Rayleigh in-scatter by
+	// 4*PI = 12.57x, and every other constant had to be bent to absorb it: coefficients ~3x
+	// Earth's, and a negative red ozone absorption that adds energy.
+	//
+	// It cannot be corrected in sigma. In-scatter is *linear* in sigma_s but transmittance is
+	// *exponential* in sigma_t, so scaling sigma by 4*PI to compensate would take blue vertical
+	// optical depth from 0.27 to 3.3 and bury the planet in haze. The missing quantity is
+	// illuminance, which multiplies in-scatter without touching transmittance at all.
+	float rayleighPhaseValue = getRayleighPhase(cosTheta);
 	float miePhase = getMiePhase(cosTheta);
 
 	// Step through the atmosphere
@@ -228,8 +262,21 @@ ScatteringResult raymarch(float3 rayPos, float3 rayDir, float rayLength, int num
 		}
 
 
-		// Amount of light scattered in towards the camera at current sample point
-		float3 inScattering = (scattering.rayleigh * rayleighPhaseValue + scattering.mie * miePhase) * sunTransmittance;
+		// Amount of light scattered in towards the camera at current sample point.
+		//
+		// The illuminance is new. With E = 4*PI it exactly cancels the 1/(4*PI) the restored
+		// Rayleigh phase introduces, so Rayleigh's *average* over the sphere is unchanged - what
+		// changes is that it now has angular structure at all, including the dark band ~90 deg
+		// from the sun that a real sky has and this one did not.
+		//
+		// Mie is the part that actually moves. It already had its correct phase, so it was being
+		// out-weighted by Rayleigh by that same 4*PI. It now rises by 12.57x relative to the
+		// forward glow around the sun, which is the term a warm sunset is mostly made of.
+		//
+		// Note E and `intensity` cancel at this instant, so E adds no physics *by itself*. What
+		// it adds is a named slot, so the phase can be normalised and sigma made physical
+		// without either being silently absorbed into an art constant.
+		float3 inScattering = sunIlluminance * (scattering.rayleigh * rayleighPhaseValue + scattering.mie * miePhase) * sunTransmittance;
 
 		// Increase the luminance by the in-scattered light.
 		// The simple way would be: luminance += inScattering * transmittance * stepSize;
