@@ -15,12 +15,18 @@ Shader "Custom/Ocean"
 		_Refraction ("Refraction", Float) = 0
 		_ShadowStrength ("Shadow Strength", Range(0,1)) = 1
 
+		// Multiplies the baked ocean colour map. Was declared and never read.
 		_Tint("Tint", Color) = (1,1,1,1)
+		// 1 keeps the map as baked, 0 is fully greyscale. A tint can only darken, so this is
+		// what actually takes saturation out.
+		_Saturation("Saturation", Range(0,1)) = 1
 		_Specular("Specular", Float) = 0
-		_Ambient("Ambient", Color) = (0,0,0,0)
-		_FresnelCol("Fresnel Col", Color) = (0,0,0,0)
-		_FresnelWeight("Fresnel Weight", Float) = 0
-		_FresnelPower("Fresnel Power", Float) = 0
+		// NIGHT-ONLY. In daylight the silhouette is handled by the physical Fresnel reflection, so
+		// this fades to nothing above the terminator - changing it will look like it does nothing
+		// unless the sun is down. It exists because the sky view LUT has no moonlight or starlight.
+		_FresnelCol("Night Rim Colour", Color) = (0,0,0,0)
+		_FresnelWeight("Night Rim Weight", Float) = 0
+		_FresnelPower("Night Rim Power", Float) = 0
 		_TestParams("Test Params", Vector) = (0,0,0,0)
 
 		[Header(Atmosphere)]
@@ -34,6 +40,10 @@ Shader "Custom/Ocean"
 		// How much of the wave normal perturbs the REFLECTION. Full perturbation is undersampled
 		// noise at planet scale, and a rough surface reflects the average sky rather than a mirror.
 		_ReflectionWaveWeight("Reflection Wave Weight", Range(0,1)) = 0.25
+		// Skylight on the water body. The dial to reach for if the ocean is too dark or too flat.
+		_SkyAmbientWeight("Sky Ambient Weight", Range(0,2)) = 0.1
+		// The old flat rim, now night-only and declared non-physical.
+		_NightRimStrength("Night Rim Strength", Range(0,2)) = 1
 
 		[Header(Foam)]
 		[NoScaleOffset] _FoamDistanceMap ("Foam Distance Map", 2D) = "white" {}
@@ -105,6 +115,7 @@ Shader "Custom/Ocean"
 			float4 _TestParams;
 
 			float4 _Tint;
+			float _Saturation;
 			sampler2D _OceanCol;
 			float4 _OceanCol_TexelSize;
 
@@ -114,13 +125,19 @@ Shader "Custom/Ocean"
 
 			float _Refraction;
 			float _ShadowStrength;
-			float4 _Ambient;
 			
 			float4 _FresnelCol;
 			float _FresnelWeight, _FresnelPower;
 
 			float _GlintTransmittanceWeight;
 			float _ReflectionStrength, _WaterF0, _ReflectionWaveWeight;
+			float _SkyAmbientWeight, _NightRimStrength;
+
+			// 1 when the physically based sky is the one being drawn, 0 otherwise. Published by
+			// RenderingManager. Without it the baseline and null sky modes would reflect whatever
+			// the LUT last held from a physically based frame - a frozen sky, which is not a
+			// defensible control condition for the comparison.
+			float skyReflectionStrength;
 
 			// Foam
 			sampler2D _FoamDistanceMap;
@@ -204,6 +221,18 @@ Shader "Custom/Ocean"
 			// Parameter renamed from `dirToSun` to `sunDir`: AtmosphereCommon.hlsl declares a global
 			// of the former name, and although this shader deliberately does not include it, a
 			// shadowed uniform is the kind of thing that fails silently rather than loudly.
+			// Sky radiance for a direction, tone-mapped to sit at the same exposure as the sky the
+			// sky pass wrote into the colour buffer, and gated so it contributes nothing when there
+			// is no physically based sky to reflect.
+			//
+			// planetRadius is the sentinel for "the atmosphere has published its globals": it is
+			// zero before AtmosphereEffect initialises, and an unbound LUT samples black - which
+			// through toneMap's pedestal would come back as about -0.05 rather than 0.
+			float3 sampleSkyViewSafe(float3 up, float3 dir, float3 sunDir) {
+				if (planetRadius <= 0 || skyReflectionStrength <= 0) { return 0; }
+				return toneMap(sampleSkyView(up, dir, sunDir)) * skyReflectionStrength;
+			}
+
 			float calculateSpecular(float3 normal, float3 viewDir, float3 sunDir, float smoothness) {
 				float specularAngle = acos(dot(normalize(sunDir - viewDir), normal));
 				float specularExponent = specularAngle / smoothness;
@@ -233,6 +262,17 @@ Shader "Custom/Ocean"
 				// ---- Get ocean colour ----
 				float2 oceanRefractionTexCoord = texCoord + tang.xy * 0.0005 * _Refraction;
 				float3 oceanCol = tex2Dlod(_OceanCol, float4(oceanRefractionTexCoord.xy, 0, mipLevel));
+
+				// The water's base colour is BAKED into _OceanCol (Assets/Data/Ocean/Ocean.png) by
+				// the offline generator in Assets/Scenes/Generators/Ocean Colour.unity - deep blue,
+				// shallow blue and chlorophyll are all resolved there, per texel, against bathymetry.
+				// So there is no single colour in this material that sets it, which is why _Tint
+				// sitting here unread was actively misleading: picking a colour did nothing.
+				//
+				// These two are the live controls. Applied at the source so everything downstream -
+				// shading, the Fresnel split, the sky ambient - inherits them.
+				oceanCol = lerp(dot(oceanCol, float3(0.2126, 0.7152, 0.0722)), oceanCol, _Saturation);
+				oceanCol *= _Tint.rgb;
 	
 
 				// ---- Calculate specular highlight---- 
@@ -301,8 +341,31 @@ Shader "Custom/Ocean"
 				shadows = lerp(shadows, 0, smoothstep(0.2,0.3,nightT));
 				float sunVisibility = lerp(1, shadows, _ShadowStrength);
 
-				// ---- The water body: direct sunlight on it, and nothing else ----
-				float3 bodyLit = saturate(oceanCol * shading) * sunVisibility;
+				// ---- The water body: direct sunlight plus skylight ----
+				//
+				// Skylight replaces the hand-painted `_Ambient`, which was a constant that had to be
+				// re-authored for every world-scale preset and knew nothing about time of day. One
+				// LUT tap toward the local zenith stands in for the hemispherical irradiance - an
+				// approximation, since the hemisphere is really dominated by mid-elevations, but a
+				// defensible one at one texture fetch.
+				//
+				// ADDITIVE, not multiplicative, and that is not the lazy choice - it is the correct
+				// one for what this map actually is.
+				//
+				// Irradiance times albedo would be right if `_OceanCol` were an albedo. It is not:
+				// it is a baked LIT-APPEARANCE map, with deep blue, shallow blue and chlorophyll
+				// already resolved into a finished colour. Multiplying it by blue skylight squares
+				// the blue - it took the map's blue-to-red ratio from 5:1 to 10:1, which reads as
+				// an aggressively oversaturated ocean.
+				//
+				// Adding keeps the structure the flat `_Ambient` had, which looked right, and
+				// replaces its hand-picked constant with the sky's own colour - so the water lifts
+				// toward whatever the sky is doing instead of toward a fixed blue.
+				//
+				// Not attenuated by `sunVisibility`: that is the sun's shadow map, and skylight does
+				// not arrive from the sun's direction.
+				float3 skyAmbient = sampleSkyViewSafe(sphereNormal, sphereNormal, sunDir) * _SkyAmbientWeight;
+				float3 bodyLit = saturate(saturate(oceanCol * shading) * sunVisibility + skyAmbient);
 
 				// ---- Sky reflection ----
 				//
@@ -331,12 +394,12 @@ Shader "Custom/Ocean"
 				// approaches 1 at grazing - which is exactly where the sunset sits.
 				float cosIncidence = saturate(dot(-viewDir, reflNormal));
 				float fresnelReflectance = _WaterF0 + (1 - _WaterF0) * pow(1 - cosIncidence, 5);
-				fresnelReflectance = saturate(fresnelReflectance * _ReflectionStrength * (planetRadius > 0 ? 1 : 0));
+				fresnelReflectance = saturate(fresnelReflectance * _ReflectionStrength);
 
 				// toneMap, because the sky was already tone-mapped into the colour buffer by the sky
 				// pass - a raw radiance here would sit at a completely different exposure from the
 				// sky one pixel above the horizon.
-				float3 skyReflection = toneMap(sampleSkyView(sphereNormal, reflectDir, sunDir));
+				float3 skyReflection = sampleSkyViewSafe(sphereNormal, reflectDir, sunDir);
 
 				// lerp, never +=, for two independent reasons. It is the correct energy split - F
 				// reflects and 1-F refracts into the body - so the sky REPLACES body colour rather
@@ -363,13 +426,20 @@ Shader "Custom/Ocean"
 				// # Apply foam
 				float4 foam = calculateFoam(texCoord, pointOnUnitSphere, viewDir);
 				oceanCol = lerp(oceanCol, foam.rgb * sunVisibility, foam.a);
-				// # Add ambient colour
-				oceanCol = saturate(oceanCol + _Ambient * 0.1);
+				// Rim light, kept but gated on night.
+				//
+				// Its job - separating ocean from sky in silhouette - is done properly by the
+				// physical Fresnel now, in daylight. At night it is not: the sky view LUT holds no
+				// moonlight, no starlight and no airglow, so the reflection genuinely has nothing to
+				// say and the horizon merges again. This stays as a declared non-physical term that
+				// fades out the moment the physical one has anything to offer.
+				float rim = saturate(_FresnelWeight * pow(1 + dot(viewDir, pointOnUnitSphere), _FresnelPower));
+				oceanCol += rim * _FresnelCol.rgb * smoothstep(0.0, 0.25, nightT) * _NightRimStrength;
 
-				// Add rim light to help distinguish between ocean and sky at night
-				float fresnel = saturate(_FresnelWeight * pow(1 + dot(viewDir, pointOnUnitSphere), _FresnelPower));
-				oceanCol += fresnel * _FresnelCol;
-				//return fresnel;
+				// The camera buffer is 8-bit in gamma space and the reflection is a smooth gradient,
+				// which is exactly what bands. The sky pass dithers at the same strength for the
+				// same reason. SV_POSITION is in pixels in the fragment stage.
+				oceanCol = blueNoiseDither(oceanCol, i.pos.xy / _ScreenParams.xy, ditherStrength);
 				
 				return float4(oceanCol, 1);
 			}
