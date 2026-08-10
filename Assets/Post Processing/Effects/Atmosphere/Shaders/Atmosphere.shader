@@ -62,7 +62,10 @@
 				float nearClipPlane = _ProjectionParams.y;
 				float farClipPlane = _ProjectionParams.z;
 			
-				float depthT = remap01(nearClipPlane, terrestrialClipDst, sceneDepth);
+				// sqrt, because the LUT's depth axis is quadratic - slices concentrate near the
+				// camera, where the air actually is. The compute squares this to get back to a
+				// distance; the two must move together.
+				float depthT = sqrt(remap01(nearClipPlane, terrestrialClipDst, sceneDepth));
 
 				float3 rayOrigin = _WorldSpaceCameraPos;
 				float3 rayDir = viewDir;

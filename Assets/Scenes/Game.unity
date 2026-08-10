@@ -1495,14 +1495,14 @@ MonoBehaviour:
   pitch: 55
   heading: 0
   roll: 0
-  panSpeed: 0.35
+  panSpeed: 0.07
   referenceAltitude: 2
   headingSpeed: 60
   pitchSpeed: 40
   zoomSensitivity: 1.5
   minAltitude: 0.5
   maxAltitude: 250
-  flySpeed: 20
+  flySpeed: 4
   boostMultiplier: 5
   slowMultiplier: 0.2
   scaleFlySpeedWithAltitude: 1
