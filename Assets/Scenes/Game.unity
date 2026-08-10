@@ -1491,12 +1491,12 @@ MonoBehaviour:
   coordinate:
     longitude: 0
     latitude: 20
-  altitude: 10
+  altitude: 2
   pitch: 55
   heading: 0
   roll: 0
   panSpeed: 0.35
-  referenceAltitude: 10
+  referenceAltitude: 2
   headingSpeed: 60
   pitchSpeed: 40
   zoomSensitivity: 1.5
@@ -1514,7 +1514,7 @@ MonoBehaviour:
     coordinate:
       longitude: -1.12
       latitude: 36.76
-    altitude: 40
+    altitude: 7.3
     pitch: 70
     heading: 0
     roll: 0

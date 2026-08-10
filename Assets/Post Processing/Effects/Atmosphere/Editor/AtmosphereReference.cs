@@ -21,16 +21,18 @@ static class AtmosphereReference
 	/// <summary>`rayleighCoefficients = (wavelengthScale / lambda)^4`, per channel.</summary>
 	public static Vector3 RayleighCoefficients(AtmosphereEffect a)
 	{
+		// densityMultiplier applies here, matching GetShaderValues. It cancels in the lambda^4
+		// ratio test, so that check still measures the wavelength law rather than the density.
 		return new Vector3(
 			Mathf.Pow(a.wavelengthScale / a.wavelengthsRGB.x, 4),
 			Mathf.Pow(a.wavelengthScale / a.wavelengthsRGB.y, 4),
-			Mathf.Pow(a.wavelengthScale / a.wavelengthsRGB.z, 4));
+			Mathf.Pow(a.wavelengthScale / a.wavelengthsRGB.z, 4)) * a.densityMultiplier;
 	}
 
 	/// <summary>The ozone term as it reaches the shader, including the undocumented 0.1.</summary>
 	public static Vector3 OzoneAbsorption(AtmosphereEffect a)
 	{
-		return a.ozoneAbsorption * a.ozoneStrength * 0.1f;
+		return a.ozoneAbsorption * a.ozoneStrength * a.densityMultiplier * 0.1f;
 	}
 
 	/// <summary>
@@ -51,10 +53,10 @@ static class AtmosphereReference
 		float ozoneDensity = Mathf.Clamp01(1f - Mathf.Abs(h - ozonePeak) / ozoneHalfWidth);
 
 		Vector3 rayleigh = RayleighCoefficients(a) * (rayleighDensity / a.atmosphereThickness);
-		float mie = a.mieCoefficient * mieDensity / a.atmosphereThickness;
+		float mie = a.mieCoefficient * a.densityMultiplier * mieDensity / a.atmosphereThickness;
 
 		return new Vector3(mie, mie, mie)
-			+ Vector3.one * (a.mieAbsorption * mieDensity / a.atmosphereThickness)
+			+ Vector3.one * (a.mieAbsorption * a.densityMultiplier * mieDensity / a.atmosphereThickness)
 			+ rayleigh
 			+ OzoneAbsorption(a) * (ozoneDensity / a.atmosphereThickness);
 	}
@@ -122,7 +124,7 @@ static class AtmosphereReference
 	{
 		float h = Mathf.Clamp(height, 0f, a.atmosphereThickness);
 		float density = Mathf.Exp(-h / (a.mieDensityAvg * a.atmosphereThickness));
-		return (a.mieCoefficient + a.mieAbsorption) * density / a.atmosphereThickness;
+		return (a.mieCoefficient + a.mieAbsorption) * a.densityMultiplier * density / a.atmosphereThickness;
 	}
 
 	/// <summary>Mie-only vertical optical depth. `leftRiemann` reproduces the pre-midpoint

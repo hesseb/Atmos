@@ -151,6 +151,7 @@ public class SkyBakeStamp : ScriptableObject
 			.Add("mieDensityAvg", a.mieDensityAvg)
 			.Add("mieAbsorption", a.mieAbsorption)
 			.Add("mieAsymmetry", a.mieAsymmetry)
+			.Add("densityMultiplier", a.densityMultiplier)
 			.Add("sunIlluminance", a.sunIlluminance)
 			.Add("ozonePeakDensityAltitude", a.ozonePeakDensityAltitude)
 			.Add("ozoneDensityFalloff", a.ozoneDensityFalloff)

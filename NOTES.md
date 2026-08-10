@@ -1437,3 +1437,66 @@ limits are tuned in world units and would need revisiting; the aerial perspectiv
 `terrestrialClipDst` is derived from `bodyRadius`; and every camera bookmark and benchmark
 view is expressed in world-unit altitudes, so their *meaning* in kilometres changes even
 though the numbers do not.
+
+---
+
+## The 750 km planet: geometry first, density for the remainder
+
+The sunset finding above forced a choice, and this is it. `atmosphereThickness` **110 -> 20**
+world units, `heightMultiplier` **3 -> 1.76**, and one new named parameter,
+`densityMultiplier = 2.9159`.
+
+### Why the thickness is the lever
+The planet's size *in kilometres* is set entirely by the km-per-world-unit mapping, and that is
+fixed by declaring the column to be Earth's 100 km. Shrinking the column in world units grows
+the planet in kilometres while **nothing in world units moves** - terrain, LOD, the baked data,
+picking, labels and the ocean mesh are all untouched. Changing `bodyRadius` would have touched
+every one of them for the same effect.
+
+|  | before | after | Earth |
+|---|---|---|---|
+| km per world unit | 0.91 | **5.00** | - |
+| planet radius | 136 km | **750 km** | 6371 km |
+| Rayleigh scale height | 8.8 u | 1.6 u | - |
+| horizon air mass | 5.2 | **12.1** | 35.4 |
+| blue transmitted at horizon | 0.254 | **0.040** | 0.00009 |
+| coefficient fudge needed | 6.8x | **2.9x** | 1.0x |
+
+### The binding constraint was terrain, not the camera
+Mountains were 3 world units and the scale height is `0.08 x thickness`. Once the scale height
+falls below the peaks, mountains poke out of the atmosphere - which caps the thickness at ~37
+(a 400 km planet) unless the terrain shrinks too. Setting `heightMultiplier` to 1.76 makes peaks
+**1.10 scale heights**, exactly Earth's ratio, and unlocks the 750 km planet.
+
+### The remainder is one named number
+`densityMultiplier` scales every scattering and absorption coefficient together - i.e. this air
+is 2.92x denser than Earth's at the same composition and the same vertical structure. It is set
+so the **horizon** optical depth in blue matches Earth's, since that is the quantity a sunset is
+actually made of, and the validation harness now reports both plus the ratio.
+
+This is much better to defend than the alternative. The published constants stay published and
+visible; there is exactly one deviation, it has a name, a value, and a stated cause (a small
+planet has short slant paths), and it is *calibrated against a physical target* rather than
+dialled until it looked right.
+
+**And it lands almost exactly where Lague was.** Zenith blue optical depth is now **0.772**
+against his **0.709**. The inherited magic number was approximately correct for the geometry all
+along - what was missing was the reason, which is why it also needed a negative red ozone term
+to finish the job. That is the RQ3 finding in one sentence.
+
+### Consequences handled
+- Camera altitude and reference altitude 10 -> 2, bookmark 40 -> 7.3. **The camera has to come
+  down** or it sits above the air entirely: at the old altitude of 12 units it would be 7.5
+  scale heights up and the aerial perspective would vanish.
+- Benchmark pose altitudes scaled by 20/110 so each benchmark keeps its intent: altitude sweep
+  4->0.73 and 220->40, daycycle 12->2.18, framing 20->3.64, orbit 30->5.45, smoke 25->4.55.
+  These are guesses at the *same shot* under the new scale, not re-picked shots.
+- All baked baseline assets are stale; the stamp now hashes `densityMultiplier` too.
+- Tone mapping will likely need retuning: vertical optical depth nearly triples, so the sky is
+  deeper and more saturated.
+
+### Still open
+Horizon air mass is 12.1 against Earth's 35.4, so this is not Earth and the density multiplier
+is carrying a factor of 2.9. Going further means shorter mountains again - `heightMultiplier`
+1.1 would allow a 1200 km planet at 2.3x - and a smaller visible fraction of the globe. Left
+until there is a picture to judge.
