@@ -27,6 +27,13 @@ Shader "Custom/Ocean"
 		// 0 keeps the old white glint, 1 colours it by sun transmittance.
 		// Exists for the before/after figure, not as an art dial.
 		_GlintTransmittanceWeight("Glint Transmittance Weight", Range(0,1)) = 1
+		// 0 reproduces the ocean before this work; 1 is the physical answer. For the ablation figure.
+		_ReflectionStrength("Sky Reflection Strength", Range(0,2)) = 1
+		// Water at n = 1.33: ((1.33-1)/(1.33+1))^2 = 0.02.
+		_WaterF0("Water F0", Range(0,0.2)) = 0.02
+		// How much of the wave normal perturbs the REFLECTION. Full perturbation is undersampled
+		// noise at planet scale, and a rough surface reflects the average sky rather than a mirror.
+		_ReflectionWaveWeight("Reflection Wave Weight", Range(0,1)) = 0.25
 
 		[Header(Foam)]
 		[NoScaleOffset] _FoamDistanceMap ("Foam Distance Map", 2D) = "white" {}
@@ -70,6 +77,11 @@ Shader "Custom/Ocean"
 			// (planetRadius, atmosphereRadius, atmosphereThickness, transmittanceLutSize) and the
 			// TransmittanceLUT texture arrive as globals from AtmosphereEffect.BindGlobalResources.
 			#include "Assets/Post Processing/Effects/Atmosphere/Shader Common/TransmittanceCommon.hlsl"
+			#include "Assets/Post Processing/Effects/Atmosphere/Shader Common/SkyViewCommon.hlsl"
+			// For toneMap: the sky is written to the colour buffer already tone-mapped, so a
+			// reflection of raw sky radiance has to go through the same transform to sit at the
+			// same exposure as the sky one pixel above the horizon.
+			#include "Assets/Post Processing/Effects/Atmosphere/Shader Common/DrawAtmosphereCommon.hlsl"
 
 			sampler2D TransmittanceLUT;
 
@@ -108,6 +120,7 @@ Shader "Custom/Ocean"
 			float _FresnelWeight, _FresnelPower;
 
 			float _GlintTransmittanceWeight;
+			float _ReflectionStrength, _WaterF0, _ReflectionWaveWeight;
 
 			// Foam
 			sampler2D _FoamDistanceMap;
@@ -275,21 +288,70 @@ Shader "Custom/Ocean"
 					: 1;
 				float3 glintCol = _LightColor0.rgb * lerp(1, sunTransmittance, _GlintTransmittanceWeight);
 
-				oceanCol = saturate(oceanCol * (1-specularHighlight) * shading) + specularHighlight * glintCol;
-
-				// # Apply foam
-				float4 foam = calculateFoam(texCoord, pointOnUnitSphere, viewDir);
-				oceanCol = lerp(oceanCol, foam.rgb, foam.a);
-
 				// ---- Apply shadows ----
 				// First, a little fix to the shadow value. When sun is on far side of planet, the far chunks of the earth
 				// often don't get rendered for shadows due to culling distance. This means the ocean sometimes has chunks of
 				// shadow missing. So crude fix is to just force the shadow value to zero (shadows on) when sufficiently dark.
+				//
+				// Moved above the compositing: `shadows` is sun visibility, so it belongs to the
+				// water body and to the glint, and NOT to skylight arriving from some other
+				// direction. Keeping it off the reflection is what makes the reflection darken at
+				// night on its own, physically, rather than through the old flat rim hack.
 				float nightT = saturate(dot(sphereNormal,-sunDir)); // 0 at sunrise/sunset to 1 at midnight
-				float nightShadowFixT = smoothstep(0.2,0.3,nightT);
 				shadows = lerp(shadows, 0, smoothstep(0.2,0.3,nightT));
-				// Apply the shadows to the ocean colour
-				oceanCol *= lerp(1, shadows, _ShadowStrength);
+				float sunVisibility = lerp(1, shadows, _ShadowStrength);
+
+				// ---- The water body: direct sunlight on it, and nothing else ----
+				float3 bodyLit = saturate(oceanCol * shading) * sunVisibility;
+
+				// ---- Sky reflection ----
+				//
+				// Only a fraction of the wave normal perturbs the mirror direction, damped further
+				// at grazing angles. A screen pixel near the horizon covers an enormous number of
+				// wave periods, so a fully perturbed reflection is undersampled noise rather than
+				// detail - and the sky view LUT crowds its texels hardest exactly there, so it is
+				// most sensitive to the perturbation in the same place the footprint is largest.
+				// Physically a rough surface reflects the AVERAGE sky over its normal distribution,
+				// which sits closer to the unperturbed direction than to a mirror.
+				float grazing = 1 - saturate(dot(-viewDir, sphereNormal));
+				float waveWeight = _ReflectionWaveWeight * (1 - grazing * grazing);
+				float3 reflNormal = normalize(lerp(sphereNormal, waveNormal, waveWeight));
+
+				// viewDir already points camera->surface, which is the incident vector reflect()
+				// wants, so there is no negation here.
+				float3 reflectDir = reflect(viewDir, reflNormal);
+
+				// Lift the ray above the horizon. The LUT is baked at sea level, so everything
+				// below the horizon in it is black by construction, and a perturbed normal can
+				// easily throw the mirror direction down there - which would read as a dark fringe
+				// hugging the horizon rather than as a reflection.
+				reflectDir = normalize(reflectDir + sphereNormal * max(0, 0.002 - dot(reflectDir, sphereNormal)));
+
+				// Schlick. F0 = 0.02 for water, so this is almost nothing looking down and
+				// approaches 1 at grazing - which is exactly where the sunset sits.
+				float cosIncidence = saturate(dot(-viewDir, reflNormal));
+				float fresnelReflectance = _WaterF0 + (1 - _WaterF0) * pow(1 - cosIncidence, 5);
+				fresnelReflectance = saturate(fresnelReflectance * _ReflectionStrength * (planetRadius > 0 ? 1 : 0));
+
+				// toneMap, because the sky was already tone-mapped into the colour buffer by the sky
+				// pass - a raw radiance here would sit at a completely different exposure from the
+				// sky one pixel above the horizon.
+				float3 skyReflection = toneMap(sampleSkyView(sphereNormal, reflectDir, sunDir));
+
+				// lerp, never +=, for two independent reasons. It is the correct energy split - F
+				// reflects and 1-F refracts into the body - so the sky REPLACES body colour rather
+				// than adding to it, and at F -> 1 it reproduces the sky pixel exactly, which is
+				// what makes the horizon line seamless. And toneMap(0) is about -0.05, because the
+				// contrast pivot is a pedestal, so adding would SUBTRACT from the ocean at night.
+				oceanCol = lerp(bodyLit, skyReflection, fresnelReflectance);
+
+				// The glint sits on top of the sky rather than being multiplied down by it: it is
+				// the sun's own reflection, and it is already shadow- and visibility-weighted.
+				oceanCol = lerp(oceanCol, glintCol, saturate(specularHighlight));
+
+				// # Apply foam
+				float4 foam = calculateFoam(texCoord, pointOnUnitSphere, viewDir);
+				oceanCol = lerp(oceanCol, foam.rgb * sunVisibility, foam.a);
 				// # Add ambient colour
 				oceanCol = saturate(oceanCol + _Ambient * 0.1);
 
