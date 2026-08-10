@@ -265,6 +265,34 @@ public class TestbedCamera : MonoBehaviour
 		}
 	}
 
+	/// <summary>
+	/// Places the camera a given height above the surface, in whichever mode it is in.
+	///
+	/// `altitude` alone is not enough. It only reaches the transform through ApplyPose, which
+	/// runs in Orbit mode only - in free-fly the position is authoritative and altitude is merely
+	/// derived from it. So changing the planet's radius under a free-flying camera left it at its
+	/// old world radius, which on a larger planet is underground.
+	///
+	/// Direction is preserved, so the swap reads as a zoom rather than a jump to somewhere else.
+	/// </summary>
+	public void SetAltitudeAboveSurface(float targetAltitude)
+	{
+		this.altitude = Mathf.Clamp(targetAltitude, minAltitude, maxAltitude);
+
+		if (mode == Mode.Orbit)
+		{
+			ApplyPose();
+			return;
+		}
+
+		// Free-fly: move along the current outward direction to the new radius, keeping the
+		// rotation. Falling back to the pole only matters if the camera is exactly at the centre.
+		Vector3 outward = transform.position.sqrMagnitude > 1e-6f
+			? transform.position.normalized
+			: Vector3.up;
+		transform.position = outward * (SurfaceRadius + this.altitude);
+	}
+
 	void ApplyPose()
 	{
 		var view = new CameraView

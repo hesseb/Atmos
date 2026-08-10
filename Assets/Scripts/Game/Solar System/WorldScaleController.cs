@@ -309,11 +309,21 @@ public class WorldScaleController : MonoBehaviour
 			scope.Set(() => testbedCamera.panSpeed, v => testbedCamera.panSpeed = v,
 				preset.panSpeed / Mathf.Max(1e-3f, preset.planetScale));
 			scope.Set(() => testbedCamera.flySpeed, v => testbedCamera.flySpeed = v, preset.flySpeed);
-			// Orbit mode re-applies the pose every frame, so writing the field is enough to move
-			// the camera. Free-fly derives altitude from the transform instead and will not
-			// jump - which is the right behaviour, since a preset should not teleport a camera
-			// the user is flying.
-			scope.Set(() => testbedCamera.altitude, v => testbedCamera.altitude = v, preset.altitude);
+			// Moved rather than just assigned, and last, after the new surface radius is in place.
+			//
+			// Writing the field alone only works in Orbit mode: free-fly treats the transform as
+			// authoritative and merely derives altitude from it, so growing the planet under a
+			// free-flying camera left it at its old world radius - inside the globe. Even in orbit
+			// mode, an altitude carried over from another scale is the wrong height above a
+			// different-sized planet.
+			float previousAltitude = testbedCamera.altitude;
+			Vector3 previousPosition = testbedCamera.transform.position;
+			scope.Add(() =>
+			{
+				testbedCamera.altitude = previousAltitude;
+				testbedCamera.transform.position = previousPosition;
+			});
+			testbedCamera.SetAltitudeAboveSurface(preset.altitude);
 		}
 
 		Debug.Log($"[WorldScale] {preset.id}: {Summary(preset)}", this);
