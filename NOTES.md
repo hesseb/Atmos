@@ -1636,3 +1636,111 @@ point.
 Non-uniform stepping, the SkyView LUT and sky-pass depth rejection all belong to the optimization
 phase; the cubemap variant's tone-map decision and the art-directed haze hybrid are parked; the
 report sections come with the report.
+
+---
+
+## Session summary: sky-derived surface colour, ocean then land
+
+Both the water and the ground now take their colour from the atmosphere rather than from authored
+constants. Previously the sky could be rendering a correct sunset while the sea two pixels below it
+stayed flat blue with a white sun reflection, and the land beside that did not move at all.
+
+### The new piece: a direction-indexed sky LUT
+
+`SkyViewCommon.hlsl` + `SkyViewLUT.compute`, Hillaire 2020 section 5.3. The existing `sky` texture
+could not answer this question at all: it is indexed by `calculateViewDir(uv)` over the current
+camera's frustum corners, so it only holds directions that happen to be on screen - and a reflected
+ray routinely is not. 192x128, 32 steps, ~786 k samples/frame against the screen-space sky pass's
+8.4 M, which is itself the argument for the deferred sky-pass optimization.
+
+Three decisions in it that are not obvious:
+
+- **Baked at sea level, not camera altitude.** The consumer is a surface at `r = planetRadius`, and
+  the aerial perspective post-process already applies the camera-to-surface segment afterwards.
+  Evaluating at sea level is what makes that segment count exactly once.
+- **`skyViewHorizonV = 1`,** i.e. upper hemisphere only. A sea-level LUT has a definitionally black
+  lower half, and storing it would put a black texel next to the horizon, where bilinear filtering
+  would darken the single most visible band. 0.5 later recovers Hillaire's full-sphere split.
+- **Built in a canonical frame** (up = +Y, sun in the +X/+Y half-plane) with `dirToSun` fabricated
+  from C#, as `MultipleScattering.compute` already does - `raymarch` reads that global internally and
+  HLSL globals are read-only in-shader. Exact by spherical symmetry, and it means the LUT depends
+  only on the sun's elevation, not on the camera at all.
+
+### Ocean
+
+Schlick Fresnel at `F0 = 0.02` driving a real reflection, composited with `lerp` rather than `+=` -
+the correct energy split, and it reproduces the sky pixel exactly as `F -> 1`, which is what makes
+the horizon line seamless. Glint coloured by sun transmittance. Sky ambient. A night floor
+(`_NightAmbient`, plus a moon glint) because a sun-only scattering model leaves the water
+mathematically black.
+
+### Land
+
+The audit turned up two things that changed the shape of the work:
+
+1. **`Terrain.shader` never read `_LightColor0`.** The only shader in the project that does is
+   `Ocean.shader`. So `Sun.cs`'s `sunColGradient` - whose first key is a deep orange - reached the
+   water and nothing else. Land's sun was a *scalar*, i.e. pure white at every hour of the day.
+2. **Land had no daylight ambient whatsoever.** `_BrightnessAdd = 0.05` was the entire fill light and
+   it carries no colour. The `_Ambient` entry in `Terrain.mat` is not declared by the shader. Nothing
+   in the project reads Unity's ambient either - no `ShadeSH9`, no `UNITY_LIGHTMODEL_AMBIENT`.
+
+That made land *cleaner* than the ocean: there was no existing colour term to double-count against.
+`SurfaceLighting.hlsl` now holds `sampleLightColour` and `sampleSkyViewSafe`, shared by both shaders,
+because both need the same three guards and each fails quietly rather than loudly. Terrain gets sun
+colour per pixel, sky ambient multiplied by the albedo, a transmittance-tinted lake specular, and a
+diffuse moon term. City lights already lit the night side via `_LightMap` and needed nothing.
+
+The gradient is retired in physically based mode by one line in the ocean -
+`lerp(_LightColor0.rgb, 1, skyReflectionStrength)` - rather than by touching `Sun.cs`, the scene or
+`RenderingManager`. Baseline keeps the glint it was authored with; `Sun.cs` stays the baseline's path
+rather than becoming dead code.
+
+### The measurement gate
+
+`skyReflectionStrength`, published by `RenderingManager`, is 1 only in physically based mode. Without
+it the baseline and null modes would light their surfaces from whatever the LUTs last held during a
+physically based frame - a frozen sky, which is not a defensible control condition. With it, terrain
+in baseline mode is arithmetically identical to before this work, and the ocean's and land's
+sky-derived colour is reported as a further benefit of the physically based sky rather than being
+silently folded into it.
+
+### Bugs found in the process, worth remembering
+
+- **`toneMap(0)` is about -0.05, not 0.** The contrast pivot is a pedestal
+  (`lerp(0.5, 0, 1.45) = -0.225`). An unclamped "ambient" therefore *subtracts* at night, pushing an
+  already black surface below black. Every sky-derived term needs `max(0, ...)`.
+- **Multiplying a baked lit-appearance map by coloured light squares its hue.** `_OceanCol` is not an
+  albedo, and treating it as one took the ocean's B/R ratio from 5:1 to 10.3:1. The distinction that
+  decides additive vs multiplicative is whether the texture is albedo or already-lit appearance -
+  terrain's colour maps are used multiplicatively already, so there the physical form is also safe.
+  This one was written down as a hazard in the plan and then argued past anyway.
+- **A nested *relative* `#include` resolves against the includer's directory,** so a header that works
+  inside the atmosphere tree fails when included from `Assets/Scripts/Shaders/Game`. Symptom is the
+  pink error shader. All cross-tree includes are Assets-absolute now.
+- **`transmittanceRayHitsGround` returns true for every downward direction once `radius <
+  planetRadius`,** returning exactly zero. Both meshes are relief-corrected, so sampling at the
+  fragment position blacks the glint out at sunset - the one moment it exists for. Hence
+  `seaLevelPosition()`.
+- **The sky LUT must be lifted a hair *above* the horizon, not onto it,** and written at texel
+  centres; otherwise below-horizon darkness bleeds up as a serrated band.
+- **The aerial perspective depth axis must be capped at the tangent distance,** or the per-ray span
+  jumps ~4.8x across the horizon and bilinear interpolation of that jump paints a serrated band.
+- `DrawAtmosphereCommon.hlsl` had no include guard; it now does, since it is reachable by two paths.
+
+### Open before the next milestone
+
+The four items in the previous session summary all still stand. Added by this work:
+
+5. `_ShadowEdgeCol` is a warm orange `(0.255, 0.033, 0.008)`, hand-authored as a stand-in for
+   skylight in shadow. Now that real sky ambient exists, shadowed slopes should trend blue - it
+   wants pulling down, and the two terms are currently fighting.
+6. Watch the terminator. `_BrightnessAdd`'s fill is now multiplied by sun colour, which is genuinely
+   zero once the sun is below the local horizon, so the day term no longer has a floor there. Sky
+   ambient is what fills it, via `_SkyAmbientWeight`.
+7. Terrain does not occlude its own skylight - a valley floor gets the same ambient as a ridgeline,
+   and a coastal cliff does not block the ocean's reflected sky. A horizon-based occlusion factor is
+   the standard fix.
+8. The sky view LUT fixes the sun's elevation at one reference point, but the visible ocean spans
+   20.4 degrees of arc at x1. A 3D LUT with sun zenith as the third axis is the clean fix, and being
+   independent of both sun and camera position it could be baked once at init.

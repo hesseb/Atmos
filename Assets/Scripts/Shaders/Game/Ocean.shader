@@ -83,22 +83,13 @@ Shader "Custom/Ocean"
 			#include "Assets/Scripts/Shader Common/GeoMath.hlsl"
 			#include "Assets/Scripts/Shader Common/Triplanar.hlsl"
 
-			// The atmosphere's transmittance LUT, so the sun glint can be the colour the sun
-			// actually is after travelling through the air to this point.
+			// Sun and moon colour after travelling through the air, and sky radiance for an
+			// arbitrary direction. Also brings in TransmittanceCommon, SkyViewCommon and
+			// DrawAtmosphereCommon, and declares TransmittanceLUT and skyReflectionStrength.
 			//
-			// Deliberately NOT AtmosphereCommon.hlsl, which is the only declaration of the global
-			// `dirToSun` and would collide with this shader's own sun direction. DrawSky.shader
-			// sets the same precedent for the same reason. The uniforms this header declares
-			// (planetRadius, atmosphereRadius, atmosphereThickness, transmittanceLutSize) and the
-			// TransmittanceLUT texture arrive as globals from AtmosphereEffect.BindGlobalResources.
-			#include "Assets/Post Processing/Effects/Atmosphere/Shader Common/TransmittanceCommon.hlsl"
-			#include "Assets/Post Processing/Effects/Atmosphere/Shader Common/SkyViewCommon.hlsl"
-			// For toneMap: the sky is written to the colour buffer already tone-mapped, so a
-			// reflection of raw sky radiance has to go through the same transform to sit at the
-			// same exposure as the sky one pixel above the horizon.
-			#include "Assets/Post Processing/Effects/Atmosphere/Shader Common/DrawAtmosphereCommon.hlsl"
-
-			sampler2D TransmittanceLUT;
+			// Shared with Terrain.shader, which needs the same terms for the same reason: the land
+			// has to warm at sunset alongside the water, or the coastline shows a seam.
+			#include "Assets/Post Processing/Effects/Atmosphere/Shader Common/SurfaceLighting.hlsl"
 
 			struct appdata
 			{
@@ -144,12 +135,6 @@ Shader "Custom/Ocean"
 			// 150-unit planet the moon is not far enough away to be directional.
 			float4 moonPosition;
 			float4 moonLightColour;   // already scaled by phase
-
-			// 1 when the physically based sky is the one being drawn, 0 otherwise. Published by
-			// RenderingManager. Without it the baseline and null sky modes would reflect whatever
-			// the LUT last held from a physically based frame - a frozen sky, which is not a
-			// defensible control condition for the comparison.
-			float skyReflectionStrength;
 
 			// Foam
 			sampler2D _FoamDistanceMap;
@@ -233,21 +218,6 @@ Shader "Custom/Ocean"
 			// Parameter renamed from `dirToSun` to `sunDir`: AtmosphereCommon.hlsl declares a global
 			// of the former name, and although this shader deliberately does not include it, a
 			// shadowed uniform is the kind of thing that fails silently rather than loudly.
-			// Sky radiance for a direction, tone-mapped to sit at the same exposure as the sky the
-			// sky pass wrote into the colour buffer, and gated so it contributes nothing when there
-			// is no physically based sky to reflect.
-			//
-			// planetRadius is the sentinel for "the atmosphere has published its globals": it is
-			// zero before AtmosphereEffect initialises, and an unbound LUT samples black - which
-			// through toneMap's pedestal would come back as about -0.05 rather than 0.
-			float3 sampleSkyViewSafe(float3 up, float3 dir, float3 sunDir) {
-				if (planetRadius <= 0 || skyReflectionStrength <= 0) { return 0; }
-				// max(0): toneMap(0) is about -0.05, because the contrast pivot is a pedestal. Without
-				// this the sky terms SUBTRACT at night, when the LUT is genuinely zero - so a black
-				// ocean was being pushed below black rather than merely left alone.
-				return max(0, toneMap(sampleSkyView(up, dir, sunDir))) * skyReflectionStrength;
-			}
-
 			float calculateSpecular(float3 normal, float3 viewDir, float3 sunDir, float smoothness) {
 				float specularAngle = acos(dot(normalize(sunDir - viewDir), normal));
 				float specularExponent = specularAngle / smoothness;
@@ -327,21 +297,19 @@ Shader "Custom/Ocean"
 				// on dot(camera, sun), which is one colour for the whole globe and an approximation
 				// its own comment flags. The transmittance LUT answers the same question per pixel
 				// and physically.
-				//
-				// Sampled at a canonical sea-level position, NOT at i.worldPos. The ocean mesh is
-				// relief-corrected and drawn with Offset 1,1, so its radius is not exactly
-				// planetRadius - and transmittanceRayHitsGround returns true for *every* downward
-				// direction once radius < planetRadius, which would return exactly zero and black
-				// out the glint at sunset, the one moment this exists for.
-				// planetRadius is the sentinel for "the atmosphere has published its globals". It is
-				// zero in the baseline and null sky modes, and on the first frames before
-				// AtmosphereEffect initialises - and an unbound LUT samples black, which would
-				// leave the glint black rather than merely uncoloured. Fall back to white.
-				float3 seaLevelPos = sphereNormal * (planetRadius + 1e-3);
-				float3 sunTransmittance = planetRadius > 0
-					? sampleTransmittanceLUT(TransmittanceLUT, seaLevelPos, sunDir)
-					: 1;
-				float3 glintCol = _LightColor0.rgb * lerp(1, sunTransmittance, _GlintTransmittanceWeight);
+				// Sampled at a canonical sea-level position rather than at i.worldPos, and gated on
+				// the atmosphere actually being present. SurfaceLighting.hlsl owns both decisions and
+				// explains why neither is optional; it falls back to white, so the glint comes out
+				// uncoloured rather than black in the baseline modes.
+				float3 sunTransmittance = sampleLightColour(sphereNormal, sunDir);
+				// _LightColor0 is Sun.cs's gradient approximation, keyed on dot(camera, sun) - a single
+				// colour for the whole globe. In physically based mode the transmittance lookup answers
+				// the same question per pixel, and the terrain now uses it too, so keeping the gradient
+				// as well would tint the glint twice and put the water out of step with the coast it
+				// meets. The same gate fades it out, which leaves the baseline mode with exactly the
+				// glint it was authored with - the gradient stays the baseline's path, not dead code.
+				float3 glintCol = lerp(_LightColor0.rgb, 1, skyReflectionStrength)
+					* lerp(1, sunTransmittance, _GlintTransmittanceWeight);
 
 				// ---- Apply shadows ----
 				// First, a little fix to the shadow value. When sun is on far side of planet, the far chunks of the earth
@@ -461,9 +429,7 @@ Shader "Custom/Ocean"
 				// appears and disappears with moonrise and moonset without a separate check, and
 				// reddens near the horizon the same way the sun's does.
 				float3 moonDir = normalize(moonPosition.xyz - i.worldPos);
-				float3 moonTransmittance = planetRadius > 0
-					? sampleTransmittanceLUT(TransmittanceLUT, seaLevelPos, moonDir)
-					: 1;
+				float3 moonTransmittance = sampleLightColour(sphereNormal, moonDir);
 				float moonHighlight = saturate(calculateSpecular(waveNormal, viewDir, moonDir, _MoonGlintSmoothness));
 				oceanCol += moonHighlight * moonLightColour.rgb * moonTransmittance;
 
