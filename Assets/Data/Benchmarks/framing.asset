@@ -35,7 +35,7 @@ MonoBehaviour:
         coordinate:
           longitude: 8
           latitude: 46.5
-        altitude: 3.64
+        altitude: 20
         pitch: 90
         heading: 0
         roll: 0
@@ -49,7 +49,7 @@ MonoBehaviour:
         coordinate:
           longitude: 8
           latitude: 46.5
-        altitude: 3.64
+        altitude: 20
         pitch: 90
         heading: 0
         roll: 0
@@ -84,7 +84,7 @@ MonoBehaviour:
         coordinate:
           longitude: 8
           latitude: 46.5
-        altitude: 3.64
+        altitude: 20
         pitch: 60
         heading: 0
         roll: 0
@@ -98,7 +98,7 @@ MonoBehaviour:
         coordinate:
           longitude: 8
           latitude: 46.5
-        altitude: 3.64
+        altitude: 20
         pitch: 60
         heading: 0
         roll: 0
@@ -133,7 +133,7 @@ MonoBehaviour:
         coordinate:
           longitude: 8
           latitude: 46.5
-        altitude: 3.64
+        altitude: 20
         pitch: 30
         heading: 0
         roll: 0
@@ -147,7 +147,7 @@ MonoBehaviour:
         coordinate:
           longitude: 8
           latitude: 46.5
-        altitude: 3.64
+        altitude: 20
         pitch: 30
         heading: 0
         roll: 0
@@ -182,7 +182,7 @@ MonoBehaviour:
         coordinate:
           longitude: 8
           latitude: 46.5
-        altitude: 3.64
+        altitude: 20
         pitch: 2
         heading: 0
         roll: 0
@@ -196,7 +196,7 @@ MonoBehaviour:
         coordinate:
           longitude: 8
           latitude: 46.5
-        altitude: 3.64
+        altitude: 20
         pitch: 2
         heading: 0
         roll: 0

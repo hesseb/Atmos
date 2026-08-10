@@ -1,0 +1,25 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5d7e21ac9b3f04e4ab6182c05a7f9e13, type: 3}
+  m_Name: practical-136km
+  m_EditorClassIdentifier: 
+  id: practical-136km
+  description: Playable. Enough globe visible at once and mountains read correctly against the haze, but horizon air mass is only 5.2 so the density multiplier carries almost everything.
+  atmosphereThickness: 110
+  densityMultiplier: 6.8384
+  intensity: 1.602
+  contrast: 1.45
+  whitePoint: 2.5
+  altitude: 10
+  referenceAltitude: 10
+  panSpeed: 0.35
+  flySpeed: 20

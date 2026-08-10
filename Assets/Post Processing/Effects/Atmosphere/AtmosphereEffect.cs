@@ -580,6 +580,16 @@ public class AtmosphereEffect : PostProcessingEffect
 
 
 
+	/// <summary>
+	/// Forces the LUTs to be rebuilt on the next frame.
+	///
+	/// OnValidate covers inspector edits, which is every edit-mode change. Anything that writes
+	/// these fields from script at runtime - the world-scale presets - has no such hook, and
+	/// without this the transmittance and multiple-scattering LUTs would keep describing the
+	/// previous atmosphere while every other uniform described the new one.
+	/// </summary>
+	public void MarkSettingsDirty() => settingsUpToDate = false;
+
 	void OnValidate()
 	{
 		if (Application.isEditor)

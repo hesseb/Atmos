@@ -1500,3 +1500,39 @@ Horizon air mass is 12.1 against Earth's 35.4, so this is not Earth and the dens
 is carrying a factor of 2.9. Going further means shorter mountains again - `heightMultiplier`
 1.1 would allow a 1200 km planet at 2.3x - and a smaller visible fraction of the globe. Left
 until there is a picture to judge.
+
+### Reverted to the 136 km planet, with both scales on a key
+
+Playing the 750 km world settled the question: it is impractical. You see too little of the
+globe without zooming a long way out, and mountains at 3 world units are 1.88 Rayleigh scale
+heights there, so peaks stand clear of the haze layer.
+
+So the **136 km planet is the default again**, with the shortfall carried by `densityMultiplier
+= 6.84` rather than 2.92. Both scales are now `WorldScalePreset` assets under
+`Assets/Data/WorldScales`, cycled live with **F7** by `WorldScaleController`:
+
+| preset | planet | air mass | density | camera |
+|---|---|---|---|---|
+| `practical-136km` | 136 km | 5.2 | **6.84x** | altitude 10 |
+| `physical-750km` | 750 km | 12.1 | **2.92x** | altitude 2 |
+
+Both match Earth's *horizon* optical depth in blue. What differs is how much of that comes from
+geometry and how much from a multiplier - which is exactly the comparison, and now a keypress
+rather than a paragraph.
+
+Every change goes through a `RestoreScope`, disposed on preset change and on disable, because
+`AtmosphereEffect` is a ScriptableObject and anything written to it in the editor reaches disk.
+
+`heightMultiplier` is deliberately **not** in the presets: changing it means regenerating the
+terrain meshes, which a keypress should not do. The consequence - mountains standing out of the
+haze at the larger scale - is left visible, since it is part of what makes that scale
+impractical.
+
+The tone map is per preset, since vertical optical depth differs several-fold between them.
+Both start at intensity 1.602 and will need separate tuning.
+
+**For the report.** This is a concrete RQ3 answer rather than a failure: an Earth-calibrated
+physically based atmosphere and a strategy-game camera want incompatible planet sizes, the trade
+between them is a measurable curve (air mass grows as sqrt of radius, so the coefficient fudge
+falls as 1/sqrt), and the practical resolution is to keep the playable geometry and name the
+compensation instead of hiding it in six constants.
