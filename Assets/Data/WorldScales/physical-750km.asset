@@ -13,13 +13,13 @@ MonoBehaviour:
   m_Name: physical-750km
   m_EditorClassIdentifier: 
   id: physical-750km
-  description: What the physics wants. Air mass 12.1 means the slant path reddens with far less help from density - but you see only a small patch of the globe and mountains stand out of the haze. The impracticality is the finding.
+  description: Same air as practical-136km, thinner column. Air mass 12.1 rather than 5.2, so the slant path alone carries the sunset to Earth's horizon optical depth. The cost is framing - the camera must sit lower to stay inside the air, so less ground is visible, and mountains stand clear of the haze.
   atmosphereThickness: 20
-  densityMultiplier: 2.9159
+  densityMultiplier: 3
   intensity: 1.602
   contrast: 1.45
   whitePoint: 2.5
-  altitude: 2
-  referenceAltitude: 2
-  panSpeed: 0.07
-  flySpeed: 4
+  altitude: 4
+  referenceAltitude: 4
+  panSpeed: 0.14
+  flySpeed: 8

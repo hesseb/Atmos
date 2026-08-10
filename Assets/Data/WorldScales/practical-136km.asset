@@ -13,9 +13,9 @@ MonoBehaviour:
   m_Name: practical-136km
   m_EditorClassIdentifier: 
   id: practical-136km
-  description: Playable. Enough globe visible at once and mountains read correctly against the haze, but horizon air mass is only 5.2 so the density multiplier carries almost everything.
+  description: Playable. Air mass is only 5.2 so density carries most of the sunset. 3.0 is a stated compromise - matching Earth's horizon would need 6.84, which leaves the zenith transmitting 0.16 against Earth's 0.77 and smears the sun disc into the haze.
   atmosphereThickness: 110
-  densityMultiplier: 6.8384
+  densityMultiplier: 3
   intensity: 1.602
   contrast: 1.45
   whitePoint: 2.5
