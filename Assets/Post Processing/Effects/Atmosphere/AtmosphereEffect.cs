@@ -69,6 +69,24 @@ public class AtmosphereEffect : PostProcessingEffect
 	public ComputeShader transmittanceLUTCompute;
 	public Vector2Int transmittanceLUTSize;
 
+	[Header("Multiple Scattering LUT (2D)")]
+	public ComputeShader multipleScatteringLUTCompute;
+	/// <summary>
+	/// 32x32 is Hillaire's size and is ample: Psi_ms is smooth in both altitude and sun
+	/// elevation, having had every angular feature averaged out of it by construction.
+	/// </summary>
+	public Vector2Int multipleScatteringLUTSize = new Vector2Int(32, 32);
+	/// <summary>
+	/// 0 turns multiple scattering off, leaving single scattering alone. This is the control
+	/// condition for the comparison, so it is a runtime value rather than a shader variant.
+	/// </summary>
+	[Range(0, 2)] public float multipleScatteringStrength = 1;
+	/// <summary>
+	/// Ground reflectance used by the Lambertian bounce inside the LUT. 0.1 is Hillaire's
+	/// default and is about right for ocean-and-land average.
+	/// </summary>
+	[Range(0, 1)] public float groundAlbedo = 0.1f;
+
 	[Header("Aerial Perpspective LUT")]
 	public ComputeShader aerialPerspectiveLUTCompute;
 	public int aerialPerspectiveLUTSize;
@@ -110,6 +128,7 @@ public class AtmosphereEffect : PostProcessingEffect
 
 	[Header(("Debug"))]
 	public RenderTexture transmittanceLUT;
+	public RenderTexture multipleScatteringLUT;
 	public RenderTexture aerialPerspectiveLuminance;
 	public RenderTexture aerialPerspectiveTransmittance;//
 	public RenderTexture sky;
@@ -210,18 +229,24 @@ public class AtmosphereEffect : PostProcessingEffect
 		// transmittance LUT - stays behind the dirty flag.
 		BindComputeResources();
 
-		if (!settingsUpToDate || transmittanceLUT == null)
+		if (!settingsUpToDate || transmittanceLUT == null || multipleScatteringLUT == null)
 		{
 			sharedAtmosphereValues = GetShaderValues();
 			sharedAtmosphereValues.Apply(material);
+			if (multipleScatteringLUTCompute != null) { sharedAtmosphereValues.Apply(multipleScatteringLUTCompute); }
 			sharedAtmosphereValues.Apply(transmittanceLUTCompute);
 			sharedAtmosphereValues.Apply(aerialPerspectiveLUTCompute);
 			sharedAtmosphereValues.Apply(skyRenderCompute);
 
 
 			InitAndRenderTransmittanceLUT();
+			InitAndRenderMultipleScatteringLUT();
 			InitAeiralPerspectiveLUTs();
 			InitSkyLUT();
+
+			// Again, after the multiple-scattering LUT exists: BindComputeResources ran before
+			// this branch, when the texture was still null.
+			BindComputeResources();
 
 			// Set shader params after all LUTs have been initialized
 			SetDrawAerialPerspectiveShaderParams(material);
@@ -254,6 +279,12 @@ public class AtmosphereEffect : PostProcessingEffect
 		// transmittanceLUT has been rendered.
 		SetProperties();
 		GetShaderValues().Apply(compute);
+
+		// The bakers call raymarch(), so they need the multiple-scattering LUT bound like every
+		// other consumer. This matters more than it looks: `baseline-baked` exists to be the
+		// physically based sky flattened into a texture, so if the bake omitted a term the
+		// runtime has, the comparison would be measuring the bake rather than the technique.
+		if (multipleScatteringLUT != null) { compute.SetTexture(0, "MultipleScatteringLUT", multipleScatteringLUT); }
 	}
 
 	ShaderValues GetShaderValues()
@@ -295,6 +326,13 @@ public class AtmosphereEffect : PostProcessingEffect
 		// depth. That asymmetry is the whole reason it can fix the phase without disturbing
 		// transmittance, which no change to a scattering coefficient could have done.
 		values.floats.Add(("sunIlluminance", sunIlluminance));
+
+		// Multiple scattering. The LUT size goes to the shader as a float2 because both the
+		// write and the read divide by it; sending it as an int pair would mean two conversions
+		// that have to agree.
+		values.vectors.Add(("multipleScatteringLutSize", new Vector2(multipleScatteringLUTSize.x, multipleScatteringLUTSize.y)));
+		values.floats.Add(("multipleScatteringStrength", multipleScatteringStrength));
+		values.floats.Add(("groundAlbedo", groundAlbedo));
 
 		// Ozone values. The tent was `1 - |peak01 - h01| * falloff` in normalised altitude, so
 		// its half-width in world units is thickness / falloff.
@@ -358,6 +396,31 @@ public class AtmosphereEffect : PostProcessingEffect
 		ComputeHelper.Dispatch(transmittanceLUTCompute, transmittanceLUT);
 	}
 
+	/// <summary>
+	/// Bakes Hillaire's multiple-scattering LUT.
+	///
+	/// Init-time, not per-frame, and that is a property of the quantity rather than an
+	/// optimisation: Psi_ms depends only on altitude and sun elevation, both of which the
+	/// parameterisation already spans, so nothing about it changes as the sun moves or the
+	/// camera flies. It has to be rebuilt when the atmosphere parameters change, which is
+	/// exactly when this branch runs.
+	///
+	/// Must follow the transmittance LUT, which it marches against.
+	/// </summary>
+	void InitAndRenderMultipleScatteringLUT()
+	{
+		if (multipleScatteringLUTCompute == null) { return; }
+
+		// SFloat, unlike the transmittance LUT's UNorm. Psi_ms is a radiance, not a fraction,
+		// and is not bounded to [0, 1] - a UNorm would clamp the bright end silently.
+		ComputeHelper.CreateRenderTexture(ref multipleScatteringLUT, multipleScatteringLUTSize.x, multipleScatteringLUTSize.y,
+			FilterMode.Bilinear, GraphicsFormat.R16G16B16A16_SFloat, "Multiple Scattering LUT");
+
+		multipleScatteringLUTCompute.SetTexture(0, "MultipleScatteringResult", multipleScatteringLUT);
+		multipleScatteringLUTCompute.SetTexture(0, "TransmittanceLUT", transmittanceLUT);
+		ComputeHelper.Dispatch(multipleScatteringLUTCompute, multipleScatteringLUT);
+	}
+
 	void InitAeiralPerspectiveLUTs()
 	{
 		GraphicsFormat aerialPerspectiveLUTFormat = GraphicsFormat.R16G16B16A16_SFloat;
@@ -404,6 +467,16 @@ public class AtmosphereEffect : PostProcessingEffect
 	/// </summary>
 	void BindComputeResources()
 	{
+		// Every consumer of raymarch() now reads the multiple-scattering LUT, so every one of
+		// them has to have it bound - including the material, and including the offline bakers
+		// via ApplyAtmosphereValuesTo. A compute with an unbound texture does not fail loudly.
+		if (multipleScatteringLUT != null)
+		{
+			if (material != null) { material.SetTexture("MultipleScatteringLUT", multipleScatteringLUT); }
+			if (skyRenderCompute != null) { skyRenderCompute.SetTexture(0, "MultipleScatteringLUT", multipleScatteringLUT); }
+			if (aerialPerspectiveLUTCompute != null) { aerialPerspectiveLUTCompute.SetTexture(0, "MultipleScatteringLUT", multipleScatteringLUT); }
+		}
+
 		if (skyRenderCompute != null && sky != null)
 		{
 			skyRenderCompute.SetTexture(0, "TransmittanceLUT", transmittanceLUT);

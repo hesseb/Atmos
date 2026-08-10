@@ -156,7 +156,10 @@ public class SkyBakeStamp : ScriptableObject
 			.Add("ozoneDensityFalloff", a.ozoneDensityFalloff)
 			.Add("ozoneStrength", a.ozoneStrength)
 			.Add("ozoneAbsorption", a.ozoneAbsorption)
-			.Add("transmittanceLUTSize", a.transmittanceLUTSize);
+			.Add("transmittanceLUTSize", a.transmittanceLUTSize)
+			.Add("multipleScatteringStrength", a.multipleScatteringStrength)
+			.Add("multipleScatteringLUTSize", a.multipleScatteringLUTSize)
+			.Add("groundAlbedo", a.groundAlbedo);
 	}
 
 	/// <summary>The tone-map constants the hand-authored gradient is inverse-mapped against.</summary>

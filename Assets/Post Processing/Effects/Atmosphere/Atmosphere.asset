@@ -39,6 +39,10 @@ MonoBehaviour:
   sunDiscBlurB: 3.1
   transmittanceLUTCompute: {fileID: 7200000, guid: cca6f912a2bba8340ba53132e1b235a1, type: 3}
   transmittanceLUTSize: {x: 128, y: 64}
+  multipleScatteringLUTCompute: {fileID: 7200000, guid: 7a3f1c92be40d5b4a9e6c81f2d370465, type: 3}
+  multipleScatteringLUTSize: {x: 32, y: 32}
+  multipleScatteringStrength: 1
+  groundAlbedo: 0.1
   aerialPerspectiveLUTCompute: {fileID: 7200000, guid: 5261cb094de7cb64189738546d046b7d, type: 3}
   aerialPerspectiveLUTSize: 32
   aerialPerspectiveStrength: 0.529
@@ -54,6 +58,7 @@ MonoBehaviour:
   filterMode: 1
   rayleighCoefficients: {x: 1.876744, y: 4.1003814, z: 8.238811}
   transmittanceLUT: {fileID: 0}
+  multipleScatteringLUT: {fileID: 0}
   aerialPerspectiveLuminance: {fileID: 0}
   aerialPerspectiveTransmittance: {fileID: 0}
   sky: {fileID: 0}
