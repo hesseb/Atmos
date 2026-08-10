@@ -34,6 +34,13 @@ public class WorldScaleController : MonoBehaviour
 	public SimpleLodSystem lodSystem;
 	public Camera renderCamera;
 
+	[Tooltip("Owns the camera far clip, per-layer cull distances and shadow distances - all in " +
+		"world units, so all of them have to move with the planet.")]
+	public RenderSettingsController renderSettings;
+
+	[Tooltip("Labels cache their globe radius when they are built, so they need telling.")]
+	public CountryLabelSystem labelSystem;
+
 	[Tooltip("Holds one terrain copy per planet scale, so relief stays at its authored " +
 		"world-unit height instead of scaling with the globe.")]
 	public LodMeshLoader terrainLoader;
@@ -49,9 +56,6 @@ public class WorldScaleController : MonoBehaviour
 
 	/// <summary>Undo for the applied preset. Null when the scene is as authored.</summary>
 	RestoreScope scope;
-
-	/// <summary>Far clip as authored, so LateUpdate never shrinks below it.</summary>
-	float authoredFarClip = 600f;
 
 	/// <summary>The planet scale currently applied, or 1 when the scene is as authored.</summary>
 	float ScaleInEffect => Current != null ? Current.planetScale : 1f;
@@ -81,7 +85,12 @@ public class WorldScaleController : MonoBehaviour
 		// so GetComponent returns null - and written as `testbedCamera != null ? GetComponent :
 		// Camera.main`, the fallback never ran, renderCamera stayed null, and the far clip was
 		// never scaled. Terrain then vanished past 600 units at every planet scale.
-		if (renderCamera == null && testbedCamera != null) { renderCamera = testbedCamera.GetComponent<Camera>(); }
+		if (renderSettings == null) { renderSettings = FindFirstObjectByType<RenderSettingsController>(); }
+		if (labelSystem == null) { labelSystem = FindFirstObjectByType<CountryLabelSystem>(); }
+
+		// TestbedCamera holds the rendering camera explicitly; that is more reliable than
+		// GetComponent, which fails here because the Camera lives on its own GameObject.
+		if (renderCamera == null && testbedCamera != null) { renderCamera = testbedCamera.cam; }
 		if (renderCamera == null) { renderCamera = Camera.main; }
 		if (renderCamera == null) { renderCamera = FindFirstObjectByType<Camera>(); }
 
@@ -122,30 +131,6 @@ public class WorldScaleController : MonoBehaviour
 	void Update()
 	{
 		if (Input.GetKeyDown(cycleKey)) { Cycle(); }
-	}
-
-	/// <summary>
-	/// Keeps the far clip past the horizon, at whatever altitude the camera is at.
-	///
-	/// The visible surface ends at the horizon, sqrt(r^2 - R^2) away, which grows with both
-	/// altitude and planet size - 219 units from 10 up on a x16 planet, but 1000 from 200 up.
-	/// A fixed 600 therefore culled the terrain as soon as you pulled back far enough to see the
-	/// planet at all, and the larger the planet the sooner it bit.
-	///
-	/// Derived rather than multiplied by the scale, because a multiply is only right at the one
-	/// altitude it was computed for.
-	/// </summary>
-	void LateUpdate()
-	{
-		if (renderCamera == null || atmosphere == null || scope == null) { return; }
-
-		float radius = renderCamera.transform.position.magnitude;
-		float bodyRadius = atmosphere.bodyRadius;
-
-		float horizon = Mathf.Sqrt(Mathf.Max(0f, radius * radius - bodyRadius * bodyRadius));
-		float needed = horizon + atmosphere.atmosphereThickness * 2f + bodyRadius * 0.05f;
-
-		renderCamera.farClipPlane = Mathf.Max(authoredFarClip, needed);
 	}
 
 	public void Cycle()
@@ -228,25 +213,56 @@ public class WorldScaleController : MonoBehaviour
 					v => lodSystem.highResDistanceThreshold = v, lodSystem.highResDistanceThreshold * k);
 			}
 
-			// Far clip is maintained per frame in LateUpdate rather than scaled once here: a
-			// single multiply is only correct at one altitude, and the camera can zoom out.
-			// Registering the authored value is still this scope's job.
-			if (renderCamera != null)
+			// Culling distances. These are the whole story behind terrain vanishing on a scaled
+			// planet, and none of them are the far clip alone: RenderSettingsController also sets
+			// layerCullDistances, which culls per layer by distance regardless of the frustum,
+			// and it applies all of it in Awake so anything set afterwards is overwritten.
+			//
+			// Terrain sits on a layer capped at 400 units. The visible surface reaches the horizon
+			// at sqrt(r^2 - R^2), which is 316 units from the highest reachable altitude on the x1
+			// planet - just inside - but 492 at x16 from only 50 up. Hence a planet that never
+			// culled at x1, culled after some zoom at x4, and culled almost immediately at x16.
+			if (renderSettings != null)
 			{
-				authoredFarClip = renderCamera.farClipPlane;
-				float restore = authoredFarClip;
-				scope.Add(() => { if (renderCamera != null) { renderCamera.farClipPlane = restore; } });
+				scope.Set(() => renderSettings.maxCameraCullDst, v => renderSettings.maxCameraCullDst = v,
+					renderSettings.maxCameraCullDst * k);
+				scope.Set(() => renderSettings.maxLightShadowCullDst, v => renderSettings.maxLightShadowCullDst = v,
+					renderSettings.maxLightShadowCullDst * k);
+				scope.Set(() => renderSettings.shadowDrawDistance, v => renderSettings.shadowDrawDistance = v,
+					renderSettings.shadowDrawDistance * k);
+
+				// Per-layer overrides are a struct array, so it is replaced wholesale rather than
+				// mutated in place - a copy of the authored array is what the scope restores.
+				RenderSettingsController.LayerOverride[] authored = renderSettings.layerOverrides;
+				if (authored != null)
+				{
+					var scaled = new RenderSettingsController.LayerOverride[authored.Length];
+					for (int i = 0; i < authored.Length; i++)
+					{
+						scaled[i] = authored[i];
+						scaled[i].cameraCullDst *= k;
+						scaled[i].shadowCullDst *= k;
+					}
+					scope.Set(() => renderSettings.layerOverrides, v => renderSettings.layerOverrides = v, scaled);
+				}
+
+				renderSettings.ApplySettings();
+				scope.Add(() => renderSettings.ApplySettings());
+			}
+
+			// Labels bake worldPosition = anchorDirection * radius once, when they are built, so
+			// without this they stay on the radius the globe had at startup - floating in space.
+			if (labelSystem != null && heightSettings != null)
+			{
+				labelSystem.SetGlobeRadius(heightSettings.worldRadius);
+				float authoredRadius = heightSettings.worldRadius / k;
+				scope.Add(() => labelSystem.SetGlobeRadius(authoredRadius));
 			}
 
 			if (testbedCamera != null)
 			{
 				scope.Set(() => testbedCamera.maxAltitude, v => testbedCamera.maxAltitude = v, testbedCamera.maxAltitude * k);
 			}
-
-			// Shadows are cast over a world-space distance, so an unscaled shadow distance would
-			// leave a x16 planet with shadows only in the few units nearest the camera.
-			scope.Set(() => QualitySettings.shadowDistance, v => QualitySettings.shadowDistance = v,
-				QualitySettings.shadowDistance * k);
 
 			// The terrain copy whose relief was pre-divided by this scale, so the x k transform
 			// leaves mountains at their authored height rather than k times it.
