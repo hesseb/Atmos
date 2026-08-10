@@ -103,8 +103,9 @@ namespace TerrainGeneration
 
 			for (int i = 0; i < meshData.Length; i++)
 			{
-				// Height above the base radius must survive the planet scale unchanged. Skipped
-				// when baseRadius is 0, so the old five-argument callers behave as before.
+				// Moves the mesh onto the scaled planet while leaving height above the surface
+				// unchanged. Skipped when baseRadius is 0, so old five-argument callers are
+				// unaffected.
 				if (baseRadius > 0f) { PlanetRelief.Correct(meshData[i], baseRadius, planetScale); }
 
 				var renderObject = MeshHelper.CreateRendererObject(meshData[i].name, meshData[i], material, parent: parent, layer: layer);

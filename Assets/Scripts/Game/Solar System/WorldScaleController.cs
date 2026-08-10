@@ -191,13 +191,25 @@ public class WorldScaleController : MonoBehaviour
 		{
 			float k = Mathf.Max(1e-3f, preset.planetScale);
 
-			if (worldRoot != null)
+			// The World transform is deliberately NOT scaled. The planet radius is baked into the
+			// mesh vertices instead - see PlanetRelief.Correct. Terrain, outlines and ocean are
+			// statically batched, and static batching bakes renderer bounds in world space at
+			// combine time, so scaling the root left every chunk carrying bounds from its
+			// unscaled position and Unity frustum-culled chunks that were plainly on screen.
+			// That is the panels-of-the-planet-vanishing artefact, and it got worse with scale.
+			//
+			// Nothing else under World needs the transform: the remaining children are logic
+			// (lookup, interaction, LOD, height processor) or generated from worldRadius, which
+			// is set below.
+			if (worldRoot != null && worldRoot.localScale != Vector3.one)
 			{
-				scope.Set(() => worldRoot.localScale, v => worldRoot.localScale = v, Vector3.one * k);
+				scope.Set(() => worldRoot.localScale, v => worldRoot.localScale = v, Vector3.one);
 			}
 
 			// The authored radius, read before the scope overwrites it - Set captures the current
 			// value as the undo, and cycling disposes first, so this is always the authored one.
+			// worldRadius drives the camera's surface radius, the picker, the labels, the country
+			// highlight and the city-light generator, so it has to agree with the baked meshes.
 			if (heightSettings != null)
 			{
 				float baseRadius = heightSettings.worldRadius;
