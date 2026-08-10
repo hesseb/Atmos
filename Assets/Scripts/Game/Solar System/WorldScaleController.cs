@@ -44,6 +44,9 @@ public class WorldScaleController : MonoBehaviour
 	[Tooltip("Positions live in a compute buffer drawn indirectly, so they need rewriting.")]
 	public CityLights cityLights;
 
+	[Tooltip("Orbits at a fixed world-unit distance, which a large enough planet swallows.")]
+	public SolarSystem.Moon moon;
+
 	[Tooltip("Holds one terrain copy per planet scale, so relief stays at its authored " +
 		"world-unit height instead of scaling with the globe.")]
 	public LodMeshLoader terrainLoader;
@@ -91,6 +94,7 @@ public class WorldScaleController : MonoBehaviour
 		if (renderSettings == null) { renderSettings = FindFirstObjectByType<RenderSettingsController>(); }
 		if (labelSystem == null) { labelSystem = FindFirstObjectByType<CountryLabelSystem>(); }
 		if (cityLights == null) { cityLights = FindFirstObjectByType<CityLights>(); }
+		if (moon == null) { moon = FindFirstObjectByType<SolarSystem.Moon>(); }
 
 		// TestbedCamera holds the rendering camera explicitly; that is more reliable than
 		// GetComponent, which fails here because the Camera lives on its own GameObject.
@@ -235,8 +239,11 @@ public class WorldScaleController : MonoBehaviour
 			// culled at x1, culled after some zoom at x4, and culled almost immediately at x16.
 			if (renderSettings != null)
 			{
+				// Far enough for the moon as well as the planet: it now orbits at roughly
+				// 4 * dstMultiplier, which outruns a plain scaling of the camera distance.
+				float moonDistance = moon != null ? moon.apoapsis * moon.dstMultiplier * k : 0f;
 				scope.Set(() => renderSettings.maxCameraCullDst, v => renderSettings.maxCameraCullDst = v,
-					renderSettings.maxCameraCullDst * k);
+					Mathf.Max(renderSettings.maxCameraCullDst * k, moonDistance * 1.2f));
 				scope.Set(() => renderSettings.maxLightShadowCullDst, v => renderSettings.maxLightShadowCullDst = v,
 					renderSettings.maxLightShadowCullDst * k);
 				scope.Set(() => renderSettings.shadowDrawDistance, v => renderSettings.shadowDrawDistance = v,
@@ -269,6 +276,17 @@ public class WorldScaleController : MonoBehaviour
 			// them and the buffer has to be rewritten. CityLights also applies this itself when it
 			// initialises, since it is created by a loading task that may run after this.
 			if (cityLights != null) { cityLights.SetPlanetScale(baseRadius, k); }
+
+			// The moon orbits at a fixed distance in world units - about 804 with the shipped
+			// parameters. That clears a 150-unit planet comfortably and a 600-unit one narrowly,
+			// but a 2400-unit planet simply swallows it: the moon ends up 1600 units below the
+			// surface, permanently inside the globe. Distance and size both scale so it keeps its
+			// place in the sky and its apparent size.
+			if (moon != null)
+			{
+				scope.Set(() => moon.dstMultiplier, v => moon.dstMultiplier = v, moon.dstMultiplier * k);
+				scope.Set(() => moon.size, v => moon.size = v, moon.size * k);
+			}
 
 			if (testbedCamera != null)
 			{
