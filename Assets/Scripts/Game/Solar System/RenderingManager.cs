@@ -123,11 +123,35 @@ public class RenderingManager : MonoBehaviour
 		if (next != null) { cam.AddCommandBuffer(CameraEvent.BeforeForwardOpaque, next); }
 
 		activeMode = desired;
+		PublishSkyReflectionStrength();
+	}
+
+	/// <summary>
+	/// Tells scene shaders whether there is a physically based sky worth reflecting.
+	///
+	/// The ocean reflects the atmosphere's sky view LUT. That LUT is only refreshed while the
+	/// atmosphere effect is enabled, so in Baseline and Null mode it would simply hold whatever the
+	/// last physically based frame left in it - and an ocean reflecting a frozen sky is not a
+	/// defensible control condition for the comparison.
+	///
+	/// Gating it also draws the line cleanly for the report: with the gate, baseline and physically
+	/// based images differ only in the sky pass and its effect on the ocean is excluded; the ocean's
+	/// sky-derived colour is then reported as a further benefit of the physically based sky rather
+	/// than being silently folded into it.
+	/// </summary>
+	void PublishSkyReflectionStrength()
+	{
+		Shader.SetGlobalFloat("skyReflectionStrength", activeMode == SkyMode.PhysicallyBased ? 1f : 0f);
 	}
 
 	void Update()
 	{
 		ApplyMode(DesiredMode);
+
+		// Republished every frame rather than only on a mode change: ApplyMode early-returns
+		// when the mode is unchanged, which would leave the global unset for the first frames
+		// and after a domain reload. One float is not worth an ordering bug.
+		PublishSkyReflectionStrength();
 	}
 
 	void OnDisable()
