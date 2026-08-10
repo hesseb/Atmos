@@ -114,6 +114,9 @@ public class CityLights : MonoBehaviour
 		{
 			Bounds b = bakedBounds[i];
 			renderers[i].bounds = new Bounds(b.center * planetScale, b.size * planetScale);
+
+			// Sizes are constant shader data, so they only reach the material when re-pushed.
+			AssignConstantShaderData(renderers[i]);
 		}
 	}
 
@@ -155,8 +158,11 @@ public class CityLights : MonoBehaviour
 		r.material.SetColor("colourDim", colourDim);
 		r.material.SetColor("colourBright", colourBright);
 		r.material.SetFloat("brightnessMultiplier", brightnessMultiplier);
-		r.material.SetFloat("sizeMin", sizeMin);
-		r.material.SetFloat("sizeMax", sizeMax);
+		// Scaled with the globe. These are world-space radii, so on a x16 planet an unscaled
+		// light is sixteen times too small for the city it stands for - the lights end up as
+		// invisible specks over terrain that grew around them.
+		r.material.SetFloat("sizeMin", sizeMin * planetScale);
+		r.material.SetFloat("sizeMax", sizeMax * planetScale);
 		r.material.SetFloat("turnOnTimeVariation", turnOnTimeVariation);
 		r.material.SetFloat("turnOnTime", turnOnTime);
 	}
