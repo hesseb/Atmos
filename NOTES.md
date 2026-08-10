@@ -1744,3 +1744,96 @@ The four items in the previous session summary all still stand. Added by this wo
 8. The sky view LUT fixes the sun's elevation at one reference point, but the visible ocean spans
    20.4 degrees of arc at x1. A 3D LUT with sun zenith as the third axis is the clean fix, and being
    independent of both sun and camera position it could be baked once at init.
+
+---
+
+## Session summary: city lights on the water
+
+The night side had a black ocean sitting next to coastlines blazing with 151,601 city light
+instances. The water now picks up three things from them: a spill that reads at any altitude, a
+streak at grazing angles, and a soft glint on the water facing a city.
+
+### Getting at data the shader cannot iterate
+
+The lights are point instances in a `StructuredBuffer`, drawn with `DrawMeshInstancedIndirect`.
+Nothing per-pixel can loop over them. But `CityLightSpawner.compute` rejection-samples those points
+from the NASA night-lights map, so a field baked from that same map agrees with the lights actually
+drawn - without the ocean touching the buffer at all. That equivalence is the whole basis of this.
+
+`CityLightField.compute` bakes a 2048x1024 RGBA: bearing to the surrounding light in the local
+east/north basis, the glow itself, and how one-sided that bearing is.
+
+**The gather is done in angular space** - offsets are rotations of the sphere point, not steps in
+UV. Equirectangular distortion disappears, the seam at u=0 needs no special case, and the result is
+invariant under F7, because an angle does not care how big the planet is. Accumulating the sample
+bearings in the same loop yields the direction field for free.
+
+Two details in the bake are load-bearing rather than incidental. Samples are taken from a mip chosen
+so each tap averages the gap to its neighbour on the ring - without it the far field is pure
+aliasing. And the dispatch is split into horizontal bands, because one dispatch for the whole image
+is long enough to trip the Windows GPU watchdog and reset the driver mid-bake.
+
+### The coherence channel, which was not in the plan
+
+The plan listed "a centroid is not a light source" as an unfixable limitation: one bearing per texel
+means two cities across a bay average into a direction pointing at neither. That showed up as a
+serrated seam down the middle of the Strait of Gibraltar, where the averaged bearing flips hard from
+one bank to the other.
+
+It is not unfixable. The bake computes `length(dirAccum)` and throws it away when normalising, and
+that length relative to the unsigned total is exactly how one-sided the light is: 1 when it all
+arrives from one bearing, 0 when opposite banks cancel. The fourth channel was holding a
+nearest-lit-land distance nothing read, so it carries coherence instead and the glint fades out
+where the bearing is meaningless rather than drawing an edge along the flip.
+
+Measured on the real map: Gibraltar 0.095, Sea of Marmara 0.092, Dover 0.097, against 0.877 off
+Lisbon, 0.742 off Los Angeles, 0.719 off New Jersey. Eightfold separation between the cases that
+broke and the cases that worked.
+
+### Deliberately not gated on skyReflectionStrength
+
+Unlike every sky-derived term added to the ocean and terrain before it. City lights are emissive
+scene dressing, not atmosphere; gating them would make the baseline and physically based images
+differ in something other than the sky, which is the exact failure that gate exists to prevent.
+
+### Bugs found in the process, worth remembering
+
+- **Three separate factors compounded to 1/380th of white**, and the effect was invisible. Squaring
+  the sqrt-encoded field back to linear, modulating the spill by the night ocean's own dark colour,
+  and slider ranges sized for neither. The general lesson: when a term is built from several
+  multiplied factors each below 1, estimate the product before deciding it is a tuning problem.
+- **A gamma-space project wants the encoded value, not the decoded one.** The field stores sqrt(glow)
+  for precision in the darks; squaring it back on read is the faithful decode, but the buffer being
+  added to is gamma-encoded, so the stored value is the one that belongs there - and squaring also
+  steepened the falloff into a thin rim rather than a glow.
+- **Marching a blurred field over less than its own blur radius returns the blur.** The streak was
+  marching the baked field 0.02 rad when the bake had already averaged it isotropically over 0.05,
+  which is why it was indistinguishable from the spill. Marching the sharp source map fixed it.
+- **A specular lobe is the wrong model for an extended source over a direction field.**
+  `calculateSpecular` fires where the half-vector matches the wave normal, which for a fixed light
+  traces the one coherent glint path - but over a bearing field that swings per pixel, the condition
+  is met along curves that sweep as the camera moves. `pow(aim, 12)` has the same problem for the
+  same reason: a sharp threshold through a smooth field is a contour line, and a contour line is a
+  curve in space rather than a blob.
+- **Normalising a vector that is about to go to zero produces noise, not a direction.** The glint's
+  aim direction is the reflected ray's tangential component, which vanishes looking straight down -
+  so from overhead it was per-pixel noise. Multiplying by the component's length removes the noise
+  exactly where it lives and happens to state the physics too.
+- `Assets/Scripts/Types/Shape.cs` declares a `Path` struct in the global namespace, and a global type
+  beats a using-imported one - so `System.IO.Path` silently resolves to it.
+- A CPU reference in Python over the real source data caught the direction-channel sign and the
+  coherence separation before either cost an in-editor round trip. Worth doing again for anything
+  baked. Note that PIL's row 0 is north while the UV convention here puts v=0 at the south pole; the
+  flip cancels between input and output, so a preview can look correct while lookups by latitude are
+  wrong.
+
+### Open before the next milestone
+
+Everything listed in the two previous summaries still stands. Nothing new blocks clouds.
+
+- The march has no occlusion, so a city behind a headland still streaks through it.
+- The field is static and cannot follow the lights' own turn-on animation, so at the terminator the
+  water glows slightly before or after the lights themselves.
+- The streak reach is fixed, so a very distant city produces no streak however bright it is.
+- All three terms are authored rather than physical, and belong in the report beside `_AmbientNight`
+  and `_NightAmbient` as declared approximations.
