@@ -157,6 +157,10 @@ public class WorldScaleController : MonoBehaviour
 		// Unwind the previous preset first, so each scope holds the *authored* values rather
 		// than the previous preset's - otherwise cycling twice would make the restore a no-op
 		// and the authored state would be lost.
+		// Captured before `current` moves on, so the camera's height can be carried across as a
+		// fraction of the planet rather than as a distance.
+		float previousScale = ScaleInEffect;
+
 		scope?.Dispose();
 		scope = new RestoreScope();
 		current = index;
@@ -175,10 +179,16 @@ public class WorldScaleController : MonoBehaviour
 			scope.Add(() => atmosphere.MarkSettingsDirty());
 		}
 
-		// Planet geometry. Everything below derives from the same scale, so they cannot drift.
+		// Planet geometry. Everything derives from the same scale, so nothing can drift.
+		//
+		// At method scope because the camera block below needs them too. baseRadius is the
+		// authored radius: the scope is disposed before this point, so worldRadius has already
+		// been restored and reads as authored rather than as a previously scaled value.
+		float k = Mathf.Max(1e-3f, preset.planetScale);
+		float baseRadius = heightSettings != null ? heightSettings.worldRadius : 150f;
+
 		if (!Mathf.Approximately(preset.planetScale, 1f) || worldRoot != null)
 		{
-			float k = Mathf.Max(1e-3f, preset.planetScale);
 
 			// The World transform is deliberately NOT scaled. The planet radius is baked into the
 			// mesh vertices instead - see PlanetRelief.Correct. Terrain, outlines and ocean are
@@ -195,14 +205,8 @@ public class WorldScaleController : MonoBehaviour
 				scope.Set(() => worldRoot.localScale, v => worldRoot.localScale = v, Vector3.one);
 			}
 
-			// The authored radius, read before the scope overwrites it - Set captures the current
-			// value as the undo, and cycling disposes first, so this is always the authored one.
 			// worldRadius drives the camera's surface radius, the picker, the labels, the country
-			// highlight and the city-light generator, so it has to agree with the baked meshes.
-			// The authored radius, read before the scope overwrites it. Cycling disposes the
-			// previous scope first, so this is always the authored value rather than a scaled one.
-			float baseRadius = heightSettings != null ? heightSettings.worldRadius : 150f;
-
+			// highlight and the city lights, so it has to agree with the baked meshes.
 			if (heightSettings != null)
 			{
 				scope.Set(() => heightSettings.worldRadius, v => heightSettings.worldRadius = v, baseRadius * k);
@@ -309,11 +313,28 @@ public class WorldScaleController : MonoBehaviour
 			scope.Set(() => testbedCamera.panSpeed, v => testbedCamera.panSpeed = v,
 				preset.panSpeed / Mathf.Max(1e-3f, preset.planetScale));
 			scope.Set(() => testbedCamera.flySpeed, v => testbedCamera.flySpeed = v, preset.flySpeed);
-			// Orbit mode re-applies the pose every frame, so writing the field is enough to move
-			// the camera. Free-fly derives altitude from the transform instead and will not
-			// jump - which is the right behaviour, since a preset should not teleport a camera
-			// the user is flying.
-			scope.Set(() => testbedCamera.altitude, v => testbedCamera.altitude = v, preset.altitude);
+
+			// modeSwitchAltitude is deliberately absent: it is a fraction of the planet radius, so
+			// it follows the scale on its own and there is nothing here to keep in step.
+			// Keep the FRAMING across a scale change rather than a distance.
+			//
+			// Forcing the preset's altitude meant landing 10 units above a 2400-unit globe at x16 -
+			// on top of the surface, with nothing recognisable in view. Holding the altitude as a
+			// fraction of the radius instead makes the swap a pure change of planet size: the same
+			// amount of world stays in frame, the same curvature, and what visibly differs is the
+			// atmosphere, which is the whole point of being able to switch.
+			//
+			// Moved rather than assigned, and last, after the new surface radius is in place -
+			// writing the field alone only works in Orbit mode, since free-fly treats the transform
+			// as authoritative and merely derives altitude from it.
+			float previousRadius = baseRadius * Mathf.Max(1e-3f, previousScale);
+			float previousAltitude = testbedCamera.transform.position.magnitude - previousRadius;
+			float altitudeFraction = previousAltitude / previousRadius;
+
+			// Never below the preset's working altitude, which is the height its atmosphere and
+			// camera speeds are tuned around.
+			float targetAltitude = Mathf.Max(preset.altitude, altitudeFraction * baseRadius * k);
+			testbedCamera.SetAltitudeAboveSurface(targetAltitude);
 		}
 
 		Debug.Log($"[WorldScale] {preset.id}: {Summary(preset)}", this);
