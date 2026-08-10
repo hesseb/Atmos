@@ -11,7 +11,11 @@
 #ifndef TRANSMITTANCE_COMMON_INCLUDED
 #define TRANSMITTANCE_COMMON_INCLUDED
 
-#include "LutMapping.hlsl"
+// Assets-absolute, not relative, because this header is now included from outside the atmosphere
+// tree - Ocean.shader samples the transmittance LUT for its sun glint. A relative include resolves
+// against the *including* file in some of Unity's shader paths, so "LutMapping.hlsl" was only ever
+// findable from within this folder. Same convention GeoMath.hlsl already uses for Math.hlsl.
+#include "Assets/Post Processing/Effects/Atmosphere/Shader Common/LutMapping.hlsl"
 
 // Planet dimensions, in world units. Declared here rather than by the includers so there is
 // exactly one declaration of each.

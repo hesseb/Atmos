@@ -205,6 +205,31 @@ public class AtmosphereEffect : PostProcessingEffect
 				RenderAerialPerspectiveLUTs(activeCamera);
 			}
 		}
+
+		// Deliberately outside the dirty-flag branch, and deliberately here rather than in
+		// SetProperties.
+		//
+		// This runs on Camera.onPreCull, so it lands before opaque geometry is drawn. SetProperties
+		// runs from OnRenderImage - after the ocean has already been shaded for the frame - so
+		// binding there would leave scene shaders reading last frame's values, or none at all on
+		// the first frame.
+		BindGlobalResources();
+	}
+
+	/// <summary>
+	/// Publishes the atmosphere's values and LUTs as globals, for scene shaders this effect does
+	/// not own a reference to.
+	///
+	/// The ocean is the first such consumer: it colours its sun glint by sun transmittance, which
+	/// needs the transmittance LUT and the four size/geometry uniforms its parameterisation reads.
+	/// See ShaderValues.ApplyGlobal for why globals rather than a material reference.
+	/// </summary>
+	void BindGlobalResources()
+	{
+		sharedAtmosphereValues?.ApplyGlobal();
+
+		if (transmittanceLUT != null) { Shader.SetGlobalTexture("TransmittanceLUT", transmittanceLUT); }
+		if (multipleScatteringLUT != null) { Shader.SetGlobalTexture("MultipleScatteringLUT", multipleScatteringLUT); }
 	}
 
 	void OnDisable()
@@ -658,6 +683,39 @@ public class AtmosphereEffect : PostProcessingEffect
 			foreach (var data in vectors)
 			{
 				compute.SetVector(data.name, data.value);
+			}
+		}
+
+		/// <summary>
+		/// Pushes the same values as globals, for shaders the atmosphere does not own.
+		///
+		/// The ocean samples the transmittance LUT to colour its sun glint, and it is scene
+		/// geometry rather than one of this effect's own materials - so either this effect holds a
+		/// reference to a game material, or the values go out globally. Globals win on one
+		/// decisive point: `planetRadius`, `atmosphereRadius`, `intensity`, `contrast` and
+		/// `whitePoint` all change when a world-scale preset is swapped, so anything authored on
+		/// the ocean material would be silently wrong the moment F7 is pressed.
+		///
+		/// Per-material properties shadow globals in Unity, so nothing that already sets these on
+		/// itself - the atmosphere material, the draw-sky material - changes behaviour. The names
+		/// are generic enough to be worth knowing about: a future shader declaring `float
+		/// intensity;` would inherit this one.
+		/// </summary>
+		public void ApplyGlobal()
+		{
+			foreach (var data in floats)
+			{
+				Shader.SetGlobalFloat(data.name, data.value);
+			}
+
+			foreach (var data in ints)
+			{
+				Shader.SetGlobalInt(data.name, data.value);
+			}
+
+			foreach (var data in vectors)
+			{
+				Shader.SetGlobalVector(data.name, data.value);
 			}
 		}
 
