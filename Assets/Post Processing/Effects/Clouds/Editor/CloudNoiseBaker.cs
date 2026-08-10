@@ -300,7 +300,15 @@ namespace Clouds
 		/// </summary>
 		static void Save(RenderTexture volume, int resolution, string path)
 		{
-			AsyncGPUReadbackRequest request = AsyncGPUReadback.Request(volume, 0, TextureFormat.RGBA32);
+			// The explicit x/y/z extents matter: the short Request(src, mip, format) overload reads a
+			// single depth slice of a 3D texture, not the volume, so the readback comes back
+			// 1/resolution of the size SetPixelData needs and throws.
+			AsyncGPUReadbackRequest request = AsyncGPUReadback.Request(
+				volume, 0,
+				0, resolution,
+				0, resolution,
+				0, resolution,
+				TextureFormat.RGBA32);
 			request.WaitForCompletion();
 
 			if (request.hasError)
@@ -309,12 +317,20 @@ namespace Clouds
 				return;
 			}
 
+			var data = request.GetData<byte>();
+			long expected = (long)resolution * resolution * resolution * 4;
+			if (data.Length != expected)
+			{
+				Debug.LogError($"Cloud noise readback returned {data.Length} bytes, expected {expected} for {resolution}^3 RGBA32");
+				return;
+			}
+
 			var texture = new Texture3D(resolution, resolution, resolution, TextureFormat.RGBA32, false)
 			{
 				wrapMode = TextureWrapMode.Repeat,
 				filterMode = FilterMode.Bilinear
 			};
-			texture.SetPixelData(request.GetData<byte>(), 0);
+			texture.SetPixelData(data, 0);
 			texture.Apply(updateMipmaps: false, makeNoLongerReadable: false);
 
 			System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path));

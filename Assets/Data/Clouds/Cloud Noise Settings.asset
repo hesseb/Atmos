@@ -1,0 +1,74 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b03e0f4af872112468945fc0aa0ec4a9, type: 3}
+  m_Name: Cloud Noise Settings
+  m_EditorClassIdentifier: Assembly-CSharp::Clouds.CloudNoiseSettings
+  shapeResolution: 128
+  detailResolution: 32
+  shape:
+  - seed: 0
+    divisionsA: 3
+    divisionsB: 7
+    divisionsC: 11
+    persistence: 0.65
+    tile: 1
+    invert: 1
+  - seed: 1
+    divisionsA: 9
+    divisionsB: 15
+    divisionsC: 23
+    persistence: 0.33
+    tile: 1
+    invert: 1
+  - seed: 2
+    divisionsA: 13
+    divisionsB: 28
+    divisionsC: 42
+    persistence: 0.58
+    tile: 1
+    invert: 1
+  - seed: 3
+    divisionsA: 20
+    divisionsB: 31
+    divisionsC: 45
+    persistence: 0.74
+    tile: 1
+    invert: 1
+  detail:
+  - seed: 4
+    divisionsA: 8
+    divisionsB: 18
+    divisionsC: 20
+    persistence: 0.76
+    tile: 1
+    invert: 1
+  - seed: 5
+    divisionsA: 13
+    divisionsB: 24
+    divisionsC: 28
+    persistence: 0.6
+    tile: 1
+    invert: 1
+  - seed: 6
+    divisionsA: 20
+    divisionsB: 28
+    divisionsC: 32
+    persistence: 0.6
+    tile: 1
+    invert: 1
+  perlinPeriod: 4
+  perlinOctaves: 6
+  perlinPersistence: 0.5
+  perlinGain: 2.2
+  outputFolder: Assets/Data/Clouds
+  shapeAssetName: Cloud Shape Noise
+  detailAssetName: Cloud Detail Noise
