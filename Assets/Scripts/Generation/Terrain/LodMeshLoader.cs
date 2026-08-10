@@ -4,7 +4,7 @@ using UnityEngine;
 using Seb.Meshing;
 using TerrainGeneration;
 
-public class LodMeshLoader : MonoBehaviour
+public class LodMeshLoader : MonoBehaviour, IPlanetScaleSelectable
 {
 	public TextAsset meshFileHighRes;
 	public TextAsset meshFileLowRes;
@@ -85,36 +85,6 @@ public class LodMeshLoader : MonoBehaviour
 		}
 	}
 
-	/// <summary>
-	/// Rewrites vertices so that, once the World root scales everything by `planetScale`, terrain
-	/// relief ends up at its authored world-unit height instead of scaling with the globe.
-	///
-	/// A uniform transform scales relief along with the radius, so a x16 planet got 48-unit
-	/// mountains against an unchanged 8.8-unit atmosphere scale height - peaks towering out of the
-	/// haze, and a camera at altitude 10 buried inside them. A real planet sixteen times larger
-	/// does not have sixteen times taller mountains.
-	///
-	/// Pre-dividing the relief cancels it exactly: |v| = R0 + h becomes R0 + h/k, which the x k
-	/// transform turns into R0*k + h. The globe grows, the mountains do not.
-	///
-	/// This needs no re-bake because it is the same arithmetic the offline generator would apply,
-	/// to the same source data.
-	/// </summary>
-	static void ApplyReliefCorrection(SimpleMeshData mesh, float baseRadius, float planetScale)
-	{
-		if (Mathf.Approximately(planetScale, 1f)) { return; }
-
-		Vector3[] vertices = mesh.vertices;
-		for (int i = 0; i < vertices.Length; i++)
-		{
-			float radius = vertices[i].magnitude;
-			if (radius <= 1e-5f) { continue; }
-
-			float relief = radius - baseRadius;
-			vertices[i] *= (baseRadius + relief / planetScale) / radius;
-		}
-	}
-
 	MeshRenderer[] CreateRenderers(TextAsset loadFile, Material material, Transform parent, float planetScale)
 	{
 		SimpleMeshData[] meshData = MeshSerializer.BytesToMeshes(loadFile.bytes);
@@ -122,7 +92,7 @@ public class LodMeshLoader : MonoBehaviour
 		float baseRadius = heightSettings != null ? heightSettings.worldRadius : 150f;
 		foreach (SimpleMeshData data in meshData)
 		{
-			ApplyReliefCorrection(data, baseRadius, planetScale);
+			PlanetRelief.Correct(data, baseRadius, planetScale);
 		}
 
 		MeshRenderer[] meshRenderers = new MeshRenderer[meshData.Length];

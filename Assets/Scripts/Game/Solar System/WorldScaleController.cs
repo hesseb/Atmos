@@ -50,6 +50,9 @@ public class WorldScaleController : MonoBehaviour
 	/// <summary>Undo for the applied preset. Null when the scene is as authored.</summary>
 	RestoreScope scope;
 
+	/// <summary>Far clip as authored, so LateUpdate never shrinks below it.</summary>
+	float authoredFarClip = 600f;
+
 	/// <summary>The planet scale currently applied, or 1 when the scene is as authored.</summary>
 	float ScaleInEffect => Current != null ? Current.planetScale : 1f;
 
@@ -74,7 +77,13 @@ public class WorldScaleController : MonoBehaviour
 		if (testbedCamera == null) { testbedCamera = FindFirstObjectByType<TestbedCamera>(); }
 		if (lodSystem == null) { lodSystem = FindFirstObjectByType<SimpleLodSystem>(); }
 		if (terrainLoader == null) { terrainLoader = FindFirstObjectByType<LodMeshLoader>(); }
-		if (renderCamera == null) { renderCamera = testbedCamera != null ? testbedCamera.GetComponent<Camera>() : Camera.main; }
+		// Three separate statements, not a conditional. The Camera lives on its own GameObject,
+		// so GetComponent returns null - and written as `testbedCamera != null ? GetComponent :
+		// Camera.main`, the fallback never ran, renderCamera stayed null, and the far clip was
+		// never scaled. Terrain then vanished past 600 units at every planet scale.
+		if (renderCamera == null && testbedCamera != null) { renderCamera = testbedCamera.GetComponent<Camera>(); }
+		if (renderCamera == null) { renderCamera = Camera.main; }
+		if (renderCamera == null) { renderCamera = FindFirstObjectByType<Camera>(); }
 
 		// The camera already holds it, and it must be the SAME asset instance or the camera would
 		// keep reading an unscaled radius while everything else scaled.
@@ -113,6 +122,30 @@ public class WorldScaleController : MonoBehaviour
 	void Update()
 	{
 		if (Input.GetKeyDown(cycleKey)) { Cycle(); }
+	}
+
+	/// <summary>
+	/// Keeps the far clip past the horizon, at whatever altitude the camera is at.
+	///
+	/// The visible surface ends at the horizon, sqrt(r^2 - R^2) away, which grows with both
+	/// altitude and planet size - 219 units from 10 up on a x16 planet, but 1000 from 200 up.
+	/// A fixed 600 therefore culled the terrain as soon as you pulled back far enough to see the
+	/// planet at all, and the larger the planet the sooner it bit.
+	///
+	/// Derived rather than multiplied by the scale, because a multiply is only right at the one
+	/// altitude it was computed for.
+	/// </summary>
+	void LateUpdate()
+	{
+		if (renderCamera == null || atmosphere == null || scope == null) { return; }
+
+		float radius = renderCamera.transform.position.magnitude;
+		float bodyRadius = atmosphere.bodyRadius;
+
+		float horizon = Mathf.Sqrt(Mathf.Max(0f, radius * radius - bodyRadius * bodyRadius));
+		float needed = horizon + atmosphere.atmosphereThickness * 2f + bodyRadius * 0.05f;
+
+		renderCamera.farClipPlane = Mathf.Max(authoredFarClip, needed);
 	}
 
 	public void Cycle()
@@ -183,11 +216,14 @@ public class WorldScaleController : MonoBehaviour
 					v => lodSystem.highResDistanceThreshold = v, lodSystem.highResDistanceThreshold * k);
 			}
 
-			// Far clip is 600 against a 400-unit camera radius today - barely enough to reach the
-			// planet's far side, and nowhere near it once the planet grows.
+			// Far clip is maintained per frame in LateUpdate rather than scaled once here: a
+			// single multiply is only correct at one altitude, and the camera can zoom out.
+			// Registering the authored value is still this scope's job.
 			if (renderCamera != null)
 			{
-				scope.Set(() => renderCamera.farClipPlane, v => renderCamera.farClipPlane = v, renderCamera.farClipPlane * k);
+				authoredFarClip = renderCamera.farClipPlane;
+				float restore = authoredFarClip;
+				scope.Add(() => { if (renderCamera != null) { renderCamera.farClipPlane = restore; } });
 			}
 
 			if (testbedCamera != null)
@@ -202,10 +238,16 @@ public class WorldScaleController : MonoBehaviour
 
 			// The terrain copy whose relief was pre-divided by this scale, so the x k transform
 			// leaves mountains at their authored height rather than k times it.
-			if (terrainLoader != null && !terrainLoader.SelectScale(k))
+			// Every loader that holds per-scale copies, not just the terrain. Country outlines sit
+			// at a small offset above the surface, so if their copy is not switched with the
+			// terrain's the borders end up floating in the sky at k times their offset.
+			foreach (MonoBehaviour behaviour in FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None))
 			{
-				Debug.LogWarning($"[WorldScale] no terrain copy for scale {k}; relief will scale " +
-					"with the planet. Add it to LodMeshLoader.planetScales.", this);
+				if (behaviour is IPlanetScaleSelectable selectable && !selectable.SelectScale(k))
+				{
+					Debug.LogWarning($"[WorldScale] {behaviour.name} has no copy for scale {k}; its " +
+						"relief will scale with the planet. Add it to that loader's planetScales.", behaviour);
+				}
 			}
 		}
 

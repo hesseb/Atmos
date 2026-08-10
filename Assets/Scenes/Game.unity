@@ -1104,6 +1104,11 @@ MonoBehaviour:
   useStaticBatching: 1
   loadOnStart: 0
   disableLoading: 0
+  planetScales:
+  - 1
+  - 4
+  - 16
+  heightSettings: {fileID: 11400000, guid: 159ce22bf92aee440ad10625d3e3a8e9, type: 2}
 --- !u!4 &1459814464
 Transform:
   m_ObjectHideFlags: 0
@@ -1996,6 +2001,11 @@ MonoBehaviour:
   useStaticBatching: 1
   loadOnStart: 0
   disableLoading: 0
+  planetScales:
+  - 1
+  - 4
+  - 16
+  heightSettings: {fileID: 11400000, guid: 159ce22bf92aee440ad10625d3e3a8e9, type: 2}
 --- !u!114 &2128640981
 MonoBehaviour:
   m_ObjectHideFlags: 0
