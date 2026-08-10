@@ -1501,6 +1501,38 @@ is carrying a factor of 2.9. Going further means shorter mountains again - `heig
 1.1 would allow a 1200 km planet at 2.3x - and a smaller visible fraction of the globe. Left
 until there is a picture to judge.
 
+### Real planet scaling on a key, x1 / x4 / x16
+
+The atmosphere-thickness trick was replaced with the honest dial: `planetScale` uniformly scales
+the `World` root, and with it `worldRadius`, `bodyRadius`, the LOD distance threshold, the camera
+far clip and max altitude. The atmosphere's scale height stays fixed in world units, so R/H - the
+only thing horizon air mass depends on - grows with the planet.
+
+**It is free because the terrain is not generated at play time.** `TerrainGenerator` is an offline
+bake tool; `LodMeshLoader` deserialises pre-baked meshes at startup. So no duplicate geometry is
+needed and no regeneration happens - and both scales are the *same* terrain, which makes the
+comparison controlled in a way two separate bakes would not be.
+
+| preset | radius | air mass | horizon | content in view |
+|---|---|---|---|---|
+| `planet-x1` | 136 km | 5.2 | 54.8 u | 54.8 |
+| `planet-x4` | 545 km | 10.4 | 109.5 u | **27.4** |
+| `planet-x16` | 2182 km | 20.7 | 219.1 u | **13.7** |
+| Earth | 6371 km | 35.4 | - | - |
+
+Air mass grows as sqrt(k) while terrain grows as k, so **visible content falls as 1/sqrt(k)**.
+That is the whole practicality argument in one line, and it is now a keypress.
+
+Everything planet-scale sits under `World` - terrain, outlines, ocean, city lights, world lookup.
+The Solar System is deliberately outside it, so the sun, moon and stars do not scale.
+
+**Caveat to state in the report.** A uniform transform scales the *relief* too, so at x4 mountains
+are 12 world units rather than 3 against an unchanged 8.8-unit scale height. A real planet four
+times larger would not have four times taller mountains, so this exaggerates how far peaks stand
+out of the haze. Correcting it means re-baking the terrain at a different `worldRadius` with the
+same `heightMultiplier`, which the offline generator can do at the cost of a second copy of the
+73 MB mesh data. Not done: the exaggeration overstates a real effect rather than inventing one.
+
 ### Reverted to the 136 km planet, with both scales on a key
 
 Playing the 750 km world settled the question: it is impractical. You see too little of the

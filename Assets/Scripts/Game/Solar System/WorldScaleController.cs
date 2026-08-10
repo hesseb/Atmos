@@ -1,3 +1,4 @@
+using TerrainGeneration;
 using UnityEngine;
 
 /// <summary>
@@ -21,6 +22,18 @@ public class WorldScaleController : MonoBehaviour
 	public AtmosphereEffect atmosphere;
 	public TestbedCamera testbedCamera;
 
+	[Header("Planet scaling")]
+	[Tooltip("Root of everything at planet scale - terrain, outlines, ocean, city lights. The " +
+		"Solar System is deliberately NOT under it: the sun and stars must not scale.")]
+	public Transform worldRoot;
+
+	[Tooltip("Read by the camera, the picker, the labels and the highlight for surface radius. " +
+		"A ScriptableObject, so changes to it are undone through the scope like the rest.")]
+	public TerrainHeightSettings heightSettings;
+
+	public SimpleLodSystem lodSystem;
+	public Camera renderCamera;
+
 	[Tooltip("Cycles to the next preset. F5 and F6 belong to the benchmark HUD.")]
 	public KeyCode cycleKey = KeyCode.F7;
 
@@ -32,6 +45,9 @@ public class WorldScaleController : MonoBehaviour
 
 	/// <summary>Undo for the applied preset. Null when the scene is as authored.</summary>
 	RestoreScope scope;
+
+	/// <summary>The planet scale currently applied, or 1 when the scene is as authored.</summary>
+	float ScaleInEffect => Current != null ? Current.planetScale : 1f;
 
 	public WorldScalePreset Current =>
 		presets != null && current >= 0 && current < presets.Length ? presets[current] : null;
@@ -52,6 +68,18 @@ public class WorldScaleController : MonoBehaviour
 	void Resolve()
 	{
 		if (testbedCamera == null) { testbedCamera = FindFirstObjectByType<TestbedCamera>(); }
+		if (lodSystem == null) { lodSystem = FindFirstObjectByType<SimpleLodSystem>(); }
+		if (renderCamera == null) { renderCamera = testbedCamera != null ? testbedCamera.GetComponent<Camera>() : Camera.main; }
+
+		// The camera already holds it, and it must be the SAME asset instance or the camera would
+		// keep reading an unscaled radius while everything else scaled.
+		if (heightSettings == null && testbedCamera != null) { heightSettings = testbedCamera.heightSettings; }
+
+		if (worldRoot == null)
+		{
+			GameObject world = GameObject.Find("World");
+			if (world != null) { worldRoot = world.transform; }
+		}
 
 		if (atmosphere == null)
 		{
@@ -120,6 +148,49 @@ public class WorldScaleController : MonoBehaviour
 			scope.Add(() => atmosphere.MarkSettingsDirty());
 		}
 
+		// Planet geometry. Everything below derives from the same scale, so they cannot drift.
+		if (!Mathf.Approximately(preset.planetScale, 1f) || worldRoot != null)
+		{
+			float k = Mathf.Max(1e-3f, preset.planetScale);
+
+			if (worldRoot != null)
+			{
+				scope.Set(() => worldRoot.localScale, v => worldRoot.localScale = v, Vector3.one * k);
+			}
+
+			// The authored radius, read before the scope overwrites it - Set captures the current
+			// value as the undo, and cycling disposes first, so this is always the authored one.
+			if (heightSettings != null)
+			{
+				float baseRadius = heightSettings.worldRadius;
+				scope.Set(() => heightSettings.worldRadius, v => heightSettings.worldRadius = v, baseRadius * k);
+				if (atmosphere != null)
+				{
+					scope.Set(() => atmosphere.bodyRadius, v => atmosphere.bodyRadius = v, baseRadius * k);
+				}
+			}
+
+			// LOD picks high-res by world-space distance, so an unscaled threshold would put the
+			// whole planet in low res at 4x.
+			if (lodSystem != null)
+			{
+				scope.Set(() => lodSystem.highResDistanceThreshold,
+					v => lodSystem.highResDistanceThreshold = v, lodSystem.highResDistanceThreshold * k);
+			}
+
+			// Far clip is 600 against a 400-unit camera radius today - barely enough to reach the
+			// planet's far side, and nowhere near it once the planet grows.
+			if (renderCamera != null)
+			{
+				scope.Set(() => renderCamera.farClipPlane, v => renderCamera.farClipPlane = v, renderCamera.farClipPlane * k);
+			}
+
+			if (testbedCamera != null)
+			{
+				scope.Set(() => testbedCamera.maxAltitude, v => testbedCamera.maxAltitude = v, testbedCamera.maxAltitude * k);
+			}
+		}
+
 		if (testbedCamera != null)
 		{
 			scope.Set(() => testbedCamera.referenceAltitude, v => testbedCamera.referenceAltitude = v, preset.referenceAltitude);
@@ -141,9 +212,12 @@ public class WorldScaleController : MonoBehaviour
 		if (preset == null) { return "scene as authored"; }
 		if (atmosphere == null) { return preset.id; }
 
-		float km = preset.PlanetRadiusKm(atmosphere.bodyRadius);
-		float airMass = preset.HorizonAirMass(atmosphere.bodyRadius, atmosphere.rayleighDensityAvg);
+		// From the authored radius, not the live one, which the scope may already have scaled.
+		float baseRadius = heightSettings != null ? heightSettings.worldRadius / Mathf.Max(1e-3f, ScaleInEffect) : atmosphere.bodyRadius;
+		float km = preset.PlanetRadiusKm(baseRadius);
+		float airMass = preset.HorizonAirMass(baseRadius, atmosphere.rayleighDensityAvg);
 
-		return $"{km:F0} km planet, air mass {airMass:F1} (Earth 35.4), density x{preset.densityMultiplier:F2}";
+		return $"planet x{preset.planetScale:F1} = {km:F0} km, air mass {airMass:F1} (Earth 35.4), "
+			+ $"density x{preset.densityMultiplier:F2}";
 	}
 }
