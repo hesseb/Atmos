@@ -116,11 +116,11 @@ Material:
     - _Brightness: 1
     - _BumpScale: 1
     - _CityFadeMip: 4
-    - _CityGlintSharpness: 3
-    - _CityGlintStrength: 14
-    - _CitySpillStrength: 2
-    - _CityStreakReach: 0.06
-    - _CityStreakStrength: 25
+    - _CityGlintSharpness: 4.4
+    - _CityGlintStrength: 1.5
+    - _CitySpillStrength: 0.5
+    - _CityStreakReach: 0.075
+    - _CityStreakStrength: 16.7
     - _Cutoff: 0.5
     - _DetailNormalMapScale: 1
     - _DstBlend: 0

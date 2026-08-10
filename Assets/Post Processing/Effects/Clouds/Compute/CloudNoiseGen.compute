@@ -1,0 +1,233 @@
+#pragma kernel CSNoise
+#pragma kernel CSNormalize
+
+// Generates the two 3D noise volumes the cloud density model samples.
+//
+// Schneider (Guerrilla, "The Real-Time Volumetric Cloudscapes of Horizon Zero Dawn"):
+//
+//   Shape  128^3 RGBA   R = Perlin-Worley, G/B/A = Worley FBM at increasing frequency
+//   Detail  32^3 RGB    Worley FBM at increasing frequency
+//
+// The Worley half is ported from Sebastian Lague's clouds project
+// (C:\dev\thesis\clouds, Assets/Scripts/Clouds/Noise/Compute/NoiseGenCompute.compute), including
+// its seamless-tiling scheme. The Perlin half is not: that project is pure Worley and has no
+// Perlin-Worley remap at all, so channel R would otherwise be missing the low-frequency billowy
+// base that gives clouds their overall form rather than just their lumpiness.
+//
+// Everything here must TILE. The volumes are sampled at world positions across an entire globe, so
+// a discontinuity at the wrap does not show up as a subtle seam - it shows up as a straight line of
+// cloud running the height of the sky.
+
+static const int numThreads = 8;
+static const int minMaxAccuracy = 10000000;
+
+uint resolution;
+RWTexture3D<float4> Result;
+RWStructuredBuffer<int> minMax;
+
+StructuredBuffer<float3> pointsA;
+StructuredBuffer<float3> pointsB;
+StructuredBuffer<float3> pointsC;
+
+int numCellsA;
+int numCellsB;
+int numCellsC;
+
+float4 channelMask;
+float persistence;
+bool invertNoise;
+int tile;
+
+// Perlin-Worley controls. Only channel R of the shape volume sets usePerlinWorley.
+bool usePerlinWorley;
+int perlinPeriod;          // lattice cells per axis at the first octave
+int perlinOctaves;
+float perlinPersistence;
+
+// Stretches the FBM to fill [-1, 1] before it is folded to [0, 1].
+//
+// An FBM normalised by the sum of its amplitudes does not reach that sum: the octaves rarely peak
+// together. Measured over the defaults (6 octaves, gain 0.5) the raw output spans only about
+// +/-0.45, which folds to [0.28, 0.72] - so the Perlin could never pull the remap down to the
+// Worley floor and the "billowy base" degenerated into a near-constant lift. The default here is
+// that measured range. Check the slice viewer if octaves or persistence are changed: flat white or
+// flat black patches mean this is now too high.
+float perlinGain;
+
+static const int3 offsets[] =
+{
+	// centre
+	int3(0,0,0),
+	// front face
+	int3(0,0,1), int3(-1,1,1), int3(-1,0,1), int3(-1,-1,1),
+	int3(0,1,1), int3(0,-1,1), int3(1,1,1), int3(1,0,1), int3(1,-1,1),
+	// back face
+	int3(0,0,-1), int3(-1,1,-1), int3(-1,0,-1), int3(-1,-1,-1),
+	int3(0,1,-1), int3(0,-1,-1), int3(1,1,-1), int3(1,0,-1), int3(1,-1,-1),
+	// ring around centre
+	int3(-1,1,0), int3(-1,0,0), int3(-1,-1,0), int3(0,1,0),
+	int3(0,-1,0), int3(1,1,0), int3(1,0,0), int3(1,-1,0)
+};
+
+float maxComponent(float3 vec) { return max(vec.x, max(vec.y, vec.z)); }
+float minComponent(float3 vec) { return min(vec.x, min(vec.y, vec.z)); }
+
+/// Distance to the nearest feature point, on a jittered grid of `numCells` cells per axis.
+///
+/// Ported unchanged from the reference. The wrap branch is what makes it tile: a neighbour cell
+/// outside the grid is wrapped modulo numCells, and the wrapped point is then tested against all
+/// 27 unit offsets, so the point is found at whichever periodic image is actually nearest.
+float worley(StructuredBuffer<float3> points, int numCells, float3 samplePos)
+{
+	samplePos = (samplePos * tile) % 1;
+	int3 cellID = floor(samplePos * numCells);
+	float minSqrDst = 1;
+
+	for (int cellOffsetIndex = 0; cellOffsetIndex < 27; cellOffsetIndex++)
+	{
+		int3 adjID = cellID + offsets[cellOffsetIndex];
+
+		if (minComponent(adjID) == -1 || maxComponent(adjID) == numCells)
+		{
+			int3 wrappedID = (adjID + numCells) % (uint3)numCells;
+			int adjCellIndex = wrappedID.x + numCells * (wrappedID.y + wrappedID.z * numCells);
+			float3 wrappedPoint = points[adjCellIndex];
+
+			for (int wrapOffsetIndex = 0; wrapOffsetIndex < 27; wrapOffsetIndex++)
+			{
+				float3 sampleOffset = samplePos - (wrappedPoint + offsets[wrapOffsetIndex]);
+				minSqrDst = min(minSqrDst, dot(sampleOffset, sampleOffset));
+			}
+		}
+		else
+		{
+			int adjCellIndex = adjID.x + numCells * (adjID.y + adjID.z * numCells);
+			float3 sampleOffset = samplePos - points[adjCellIndex];
+			minSqrDst = min(minSqrDst, dot(sampleOffset, sampleOffset));
+		}
+	}
+
+	return sqrt(minSqrDst);
+}
+
+/// Gradient at a lattice corner, wrapped to `period` so the lattice - and therefore the noise -
+/// repeats exactly. This wrap is the entire tiling mechanism for the Perlin half.
+float3 latticeGradient(int3 cell, int period)
+{
+	int3 c = ((cell % period) + period) % period;
+	float3 p = (float3)c;
+	float3 h = float3(
+		dot(p, float3(127.1, 311.7, 74.7)),
+		dot(p, float3(269.5, 183.3, 246.1)),
+		dot(p, float3(113.5, 271.9, 124.6)));
+	float3 g = -1.0 + 2.0 * frac(sin(h) * 43758.5453123);
+	// rsqrt with a floor rather than normalize: a hash landing on the zero vector would make
+	// normalize return NaN, and one NaN texel propagates through the whole march.
+	return g * rsqrt(max(1e-6, dot(g, g)));
+}
+
+/// Classic gradient noise with the quintic fade, returning roughly [-1, 1].
+float perlinTileable(float3 pos, int period)
+{
+	float3 p = pos * period;
+	int3 i0 = (int3)floor(p);
+	float3 f = p - floor(p);
+	float3 u = f * f * f * (f * (f * 6 - 15) + 10);
+
+	float n = 0;
+
+	[unroll]
+	for (int cx = 0; cx <= 1; cx++)
+	{
+		[unroll]
+		for (int cy = 0; cy <= 1; cy++)
+		{
+			[unroll]
+			for (int cz = 0; cz <= 1; cz++)
+			{
+				int3 corner = int3(cx, cy, cz);
+				float3 g = latticeGradient(i0 + corner, period);
+				float3 d = f - (float3)corner;
+				float weight = lerp(1 - u.x, u.x, cx) * lerp(1 - u.y, u.y, cy) * lerp(1 - u.z, u.z, cz);
+				n += dot(g, d) * weight;
+			}
+		}
+	}
+
+	return n;
+}
+
+float perlinFbmTileable(float3 pos, int period, int octaves, float gain)
+{
+	float sum = 0;
+	float amplitude = 1;
+	float norm = 0;
+	int freq = period;
+
+	for (int i = 0; i < octaves; i++)
+	{
+		sum += perlinTileable(pos, freq) * amplitude;
+		norm += amplitude;
+		amplitude *= gain;
+		freq *= 2;   // doubling the period keeps every octave tiling on the same lattice
+	}
+
+	return sum / max(1e-5, norm);
+}
+
+/// Schneider's remap, used throughout the density model as well.
+float remap(float v, float oldMin, float oldMax, float newMin, float newMax)
+{
+	return newMin + (v - oldMin) / max(1e-5, oldMax - oldMin) * (newMax - newMin);
+}
+
+[numthreads(numThreads, numThreads, numThreads)]
+void CSNoise(uint3 id : SV_DispatchThreadID)
+{
+	if (id.x >= resolution || id.y >= resolution || id.z >= resolution) { return; }
+
+	float3 pos = id / (float)resolution;
+
+	float layerA = worley(pointsA, numCellsA, pos);
+	float layerB = worley(pointsB, numCellsB, pos);
+	float layerC = worley(pointsC, numCellsC, pos);
+
+	float maxVal = 1 + persistence + persistence * persistence;
+	float worleyFbm = (layerA + layerB * persistence + layerC * persistence * persistence) / maxVal;
+
+	// Inverted so that high values mean "inside a lump" rather than "far from a feature point".
+	// Every settings asset in the reference project has invert set, for the same reason.
+	if (invertNoise) { worleyFbm = 1 - worleyFbm; }
+
+	float noiseSum = worleyFbm;
+
+	if (usePerlinWorley)
+	{
+		// Perlin-Worley: take the Perlin's *floor* up to the Worley FBM rather than blending the
+		// two. The result keeps Perlin's connected, billowy low frequencies while inheriting
+		// Worley's rounded lumps wherever the Perlin is dark - which is what makes a cumulus read
+		// as a cauliflower rather than as smoke.
+		float perlin = perlinFbmTileable(pos, perlinPeriod, perlinOctaves, perlinPersistence);
+		perlin = saturate(perlin * perlinGain * 0.5 + 0.5);
+		noiseSum = remap(perlin, 0.0, 1.0, worleyFbm, 1.0);
+	}
+
+	// int, because there is no atomic min/max for float.
+	int val = (int)(saturate(noiseSum) * minMaxAccuracy);
+	InterlockedMin(minMax[0], val);
+	InterlockedMax(minMax[1], val);
+
+	Result[id] = Result[id] * (1 - channelMask) + noiseSum * channelMask;
+}
+
+[numthreads(numThreads, numThreads, numThreads)]
+void CSNormalize(uint3 id : SV_DispatchThreadID)
+{
+	if (id.x >= resolution || id.y >= resolution || id.z >= resolution) { return; }
+
+	float minVal = (float)minMax[0] / minMaxAccuracy;
+	float maxVal = (float)minMax[1] / minMaxAccuracy;
+	float4 normalizedVal = (Result[id] - minVal) / max(1e-5, maxVal - minVal);
+
+	Result[id] = Result[id] * (1 - channelMask) + normalizedVal * channelMask;
+}
