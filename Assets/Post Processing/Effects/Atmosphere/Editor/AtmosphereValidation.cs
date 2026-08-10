@@ -250,15 +250,25 @@ static class AtmosphereValidation
 		report.Append($"- intensity {F(a.intensity)}, contrast {F(a.contrast)}, whitePoint {F(a.whitePoint)}\n")
 			.Append($"- usable input band [{F(black)}, {F(white)}] = a factor of {F(white / black)}\n");
 
+		if (black <= 0 || white <= black) { return Fail(report, "tone map band is degenerate"); }
+
+		// Whether the curve has a shoulder at all, which is a separate question from whether
+		// the band is well formed - and the one that actually bit.
+		//
+		// This was printed as a NOTE and treated as documentation. It stopped being cosmetic
+		// the moment the Mie forward lobe was corrected: in-scatter at the sun rose 6.6x in
+		// red against 3.3x in blue, and with no rolloff every channel pinned to 1 together, so
+		// the extra red arrived as white. A shoulder is what lets red stay ahead of blue.
 		if (Mathf.Approximately(a.whitePoint, 1f))
 		{
-			report.Append("- NOTE: at whitePoint = 1 the extended Reinhard is an exact identity " +
-				"(v(1+v)/(1+v) = v), so there is no highlight rolloff at all.\n");
+			report.Append("- at whitePoint = 1 the extended Reinhard is an exact identity " +
+				"(v(1+v)/(1+v) = v), so highlights clip rather than roll off\n");
+			return Warn(report, "tone map has no highlight rolloff");
 		}
 
-		return black > 0 && white > black
-			? Pass(report, "tone map band is well formed")
-			: Fail(report, "tone map band is degenerate");
+		report.Append($"- whitePoint {F(a.whitePoint)} gives a shoulder, so highlights above "
+			+ $"{F(white)} compress instead of clipping, and hue survives into them\n");
+		return Pass(report, "tone map band is well formed and rolls off");
 	}
 
 	/// <summary>
