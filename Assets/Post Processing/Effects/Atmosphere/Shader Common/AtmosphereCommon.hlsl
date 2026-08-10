@@ -5,6 +5,9 @@
 // the transmittance LUT's parameterisation, shared with DrawSky.shader.
 #include "TransmittanceCommon.hlsl"
 
+// Must follow TransmittanceCommon.hlsl, which declares the planet dimensions its mapping uses.
+#include "MultipleScatteringCommon.hlsl"
+
 static const float PI = 3.14159265359;
 
 // Rayleigh, mie and ozone parameters.
@@ -298,7 +301,25 @@ ScatteringResult raymarch(float3 rayPos, float3 rayDir, float rayLength, int num
 		// Note E and `intensity` cancel at this instant, so E adds no physics *by itself*. What
 		// it adds is a named slot, so the phase can be normalised and sigma made physical
 		// without either being silently absorbed into an art constant.
-		float3 inScattering = sunIlluminance * (scattering.rayleigh * rayleighPhaseValue + scattering.mie * miePhase) * sunTransmittance;
+		// Multiple scattering (Hillaire 2020 section 4).
+		//
+		// Three things are deliberately absent from this term, and each is a consequence of the
+		// isotropic assumption rather than an omission:
+		//
+		//  - no phase function, because orders beyond the first are taken as isotropic;
+		//  - no sun transmittance, because Psi_ms was integrated with it already inside;
+		//  - no earth-shadow test, and that one is the payoff. Light reaches the shadowed band
+		//    by scattering, which is precisely what this term represents. That band was solid
+		//    black, and treating it as black is the visible signature of single scattering.
+		//
+		// Total scattering coefficient, not the phase-weighted split - Psi_ms carries a radiance
+		// that is the same in every direction, so both species scatter it identically.
+		float3 multipleScattering = sampleMultipleScattering(rayPos, dirToSun) * multipleScatteringStrength;
+		float3 scatteringCoefficient = scattering.rayleigh + scattering.mie;
+
+		float3 inScattering = sunIlluminance *
+			((scattering.rayleigh * rayleighPhaseValue + scattering.mie * miePhase) * sunTransmittance
+				+ scatteringCoefficient * multipleScattering);
 
 		// Increase the luminance by the in-scattered light.
 		// The simple way would be: luminance += inScattering * transmittance * stepSize;

@@ -51,6 +51,7 @@ static class AtmosphereValidation
 		failures += CheckIlluminanceBookkeeping(report, atmosphere);
 		failures += CheckSunDisc(report, atmosphere);
 		failures += CheckTransmittanceLUT(report, atmosphere);
+		failures += CheckMultipleScatteringLUT(report, atmosphere);
 
 		report.Append(failures == 0
 			? "\n**All checks passed.**\n"
@@ -435,6 +436,59 @@ static class AtmosphereValidation
 		Color c = texture.GetPixel(0, 0);
 		Object.DestroyImmediate(texture);
 		return c;
+	}
+
+	/// <summary>
+	/// The multiple-scattering LUT, checked on the one property that decides whether the model
+	/// is valid at all.
+	///
+	/// Psi_ms = L2 / (1 - f_ms) is a geometric series over scattering orders, and it converges
+	/// only while f_ms &lt; 1. At f_ms >= 1 the atmosphere would be returning more light than
+	/// falls on it, and the expression goes negative rather than infinite - so the failure would
+	/// arrive as a dark or inverted sky, not as an obvious NaN.
+	///
+	/// The compute stores max(f_ms) in alpha precisely so this can be read back and asserted.
+	/// </summary>
+	static int CheckMultipleScatteringLUT(StringBuilder report, AtmosphereEffect a)
+	{
+		report.Append("\n## Multiple scattering LUT\n\n");
+
+		if (a.multipleScatteringLUT == null)
+		{
+			return Warn(report, "multiple scattering LUT has not been built");
+		}
+
+		Color[] all = ReadAll(a.multipleScatteringLUT);
+		float maxFms = 0f, maxPsi = 0f, minPsi = float.MaxValue;
+		int negative = 0, nonFinite = 0;
+
+		foreach (Color c in all)
+		{
+			maxFms = Mathf.Max(maxFms, c.a);
+			float peak = Mathf.Max(c.r, Mathf.Max(c.g, c.b));
+			float trough = Mathf.Min(c.r, Mathf.Min(c.g, c.b));
+			maxPsi = Mathf.Max(maxPsi, peak);
+			minPsi = Mathf.Min(minPsi, trough);
+
+			if (trough < 0f) { negative++; }
+			if (float.IsNaN(peak) || float.IsInfinity(peak)) { nonFinite++; }
+		}
+
+		report.Append($"- {a.multipleScatteringLUTSize.x}x{a.multipleScatteringLUTSize.y}, "
+				+ $"ground albedo {F(a.groundAlbedo)}, strength {F(a.multipleScatteringStrength)}\n")
+			.Append($"- max f_ms = {F(maxFms)}, so the series gains {F(1f / Mathf.Max(1e-4f, 1f - maxFms))}x "
+				+ "over single scattering at its strongest\n")
+			.Append($"- Psi_ms range [{F(minPsi)}, {F(maxPsi)}]\n");
+
+		int failures = 0;
+		if (maxFms >= 0.95f) { failures += Fail(report, $"f_ms reaches {F(maxFms)}; the order series is at or past divergence"); }
+		else { failures += Pass(report, "f_ms stays below 1, so the order series converges"); }
+
+		if (negative > 0) { failures += Fail(report, $"{negative} texels have a negative Psi_ms"); }
+		if (nonFinite > 0) { failures += Fail(report, $"{nonFinite} texels are NaN or infinite"); }
+		if (negative == 0 && nonFinite == 0) { failures += Pass(report, "Psi_ms is non-negative and finite everywhere"); }
+
+		return failures;
 	}
 
 	static Color[] ReadAll(RenderTexture source)
