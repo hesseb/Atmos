@@ -21,7 +21,6 @@ MonoBehaviour:
   contrast: 1.45
   whitePoint: 2.5
   altitude: 10
-  modeSwitchAltitude: 40
   referenceAltitude: 10
   panSpeed: 0.35
   flySpeed: 20

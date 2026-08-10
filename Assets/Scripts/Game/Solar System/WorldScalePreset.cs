@@ -75,10 +75,6 @@ public class WorldScalePreset : ScriptableObject
 		"of the view.")]
 	public float altitude = 10;
 	public float referenceAltitude = 10;
-
-	[Tooltip("Minimum altitude a camera mode switch lands at, before the planet scale is " +
-		"applied. Bigger than `altitude` on purpose - it exists to orient from, not to fly at.")]
-	public float modeSwitchAltitude = 40;
 	public float panSpeed = 0.35f;
 	public float flySpeed = 20;
 

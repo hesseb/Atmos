@@ -53,10 +53,11 @@ public class TestbedCamera : MonoBehaviour
 	public float panSpeed = 0.35f;
 	public float referenceAltitude = 10f;
 
-	[Tooltip("Minimum altitude to come out of a camera mode switch at. Only ever raises, so a " +
-		"camera already further out keeps its height. Scaled with the planet by the world scale " +
-		"controller, since terrain grows with it and the field of view does not.")]
-	public float modeSwitchAltitude = 40f;
+	[Tooltip("Minimum altitude to come out of a camera mode switch at, as a fraction of the " +
+		"planet radius. Only ever raises, so a camera already further out keeps its height. A " +
+		"fraction rather than a distance so it follows any planet scale on its own: 0.5 puts the " +
+		"camera at 1.5 radii, where the globe subtends about 84 degrees and fills the view.")]
+	[Range(0.05f, 2f)] public float modeSwitchAltitudeFraction = 0.5f;
 	public float headingSpeed = 60f;
 	public float pitchSpeed = 40f;
 	public float zoomSensitivity = 1.5f;
@@ -392,19 +393,14 @@ public class TestbedCamera : MonoBehaviour
 		// that ended up at or under the surface reappears pinned to it at the closest possible
 		// zoom, which means re-orienting by hand after every toggle.
 		//
-		// A dedicated value rather than referenceAltitude, which is a *speed* reference and is
-		// too low to orient from: at 10 units a 60 degree field of view spans only 11.5 units
-		// of ground, and terrain features grow with the planet while the field of view does
-		// not - so at x16 that is a twentieth of what the same altitude shows at x1.
-		float comfortable = Mathf.Clamp(modeSwitchAltitude, minAltitude, maxAltitude);
+		// A fraction of the planet radius, not a distance. referenceAltitude was far too low
+		// to orient from - 10 units spans 11.5 units of ground at a 60 degree FOV - and a
+		// fixed 40 was only a third of a radius, still a close-up. Expressed as a fraction it
+		// frames the globe identically at every planet size with nothing to keep in step.
+		float comfortable = Mathf.Clamp(modeSwitchAltitudeFraction * SurfaceRadius, minAltitude, maxAltitude);
 		float current = transform.position.magnitude - SurfaceRadius;
 		if (current < comfortable) { SetAltitudeAboveSurface(comfortable); }
 
-		// Temporary, to find out why this appears to have no effect.
-		Debug.Log($"[TestbedCamera] -> {mode}: surfaceRadius {SurfaceRadius:F1}, was {current:F1}, " +
-			$"modeSwitchAltitude {modeSwitchAltitude:F1}, clamped to {comfortable:F1} " +
-			$"(min {minAltitude:F1}, max {maxAltitude:F1}), now altitude {altitude:F1} " +
-			$"at radius {transform.position.magnitude:F1}", this);
 	}
 
 	/// <summary>
