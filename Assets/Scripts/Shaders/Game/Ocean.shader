@@ -15,9 +15,12 @@ Shader "Custom/Ocean"
 		_Refraction ("Refraction", Float) = 0
 		_ShadowStrength ("Shadow Strength", Range(0,1)) = 1
 
+		// Multiplies the baked ocean colour map. Was declared and never read.
 		_Tint("Tint", Color) = (1,1,1,1)
+		// 1 keeps the map as baked, 0 is fully greyscale. A tint can only darken, so this is
+		// what actually takes saturation out.
+		_Saturation("Saturation", Range(0,1)) = 1
 		_Specular("Specular", Float) = 0
-		_Ambient("Ambient", Color) = (0,0,0,0)
 		_FresnelCol("Fresnel Col", Color) = (0,0,0,0)
 		_FresnelWeight("Fresnel Weight", Float) = 0
 		_FresnelPower("Fresnel Power", Float) = 0
@@ -109,6 +112,7 @@ Shader "Custom/Ocean"
 			float4 _TestParams;
 
 			float4 _Tint;
+			float _Saturation;
 			sampler2D _OceanCol;
 			float4 _OceanCol_TexelSize;
 
@@ -118,7 +122,6 @@ Shader "Custom/Ocean"
 
 			float _Refraction;
 			float _ShadowStrength;
-			float4 _Ambient;
 			
 			float4 _FresnelCol;
 			float _FresnelWeight, _FresnelPower;
@@ -256,6 +259,17 @@ Shader "Custom/Ocean"
 				// ---- Get ocean colour ----
 				float2 oceanRefractionTexCoord = texCoord + tang.xy * 0.0005 * _Refraction;
 				float3 oceanCol = tex2Dlod(_OceanCol, float4(oceanRefractionTexCoord.xy, 0, mipLevel));
+
+				// The water's base colour is BAKED into _OceanCol (Assets/Data/Ocean/Ocean.png) by
+				// the offline generator in Assets/Scenes/Generators/Ocean Colour.unity - deep blue,
+				// shallow blue and chlorophyll are all resolved there, per texel, against bathymetry.
+				// So there is no single colour in this material that sets it, which is why _Tint
+				// sitting here unread was actively misleading: picking a colour did nothing.
+				//
+				// These two are the live controls. Applied at the source so everything downstream -
+				// shading, the Fresnel split, the sky ambient - inherits them.
+				oceanCol = lerp(dot(oceanCol, float3(0.2126, 0.7152, 0.0722)), oceanCol, _Saturation);
+				oceanCol *= _Tint.rgb;
 	
 
 				// ---- Calculate specular highlight---- 
