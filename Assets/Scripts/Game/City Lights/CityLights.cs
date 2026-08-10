@@ -29,6 +29,13 @@ public class CityLights : MonoBehaviour
 	CityLightGroup groups;
 	ComputeBuffer cityLightBuffer;
 
+	/// <summary>Lights and bounds exactly as baked, so a rescale never compounds.</summary>
+	CityLight[] bakedLights;
+	Bounds[] bakedBounds;
+	float baseRadius = 150f;
+	float planetScale = 1f;
+	bool initialised;
+
 
 	public void Init(RenderTexture heightMap, Light sunLight)
 	{
@@ -43,8 +50,11 @@ public class CityLights : MonoBehaviour
 			lightsList.AddRange(groups[i].cityLights);
 		}
 
+		bakedLights = lightsList.ToArray();
 		cityLightBuffer = ComputeHelper.CreateStructuredBuffer(lightsList);
 		renderers = new CityLightRenderer[groups.Length];
+		bakedBounds = new Bounds[groups.Length];
+		for (int i = 0; i < groups.Length; i++) { bakedBounds[i] = groups[i].bounds; }
 
 		int lightCountCumul = 0;
 		for (int i = 0; i < groups.Length; i++)
@@ -57,9 +67,55 @@ public class CityLights : MonoBehaviour
 			UpdateDynamicShaderProperties(renderers[i]);
 			AssignConstantShaderData(renderers[i]);
 		}
+
+		// Init runs as a loading task, so a world scale may already have been chosen before the
+		// lights existed. Applying it here covers that ordering as well as later swaps.
+		initialised = true;
+		ApplyPlanetScale();
 	}
 
 
+
+	/// <summary>
+	/// Moves the lights onto a planet of radius `baseRadius * planetScale`.
+	///
+	/// The shader computes a light's world position as `pointOnSphere * height`, where the first
+	/// is a unit direction and the second is an absolute radius - so this is the same correction
+	/// the terrain gets, applied to a scalar: height above the surface is preserved while the
+	/// surface itself moves.
+	///
+	/// Positions live in a ComputeBuffer drawn with DrawMeshInstancedIndirect, so no transform
+	/// can move them - the buffer has to be rewritten. The per-group bounds are baked too, and
+	/// they gate both the frustum cull and ShouldRender, so they scale with it or the night side
+	/// simply stops drawing.
+	/// </summary>
+	public void SetPlanetScale(float baseRadius, float planetScale)
+	{
+		this.baseRadius = baseRadius;
+		this.planetScale = planetScale;
+		ApplyPlanetScale();
+	}
+
+	void ApplyPlanetScale()
+	{
+		if (!initialised || bakedLights == null) { return; }
+
+		// Always from the baked values, never from the current ones, so repeated swaps cannot
+		// compound into an ever-larger planet.
+		var scaled = new CityLight[bakedLights.Length];
+		for (int i = 0; i < bakedLights.Length; i++)
+		{
+			scaled[i] = bakedLights[i];
+			scaled[i].height = baseRadius * planetScale + (bakedLights[i].height - baseRadius);
+		}
+		cityLightBuffer.SetData(scaled);
+
+		for (int i = 0; i < renderers.Length && i < bakedBounds.Length; i++)
+		{
+			Bounds b = bakedBounds[i];
+			renderers[i].bounds = new Bounds(b.center * planetScale, b.size * planetScale);
+		}
+	}
 
 	void Update()
 	{

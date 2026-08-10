@@ -41,8 +41,8 @@ public class WorldScaleController : MonoBehaviour
 	[Tooltip("Labels pose from the live globe radius; this is only nudged in case it is built late.")]
 	public CountryLabelSystem labelSystem;
 
-	[Tooltip("Positions are computed once in Awake into a buffer, so they need regenerating.")]
-	public CityLightGenerator cityLights;
+	[Tooltip("Positions live in a compute buffer drawn indirectly, so they need rewriting.")]
+	public CityLights cityLights;
 
 	[Tooltip("Holds one terrain copy per planet scale, so relief stays at its authored " +
 		"world-unit height instead of scaling with the globe.")]
@@ -90,7 +90,7 @@ public class WorldScaleController : MonoBehaviour
 		// never scaled. Terrain then vanished past 600 units at every planet scale.
 		if (renderSettings == null) { renderSettings = FindFirstObjectByType<RenderSettingsController>(); }
 		if (labelSystem == null) { labelSystem = FindFirstObjectByType<CountryLabelSystem>(); }
-		if (cityLights == null) { cityLights = FindFirstObjectByType<CityLightGenerator>(); }
+		if (cityLights == null) { cityLights = FindFirstObjectByType<CityLights>(); }
 
 		// TestbedCamera holds the rendering camera explicitly; that is more reliable than
 		// GetComponent, which fails here because the Camera lives on its own GameObject.
@@ -199,9 +199,12 @@ public class WorldScaleController : MonoBehaviour
 			// value as the undo, and cycling disposes first, so this is always the authored one.
 			// worldRadius drives the camera's surface radius, the picker, the labels, the country
 			// highlight and the city-light generator, so it has to agree with the baked meshes.
+			// The authored radius, read before the scope overwrites it. Cycling disposes the
+			// previous scope first, so this is always the authored value rather than a scaled one.
+			float baseRadius = heightSettings != null ? heightSettings.worldRadius : 150f;
+
 			if (heightSettings != null)
 			{
-				float baseRadius = heightSettings.worldRadius;
 				scope.Set(() => heightSettings.worldRadius, v => heightSettings.worldRadius = v, baseRadius * k);
 				if (atmosphere != null)
 				{
@@ -258,9 +261,10 @@ public class WorldScaleController : MonoBehaviour
 			// a nudge in case this ran before their own Start built them.
 			if (labelSystem != null) { labelSystem.SetGlobeRadius(); }
 
-			// City lights are computed in Awake into a buffer drawn indirectly, so nothing short
-			// of regenerating them follows a radius change.
-			if (cityLights != null) { cityLights.Rebuild(); }
+			// City light positions live in a ComputeBuffer drawn indirectly, so no transform moves
+			// them and the buffer has to be rewritten. CityLights also applies this itself when it
+			// initialises, since it is created by a loading task that may run after this.
+			if (cityLights != null) { cityLights.SetPlanetScale(baseRadius, k); }
 
 			if (testbedCamera != null)
 			{
