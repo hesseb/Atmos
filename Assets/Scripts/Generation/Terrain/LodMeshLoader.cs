@@ -64,8 +64,9 @@ public class LodMeshLoader : MonoBehaviour, IPlanetScaleSelectable
 
 		for (int s = 0; s < scales.Length; s++)
 		{
-			// One holder per scale. Its transform stays at identity - the correction is baked into
-			// the vertices, because the World root's uniform scale is applied on top of it.
+			// One holder per scale. Its transform stays at identity: the planet radius is baked
+			// into the vertices, so nothing in the hierarchy is scaled and static batching keeps
+			// correct world-space bounds.
 			var holder = new GameObject($"Terrain (planet x{scales[s]:0.###})");
 			holder.transform.SetParent(transform, worldPositionStays: false);
 			holder.layer = gameObject.layer;

@@ -21,18 +21,26 @@ public interface IPlanetScaleSelectable
 public static class PlanetRelief
 {
 	/// <summary>
-	/// Pre-divides height above the base radius, so that scaling the result by `planetScale`
-	/// restores it: |v| = R0 + h becomes R0 + h/k, which scales to R0*k + h.
+	/// Moves geometry onto a planet of radius `baseRadius * planetScale`, keeping height above
+	/// the surface unchanged: |v| = R0 + h becomes R0*k + h.
 	///
-	/// Without this a uniform transform scales relief along with the radius, which is wrong twice
-	/// over. A real planet sixteen times larger does not have sixteen times taller mountains, and
-	/// against an atmosphere scale height that does *not* scale, 48-unit peaks stand absurdly
-	/// clear of the haze while a camera at altitude 10 ends up inside them.
+	/// **The scale is baked into the vertices, and the World transform is left at 1.** That is
+	/// deliberate and was arrived at the hard way. Scaling the root instead is equivalent for
+	/// rendering but not for culling: these meshes are statically batched, and
+	/// StaticBatchingUtility bakes each renderer's bounds in world space at combine time. Scaling
+	/// the root afterwards leaves every chunk with bounds from its unscaled position, so Unity
+	/// frustum-culls chunks that are actually on screen - whole panels of the planet blinking out
+	/// as the camera pulls back, and worse the larger the scale.
 	///
-	/// It matters for more than terrain. Country outlines are drawn at a small offset above the
-	/// surface; scaling that offset by sixteen leaves borders floating in the sky. The ocean is a
-	/// sphere at the base radius, so h is zero and this is a no-op for it - which is exactly why
-	/// the same correction can be applied to everything on the globe without special-casing.
+	/// Keeping height above the surface fixed is the other half. A uniform scale would take relief
+	/// with it, and a real planet sixteen times larger does not have sixteen times taller
+	/// mountains - against an atmosphere scale height that does not scale either, 48-unit peaks
+	/// would stand absurdly clear of the haze with the camera buried inside them.
+	///
+	/// It matters beyond terrain: country outlines sit at a small offset above the surface, and
+	/// scaling that offset leaves borders floating in the sky. The ocean is a sphere at the base
+	/// radius, so h is zero and it simply moves to the new radius - which is why one correction
+	/// serves everything on the globe with no special cases.
 	/// </summary>
 	public static void Correct(SimpleMeshData mesh, float baseRadius, float planetScale)
 	{
@@ -45,7 +53,7 @@ public static class PlanetRelief
 			if (radius <= 1e-5f) { continue; }
 
 			float relief = radius - baseRadius;
-			vertices[i] *= (baseRadius + relief / planetScale) / radius;
+			vertices[i] *= (baseRadius * planetScale + relief) / radius;
 		}
 	}
 }
