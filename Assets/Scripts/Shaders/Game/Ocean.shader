@@ -52,12 +52,13 @@ Shader "Custom/Ocean"
 
 		[Header(City Lights)]
 		_CityLightField("City Light Field", 2D) = "black" {}
+		_LightMap("City Light Map (source)", 2D) = "black" {}
 		_CityLightCol("City Light Colour", Color) = (0.443, 0.312, 0.190, 1)
 		_CitySpillStrength("Spill Strength", Range(0, 8)) = 2
-		_CityStreakStrength("Streak Strength", Range(0, 40)) = 10
+		_CityStreakStrength("Streak Strength", Range(0, 80)) = 25
 		_CityGlintStrength("Glint Strength", Range(0, 16)) = 5
-		_CityGlintSmoothness("Glint Smoothness", Range(0.005, 0.3)) = 0.06
-		_CityStreakReach("Streak Reach (radians)", Range(0.002, 0.08)) = 0.02
+		_CityGlintSharpness("Glint Sharpness", Range(1, 64)) = 12
+		_CityStreakReach("Streak Reach (radians)", Range(0.005, 0.25)) = 0.06
 		_CityFadeMip("Zoom Fade Mip", Range(0, 10)) = 4
 
 		[Header(Foam)]
@@ -145,11 +146,16 @@ Shader "Custom/Ocean"
 			float4 _CityLightField_TexelSize;
 			float4 _CityLightCol;
 			float _CitySpillStrength, _CityStreakStrength, _CityGlintStrength;
-			float _CityGlintSmoothness, _CityStreakReach, _CityFadeMip;
+			float _CityGlintSharpness, _CityStreakReach, _CityFadeMip;
+
+			// The source night-lights map, shared with Terrain.shader, which samples it as _LightMap
+			// for the city-light tint on land. The streak marches it directly - see the note there.
+			sampler2D _LightMap;
+			float4 _LightMap_TexelSize;
 
 			// Six taps is enough for a streak that reads at the reach this is tuned for, and the loop
 			// is unrolled, so this is six texture fetches rather than a real loop.
-			#define CITY_STREAK_STEPS 6
+			#define CITY_STREAK_STEPS 8
 
 			// Published by SolarSystem.Moon. Position, not direction: at 811 world units against a
 			// 150-unit planet the moon is not far enough away to be directional.
@@ -507,46 +513,69 @@ Shader "Custom/Ocean"
 
 				// ---- City lights on the water ----
 				//
-				// The streak: the mirror direction projected onto the local tangent plane, walked across
-				// the glow field in angular steps. Where the reflected ray points at a city the taps pile
-				// up into a bright column, which is the harbour-at-night look; where it points at open
-				// water they all read zero and nothing appears.
+				// Both terms below ask the same geometric question - does the mirror direction point at a
+				// city? - and differ only in how sharp a source they ask it of.
 				//
-				// Angular steps rather than steps in UV, for the same reason the bake gathers that way:
-				// a fixed UV step is a different distance on the globe at every latitude, and streaks
-				// would visibly bend toward the poles. It also makes the reach scale-free under F7.
-				//
-				// tex2Dlod with an explicit mip is mandatory here - tex2D inside a loop derives its mip
-				// from neighbouring fragments' UVs, which in a march are unrelated to this one's.
+				// The mirror direction, projected onto the local tangent plane. Because viewDir points
+				// camera->surface, this points AWAY from the camera: the horizontal direction the reflected
+				// ray carries on in. So a positive dot with the bearing to the city means the city lies
+				// beyond this patch of water as seen from here, which is exactly when its reflection can
+				// land in the eye.
 				float3 cityTangent = reflectDir - sphereNormal * dot(reflectDir, sphereNormal);
 				float cityTangentLen = length(cityTangent);
-				float3 cityMarchDir = cityTangentLen > 1e-4 ? cityTangent / cityTangentLen : cityEast;
+				float3 cityAimDir = cityTangentLen > 1e-4 ? cityTangent / cityTangentLen : cityEast;
+
+				// The streak: walk the light map outward along that direction and see what is out there.
+				//
+				// The SOURCE map, not the baked field. The field is deliberately blurred over maxAngle in
+				// the bake, so marching it over any distance shorter than that blur just returns the blur -
+				// which is why the first version of this was indistinguishable from the spill. The source
+				// map still has individual cities in it, which is the structure a streak is made of.
+				//
+				// Angular steps rather than steps in UV: a fixed UV step is a different distance on the
+				// globe at every latitude, so streaks would visibly bend toward the poles. It also makes
+				// the reach scale-free under F7.
+				//
+				// tex2Dlod with an explicit mip is mandatory - tex2D inside a loop takes its mip from
+				// neighbouring fragments' UVs, which in a march are unrelated to this one's. The mip is
+				// picked so a texel is about as wide as the gap between taps, so the march averages what
+				// it steps over instead of aliasing between cities.
+				float cityStepAngle = _CityStreakReach / CITY_STREAK_STEPS;
+				float cityTexelAngle = UNITY_PI / max(1, _LightMap_TexelSize.w);
+				float cityStreakMip = max(0, log2(max(1, cityStepAngle / cityTexelAngle)));
 
 				float cityStreak = 0;
+				float cityStreakWeight = 0;
 				[unroll]
 				for (int cityStep = 0; cityStep < CITY_STREAK_STEPS; cityStep++)
 				{
 					float t = (cityStep + 0.5) / CITY_STREAK_STEPS;
 					float angle = t * _CityStreakReach;
-					float3 q = sphereNormal * cos(angle) + cityMarchDir * sin(angle);
-					// The stored value, matching cityGlow above - see the note there for why it is not
-					// squared back to linear.
-					float g = tex2Dlod(_CityLightField, float4(pointToUV(q), 0, cityFieldMip)).b;
-					cityStreak += g * (1 - t);
+					float3 q = sphereNormal * cos(angle) + cityAimDir * sin(angle);
+					float3 lit = tex2Dlod(_LightMap, float4(pointToUV(q), 0, cityStreakMip)).rgb;
+					float weight = 1 - t;
+					cityStreak += dot(lit, float3(0.299, 0.587, 0.114)) * weight;
+					cityStreakWeight += weight;
 				}
-				cityStreak /= CITY_STREAK_STEPS;
+				cityStreak /= max(1e-4, cityStreakWeight);
 
 				// Multiplied by the Fresnel term because this IS a reflection and should obey the same
 				// energy split as the sky - which also puts it at the grazing angles where a real streak
-				// forms, and takes it away when looking straight down, where there would not be one.
+				// forms, and takes it away when looking straight down, where there would not be one. That
+				// view dependence is most of what separates it from the spill.
 				oceanCol += cityStreak * _CityLightCol.rgb * _CityStreakStrength * fresnelReflectance * cityNight * cityZoomFade;
 
-				// The glint, on the same machinery as the sun and moon. The field's direction channels
-				// give the bearing to the surrounding light; cities sit at sea level, so that bearing is
-				// very nearly horizontal, tilted a little toward the zenith here so the specular lobe is
-				// reachable at the angles a strategy camera actually looks from.
-				float3 cityLightDir = normalize(cityDir + sphereNormal * 0.15);
-				float cityHighlight = saturate(calculateSpecular(waveNormal, viewDir, cityLightDir, _CityGlintSmoothness));
+				// The glint: the same aim, against the smooth field rather than the sharp map, so it reads
+				// as a broad soft brightening of the water facing a city.
+				//
+				// NOT calculateSpecular, unlike the sun and moon glints above. A specular lobe fires where
+				// the half-vector matches the wave normal, which for a fixed light traces the one coherent
+				// glint path you want - but cityDir is a field that swings from pixel to pixel, so the
+				// condition was being met along curves that swept across the water as the camera moved.
+				// Arcs, not a blob. A city is an extended source metres across in the sky, not a point, so
+				// a broad aim lobe is both better behaved and the more honest model.
+				float cityAim = saturate(dot(cityAimDir, cityDir));
+				float cityHighlight = pow(cityAim, _CityGlintSharpness);
 				oceanCol += cityHighlight * cityGlow * _CityLightCol.rgb * _CityGlintStrength * cityNight * cityZoomFade;
 
 				// # Apply foam

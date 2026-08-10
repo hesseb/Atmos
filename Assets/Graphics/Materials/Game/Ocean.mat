@@ -63,6 +63,10 @@ Material:
         m_Texture: {fileID: 2800000, guid: 3e0bd14025bede842a11f95e90dd370d, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
+    - _LightMap:
+        m_Texture: {fileID: 2800000, guid: e80dfbad15526b840abd8eb6fbd2a829, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     - _MainTex:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
@@ -112,11 +116,11 @@ Material:
     - _Brightness: 1
     - _BumpScale: 1
     - _CityFadeMip: 4
-    - _CityGlintSmoothness: 0.06
+    - _CityGlintSharpness: 12
     - _CityGlintStrength: 5
     - _CitySpillStrength: 2
-    - _CityStreakReach: 0.02
-    - _CityStreakStrength: 10
+    - _CityStreakReach: 0.06
+    - _CityStreakStrength: 25
     - _Cutoff: 0.5
     - _DetailNormalMapScale: 1
     - _DstBlend: 0
