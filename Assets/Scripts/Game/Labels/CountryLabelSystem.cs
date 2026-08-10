@@ -102,6 +102,25 @@ public class CountryLabelSystem : MonoBehaviour
 
 	public int VisibleCount { get; private set; }
 
+	/// <summary>
+	/// Re-places every label for a new globe radius.
+	///
+	/// Labels bake `worldPosition = anchorDirection * radius` when they are built, once, in
+	/// Start - so a planet scale applied afterwards left them orbiting the radius the globe
+	/// used to have, hanging in space above the surface. The unit anchor direction is kept, so
+	/// re-placing them is just a multiply.
+	/// </summary>
+	public void SetGlobeRadius(float radius)
+	{
+		if (labels == null) { return; }
+
+		foreach (Label label in labels)
+		{
+			if (label == null) { continue; }
+			label.worldPosition = label.anchorDirection * radius;
+		}
+	}
+
 	void Start()
 	{
 		Initialise();
