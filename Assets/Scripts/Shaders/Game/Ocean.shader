@@ -24,7 +24,8 @@ Shader "Custom/Ocean"
 		_TestParams("Test Params", Vector) = (0,0,0,0)
 
 		[Header(Atmosphere)]
-		[Tooltip("0 keeps the old white glint, 1 colours it by sun transmittance. Exists for the before/after figure.")]
+		// 0 keeps the old white glint, 1 colours it by sun transmittance.
+		// Exists for the before/after figure, not as an art dial.
 		_GlintTransmittanceWeight("Glint Transmittance Weight", Range(0,1)) = 1
 
 		[Header(Foam)]
@@ -264,8 +265,14 @@ Shader "Custom/Ocean"
 				// planetRadius - and transmittanceRayHitsGround returns true for *every* downward
 				// direction once radius < planetRadius, which would return exactly zero and black
 				// out the glint at sunset, the one moment this exists for.
+				// planetRadius is the sentinel for "the atmosphere has published its globals". It is
+				// zero in the baseline and null sky modes, and on the first frames before
+				// AtmosphereEffect initialises - and an unbound LUT samples black, which would
+				// leave the glint black rather than merely uncoloured. Fall back to white.
 				float3 seaLevelPos = sphereNormal * (planetRadius + 1e-3);
-				float3 sunTransmittance = sampleTransmittanceLUT(TransmittanceLUT, seaLevelPos, sunDir);
+				float3 sunTransmittance = planetRadius > 0
+					? sampleTransmittanceLUT(TransmittanceLUT, seaLevelPos, sunDir)
+					: 1;
 				float3 glintCol = _LightColor0.rgb * lerp(1, sunTransmittance, _GlintTransmittanceWeight);
 
 				oceanCol = saturate(oceanCol * (1-specularHighlight) * shading) + specularHighlight * glintCol;
