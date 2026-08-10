@@ -168,7 +168,7 @@ public class PostProcessRendererProfile : RendererProfile
 			  .Append(", skySteps=").Append(atmosphere.numSkyScatteringSteps)
 			  .Append(", skySize=").Append(atmosphere.skyRenderSize.x).Append('x')
 			  .Append(atmosphere.skyRenderSize.y)
-			  .Append(", aerialSteps=").Append(atmosphere.numAerialScatteringSteps)
+			  .Append(", aerialStepsPerSlice=").Append(atmosphere.aerialStepsPerSlice)
 			  .Append(", aerialLUT=").Append(atmosphere.aerialPerspectiveLUTSize)
 			  .Append(", transmittanceLUT=").Append(atmosphere.transmittanceLUTSize.x).Append('x')
 			  .Append(atmosphere.transmittanceLUTSize.y);

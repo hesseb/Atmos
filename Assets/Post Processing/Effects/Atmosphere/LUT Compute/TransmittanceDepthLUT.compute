@@ -1,7 +1,7 @@
 #pragma kernel CreateTransmittanceLUT
 #include "../Shader Common/AtmosphereCommon.hlsl"
 
-// Header revision this file was last rebuilt against: stage 3 (multiple scattering).
+// Header revision this file was last rebuilt against: stage 5 (resumable march segments).
 
 // Unity does not reliably rebuild a .compute when an included .hlsl changes - the include is
 // not tracked as an import dependency. If the atmosphere's output looks uniformly scaled or
