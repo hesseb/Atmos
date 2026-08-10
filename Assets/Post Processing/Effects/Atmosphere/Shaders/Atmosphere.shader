@@ -57,7 +57,11 @@
 			float3 getAtmoCol(float2 uv, float3 originalCol, float viewLength, float3 viewDir) {
 				float3 outputCol = originalCol;
 				float nonlin_depth = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, uv);
-				float sceneDepth = LinearEyeDepth(nonlin_depth) * viewLength;
+
+				// Eye-space depth is kept as well as the radial distance, because the sky test has
+				// to be made on the former.
+				float eyeDepth = LinearEyeDepth(nonlin_depth);
+				float sceneDepth = eyeDepth * viewLength;
 
 				float nearClipPlane = _ProjectionParams.y;
 				float farClipPlane = _ProjectionParams.z;
@@ -70,7 +74,20 @@
 				float dstToAtmosphere = hitInfo.x;
 				float dstThroughAtmosphere = hitInfo.y;
 
-				if (sceneDepth >= farClipPlane) {
+				// Sky is decided on eye depth, not on the radial distance, and with a tolerance.
+				//
+				// sceneDepth is eyeDepth * viewLength, and viewLength is exactly 1 at the centre of
+				// the screen and greater everywhere else. So for an empty sky pixel the comparison
+				// clears the far plane comfortably off-centre but lands exactly on it at the
+				// centre, where float precision decides which way it goes. The pixels that fall
+				// through are a disc in the middle of the screen, which then takes the aerial
+				// perspective branch and gets fogged - a small translucent grey circle, fixed to
+				// the centre, visible only against sky.
+				//
+				// It shows up at large far planes because LinearEyeDepth loses precision there, so
+				// the reconstructed value falls short of the far plane more often. That is why it
+				// appeared on the bigger planet scales, whose cull distance scales with them.
+				if (eyeDepth >= farClipPlane * 0.999) {
 					// Sky
 				}
 				// View ray goes through atmosphere (and not blocked by anything in front of it)
