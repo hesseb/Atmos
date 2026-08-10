@@ -3,7 +3,7 @@
 #include "../Shader Common/AtmosphereCommon.hlsl"
 #include "../Shader Common/RaymarchCommon.hlsl"//
 
-// Header revision this file was last rebuilt against: 750 km planet + densityMultiplier.
+// Header revision this file was last rebuilt against: horizon lift.
 
 // Unity does not reliably rebuild a .compute when an included .hlsl changes - the include is
 // not tracked as an import dependency. If the atmosphere's output looks uniformly scaled or
@@ -28,6 +28,35 @@ void RenderSkyLUT (uint3 id : SV_DispatchThreadID)
 
 	float2 texCoord = id.xy / float2(size - 1.0);
 	float3 viewDir = calculateViewDir(texCoord);
+
+	// Lift directions that point below the horizon back up onto it.
+	//
+	// raymarch clips at the ground, so a below-horizon ray returns a short, dark march. This
+	// texture is only 128x256 and is bilinearly upscaled to the screen, so that dark region bleeds
+	// UPWARD across the geometry horizon: a dark band hugging the skyline, stepped by the texel
+	// grid, and dark enough that the sky pass's star blend lets stars show through it. Worst at
+	// sunrise and sunset, when the sky immediately above the horizon should be at its brightest and
+	// the contrast with the bled-in dark is largest.
+	//
+	// Below-horizon texels are always covered by terrain or ocean, so holding the horizon-grazing
+	// value there costs nothing visible and makes the texture continuous exactly where it is
+	// sampled most steeply. Same reasoning as skyViewHorizonV = 1 in the sky view LUT.
+	float camRadius = length(camPos);
+	if (camRadius > 1e-4) {
+		float3 up = camPos / camRadius;
+		float cosHorizon = -sqrt(saturate(1 - (planetRadius * planetRadius) / (camRadius * camRadius)));
+		float cosView = dot(up, viewDir);
+
+		if (cosView < cosHorizon) {
+			// Rotate up onto the horizon cone, keeping the azimuth.
+			float3 tangent = viewDir - up * cosView;
+			float tangentLen = length(tangent);
+			if (tangentLen > 1e-4) {
+				float sinHorizon = sqrt(saturate(1 - cosHorizon * cosHorizon));
+				viewDir = normalize((tangent / tangentLen) * sinHorizon + up * cosHorizon);
+			}
+		}
+	}
 
 	float2 hitInfo = raySphere(0, atmosphereRadius, camPos, viewDir);
 	float dstToAtmosphere = hitInfo.x;
