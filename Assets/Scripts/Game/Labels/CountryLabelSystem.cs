@@ -102,6 +102,9 @@ public class CountryLabelSystem : MonoBehaviour
 
 	public int VisibleCount { get; private set; }
 
+	/// <summary>Radius the labels were last posed at, to notice a world-scale change.</summary>
+	float lastGlobeRadius = -1f;
+
 	/// <summary>
 	/// Re-places every label for a new globe radius.
 	///
@@ -110,15 +113,16 @@ public class CountryLabelSystem : MonoBehaviour
 	/// used to have, hanging in space above the surface. The unit anchor direction is kept, so
 	/// re-placing them is just a multiply.
 	/// </summary>
-	public void SetGlobeRadius(float radius)
+	public void SetGlobeRadius(float radius = 0f)
 	{
 		if (labels == null) { return; }
 
 		foreach (Label label in labels)
 		{
 			if (label == null) { continue; }
-			label.worldPosition = label.anchorDirection * radius;
+			ApplyPose(label);
 		}
+		lastGlobeRadius = GlobeRadius;
 	}
 
 	void Start()
@@ -291,6 +295,11 @@ public class CountryLabelSystem : MonoBehaviour
 
 	void ApplyPose(Label label)
 	{
+		// From the LIVE radius rather than one captured at creation. A world-scale preset can
+		// change the globe radius at any time, and a label frozen at the old one hangs in space
+		// above the surface.
+		label.worldPosition = label.anchorDirection * GlobeRadius;
+
 		Vector3 up = label.anchorDirection;
 
 		// Vector3.up is the north pole in this projection, so projecting it onto the
@@ -308,6 +317,11 @@ public class CountryLabelSystem : MonoBehaviour
 	void LateUpdate()
 	{
 		if (!initialised || cam == null) { return; }
+
+		// Catches a radius change whenever it happens. Calling SetGlobeRadius from the world
+		// scale controller was not enough on its own: it runs in Start, and if it beat this
+		// component's own Start there were no labels yet to move.
+		if (!Mathf.Approximately(GlobeRadius, lastGlobeRadius)) { SetGlobeRadius(); }
 
 		Vector3 camPos = cam.transform.position;
 		// Pixels per world unit at unit distance - the projected size of anything is then
