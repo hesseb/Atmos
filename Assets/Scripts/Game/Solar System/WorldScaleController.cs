@@ -44,6 +44,9 @@ public class WorldScaleController : MonoBehaviour
 	[Tooltip("Positions live in a compute buffer drawn indirectly, so they need rewriting.")]
 	public CityLights cityLights;
 
+	[Tooltip("Orbits at a fixed world-unit distance, which a large enough planet swallows.")]
+	public SolarSystem.Moon moon;
+
 	[Tooltip("Holds one terrain copy per planet scale, so relief stays at its authored " +
 		"world-unit height instead of scaling with the globe.")]
 	public LodMeshLoader terrainLoader;
@@ -91,6 +94,7 @@ public class WorldScaleController : MonoBehaviour
 		if (renderSettings == null) { renderSettings = FindFirstObjectByType<RenderSettingsController>(); }
 		if (labelSystem == null) { labelSystem = FindFirstObjectByType<CountryLabelSystem>(); }
 		if (cityLights == null) { cityLights = FindFirstObjectByType<CityLights>(); }
+		if (moon == null) { moon = FindFirstObjectByType<SolarSystem.Moon>(); }
 
 		// TestbedCamera holds the rendering camera explicitly; that is more reliable than
 		// GetComponent, which fails here because the Camera lives on its own GameObject.
@@ -235,6 +239,13 @@ public class WorldScaleController : MonoBehaviour
 			// culled at x1, culled after some zoom at x4, and culled almost immediately at x16.
 			if (renderSettings != null)
 			{
+				// Plain scaling, deliberately NOT stretched to reach the moon.
+				//
+				// The moon orbits at 811 world units against a 600-unit cull distance, so the
+				// shipped scene never draws it - it is unfinished, and renders as a translucent
+				// dark grey disc. Widening the cull to include it is what made that disc appear.
+				// Scaling the cull and the moon by the same factor keeps the ratio, so it stays
+				// culled at every scale exactly as it was.
 				scope.Set(() => renderSettings.maxCameraCullDst, v => renderSettings.maxCameraCullDst = v,
 					renderSettings.maxCameraCullDst * k);
 				scope.Set(() => renderSettings.maxLightShadowCullDst, v => renderSettings.maxLightShadowCullDst = v,
@@ -269,6 +280,20 @@ public class WorldScaleController : MonoBehaviour
 			// them and the buffer has to be rewritten. CityLights also applies this itself when it
 			// initialises, since it is created by a loading task that may run after this.
 			if (cityLights != null) { cityLights.SetPlanetScale(baseRadius, k); }
+
+			// The moon orbits at a fixed 811 world units. That clears a 150-unit planet and a
+			// 600-unit one, but a 2400-unit planet swallows it - at x16 it sat 1600 units below
+			// the surface, permanently inside the globe.
+			//
+			// Scaling it keeps it outside the planet AND keeps it beyond the cull distance, which
+			// scales by the same factor. That second part matters: the shipped scene culls the
+			// moon at 600 units and never draws it, because it is unfinished and renders as a
+			// translucent dark grey disc. Both must scale together or it appears.
+			if (moon != null)
+			{
+				scope.Set(() => moon.dstMultiplier, v => moon.dstMultiplier = v, moon.dstMultiplier * k);
+				scope.Set(() => moon.size, v => moon.size = v, moon.size * k);
+			}
 
 			if (testbedCamera != null)
 			{
