@@ -548,26 +548,37 @@ Shader "Custom/Ocean"
 				float cityTexelAngle = UNITY_PI / max(1, _LightMap_TexelSize.w);
 				float cityStreakMip = max(0, log2(max(1, cityStepAngle / cityTexelAngle)));
 
+				// Everything below is multiplied by this, so when it is zero the march is eight texture
+				// fetches whose result is thrown away - and it is zero across the whole daylit hemisphere,
+				// which is most of a daytime frame. The ocean is in the path the benchmark measures, so
+				// that is worth a branch. It is also about as favourable as a dynamic branch in a fragment
+				// shader gets: the condition is day-versus-night, so it is coherent over huge screen areas
+				// rather than varying between neighbouring pixels.
+				float cityFade = cityNight * cityZoomFade;
+
 				float cityStreak = 0;
-				float cityStreakWeight = 0;
-				[unroll]
-				for (int cityStep = 0; cityStep < CITY_STREAK_STEPS; cityStep++)
+				if (cityFade > 0.001)
 				{
-					float t = (cityStep + 0.5) / CITY_STREAK_STEPS;
-					float angle = t * _CityStreakReach;
-					float3 q = sphereNormal * cos(angle) + cityAimDir * sin(angle);
-					float3 lit = tex2Dlod(_LightMap, float4(pointToUV(q), 0, cityStreakMip)).rgb;
-					float weight = 1 - t;
-					cityStreak += dot(lit, float3(0.299, 0.587, 0.114)) * weight;
-					cityStreakWeight += weight;
+					float cityStreakWeight = 0;
+					[unroll]
+					for (int cityStep = 0; cityStep < CITY_STREAK_STEPS; cityStep++)
+					{
+						float t = (cityStep + 0.5) / CITY_STREAK_STEPS;
+						float angle = t * _CityStreakReach;
+						float3 q = sphereNormal * cos(angle) + cityAimDir * sin(angle);
+						float3 lit = tex2Dlod(_LightMap, float4(pointToUV(q), 0, cityStreakMip)).rgb;
+						float weight = 1 - t;
+						cityStreak += dot(lit, float3(0.299, 0.587, 0.114)) * weight;
+						cityStreakWeight += weight;
+					}
+					cityStreak /= max(1e-4, cityStreakWeight);
 				}
-				cityStreak /= max(1e-4, cityStreakWeight);
 
 				// Multiplied by the Fresnel term because this IS a reflection and should obey the same
 				// energy split as the sky - which also puts it at the grazing angles where a real streak
 				// forms, and takes it away when looking straight down, where there would not be one. That
 				// view dependence is most of what separates it from the spill.
-				oceanCol += cityStreak * _CityLightCol.rgb * _CityStreakStrength * fresnelReflectance * cityNight * cityZoomFade;
+				oceanCol += cityStreak * _CityLightCol.rgb * _CityStreakStrength * fresnelReflectance * cityFade;
 
 				// The glint: the same aim, against the smooth field rather than the sharp map, so it reads
 				// as a broad soft brightening of the water facing a city.
@@ -591,7 +602,7 @@ Shader "Custom/Ocean"
 				// edge along the flip.
 				float cityAim = saturate(dot(cityAimDir, cityDir));
 				float cityHighlight = pow(cityAim, _CityGlintSharpness) * cityTangentLen * cityCoherence;
-				oceanCol += cityHighlight * cityGlow * _CityLightCol.rgb * _CityGlintStrength * cityNight * cityZoomFade;
+				oceanCol += cityHighlight * cityGlow * _CityLightCol.rgb * _CityGlintStrength * cityFade;
 
 				// # Apply foam
 				float4 foam = calculateFoam(texCoord, pointOnUnitSphere, viewDir);
