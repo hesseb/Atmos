@@ -56,8 +56,8 @@ Shader "Custom/Ocean"
 		_CityLightCol("City Light Colour", Color) = (0.443, 0.312, 0.190, 1)
 		_CitySpillStrength("Spill Strength", Range(0, 8)) = 2
 		_CityStreakStrength("Streak Strength", Range(0, 80)) = 25
-		_CityGlintStrength("Glint Strength", Range(0, 16)) = 5
-		_CityGlintSharpness("Glint Sharpness", Range(1, 64)) = 12
+		_CityGlintStrength("Glint Strength", Range(0, 40)) = 14
+		_CityGlintSharpness("Glint Sharpness", Range(1, 16)) = 3
 		_CityStreakReach("Streak Reach (radians)", Range(0.005, 0.25)) = 0.06
 		_CityFadeMip("Zoom Fade Mip", Range(0, 10)) = 4
 
@@ -407,6 +407,10 @@ Shader "Custom/Ocean"
 				// belongs there - and squaring compresses an already small field into invisibility,
 				// taking a bright coast from 0.20 to 0.04 and steepening the falloff into a thin rim.
 				float cityGlow = cityField.b;
+				// How one-sided the bearing is. Near 1 on an open coast lit from one side, near 0 in a
+				// strait with cities on both banks, where the averaged bearing points at neither and flips
+				// hard across the middle of the water - which is what produced the serrated seam.
+				float cityCoherence = cityField.a;
 
 				// Matched to nightAmbient's ramp so the water lights up with the same curve the rest of
 				// the night side does. The city lights themselves fade in on their own turn-on animation,
@@ -574,8 +578,19 @@ Shader "Custom/Ocean"
 				// condition was being met along curves that swept across the water as the camera moved.
 				// Arcs, not a blob. A city is an extended source metres across in the sky, not a point, so
 				// a broad aim lobe is both better behaved and the more honest model.
+				// Faded by two things beyond the aim itself, and without either the term misbehaves:
+				//
+				// cityTangentLen is how horizontal the reflected ray is. Looking straight down it goes to
+				// zero, and cityAimDir - being that ray's tangential part, normalised - becomes pure
+				// numerical noise that varies per pixel. Multiplying by the length both removes the noise
+				// where it lives and states the physical fact: from directly overhead, a reflection of
+				// something sitting on the horizon cannot reach the eye.
+				//
+				// cityCoherence removes the rest. Where light arrives from opposite banks the bearing is
+				// meaningless and flips across the channel; fading out there is better than drawing a hard
+				// edge along the flip.
 				float cityAim = saturate(dot(cityAimDir, cityDir));
-				float cityHighlight = pow(cityAim, _CityGlintSharpness);
+				float cityHighlight = pow(cityAim, _CityGlintSharpness) * cityTangentLen * cityCoherence;
 				oceanCol += cityHighlight * cityGlow * _CityLightCol.rgb * _CityGlintStrength * cityNight * cityZoomFade;
 
 				// # Apply foam

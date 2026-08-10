@@ -44,7 +44,6 @@ namespace Generation
 		float minAngle = 0.0015f;
 		float maxAngle = 0.05f;
 		float falloffPower = 2f;
-		float litThreshold = 0.15f;
 
 		[MenuItem("Testbed/Generation/Bake City Light Field")]
 		static void Open()
@@ -66,7 +65,7 @@ namespace Generation
 				"Bakes the glow the ocean picks up from city lights.\n\n" +
 				"RG: direction toward the light, in the local east/north basis.\n" +
 				"B: the glow, stored as its square root for precision in the darks.\n" +
-				"A: angular distance to the nearest lit land.",
+				"A: how one-sided that direction is - low in a strait lit from both banks.",
 				MessageType.None);
 
 			source = (Texture2D)EditorGUILayout.ObjectField("Source Light Map", source, typeof(Texture2D), false);
@@ -84,7 +83,6 @@ namespace Generation
 			minAngle = EditorGUILayout.Slider("Min Angle (rad)", minAngle, 0.0002f, 0.02f);
 			maxAngle = EditorGUILayout.Slider("Max Angle (rad)", maxAngle, 0.005f, 0.3f);
 			falloffPower = EditorGUILayout.Slider("Falloff Power", falloffPower, 0.5f, 4f);
-			litThreshold = EditorGUILayout.Slider("Lit Threshold", litThreshold, 0.01f, 0.9f);
 
 			EditorGUILayout.Space();
 			EditorGUILayout.LabelField(
@@ -125,7 +123,6 @@ namespace Generation
 			compute.SetFloat("minAngle", minAngle);
 			compute.SetFloat("maxAngle", maxAngle);
 			compute.SetFloat("falloffPower", falloffPower);
-			compute.SetFloat("litThreshold", litThreshold);
 
 			compute.GetKernelThreadGroupSizes(kernel, out uint groupX, out uint groupY, out _);
 

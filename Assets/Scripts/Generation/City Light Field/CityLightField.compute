@@ -12,11 +12,15 @@
 // Output, per texel:
 //   RG  direction toward the surrounding light, in the local east/north tangent basis, *0.5+0.5
 //   B   the glow itself - lightmap brightness averaged over a disc, weighted toward the near side
-//   A   angular distance to the nearest lit texel, normalised by maxAngle (1 if nothing was found)
+//   A   how one-sided that direction is: 1 when all the light comes from one bearing, 0 when it
+//       arrives equally from all round. The ocean fades its glint out where this is low, because
+//       a single averaged bearing is meaningless in, say, the Strait of Gibraltar - cities line
+//       both banks, the mean direction points at neither, and it flips hard across the middle.
 //
 // B is stored as sqrt(B) so an 8-bit target keeps precision in the darks, where the whole effect
-// lives. The ocean squares it on read. Do not import this texture as sRGB - RG is a direction and
-// would be mangled by a transfer curve.
+// lives. The ocean uses it as stored rather than squaring it back - see the note there; the project
+// renders in Gamma colour space, so the encoded value is the one that belongs in the buffer.
+// Do not import this texture as sRGB - RG is a direction and would be mangled by a transfer curve.
 
 Texture2D<float4> LightMap;
 SamplerState my_linear_repeat_sampler;
@@ -35,7 +39,6 @@ int numAngularSteps;
 float minAngle;         // inner radius of the gather; also the softening on the falloff
 float maxAngle;         // outer radius - beyond this a city contributes nothing
 float falloffPower;
-float litThreshold;     // lightmap value above which a texel counts as "a city" for the A channel
 
 // The bake is dispatched in horizontal bands rather than in one go. At the default settings this is
 // well over a billion texture samples, and a single dispatch that long trips Windows' GPU watchdog
@@ -65,7 +68,6 @@ void BakeCityLightField(uint3 id : SV_DispatchThreadID)
 	float total = 0;
 	float weightTotal = 0;
 	float2 dirAccum = 0;
-	float nearestLit = maxAngle;
 
 	// Radii are geometrically spaced, so the near field - which carries almost all the weight - gets
 	// as many rings as the far field. Linear spacing would spend most of its samples out where the
@@ -104,7 +106,6 @@ void BakeCityLightField(uint3 id : SV_DispatchThreadID)
 
 			total += luminance * weight;
 			dirAccum += tangent * luminance * weight;
-			if (luminance > litThreshold) { nearestLit = min(nearestLit, r); }
 		}
 
 		weightTotal += weight * numAngularSteps;
@@ -120,5 +121,11 @@ void BakeCityLightField(uint3 id : SV_DispatchThreadID)
 	float dirLength = length(dirAccum);
 	float2 direction = dirLength > 1e-8 ? dirAccum / dirLength : float2(0, 0);
 
-	Result[texel] = float4(direction * 0.5 + 0.5, sqrt(saturate(glow)), nearestLit / maxAngle);
+	// The length that normalising just discarded, relative to the unsigned total, is the coherence:
+	// contributions all from one bearing keep their length and give 1, contributions from opposite
+	// bearings cancel and give 0. Free here, and the only thing that can tell a bay lit from one
+	// side from a strait lit from both - which look identical in RG alone.
+	float coherence = saturate(dirLength / max(1e-8, total));
+
+	Result[texel] = float4(direction * 0.5 + 0.5, sqrt(saturate(glow)), coherence);
 }
