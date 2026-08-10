@@ -23,6 +23,10 @@ Shader "Custom/Ocean"
 		_FresnelPower("Fresnel Power", Float) = 0
 		_TestParams("Test Params", Vector) = (0,0,0,0)
 
+		[Header(Atmosphere)]
+		[Tooltip("0 keeps the old white glint, 1 colours it by sun transmittance. Exists for the before/after figure.")]
+		_GlintTransmittanceWeight("Glint Transmittance Weight", Range(0,1)) = 1
+
 		[Header(Foam)]
 		[NoScaleOffset] _FoamDistanceMap ("Foam Distance Map", 2D) = "white" {}
 		_FoamDst ("Foam Dst", Range(0,1)) = 1
@@ -55,6 +59,18 @@ Shader "Custom/Ocean"
 
 			#include "Assets/Scripts/Shader Common/GeoMath.hlsl"
 			#include "Assets/Scripts/Shader Common/Triplanar.hlsl"
+
+			// The atmosphere's transmittance LUT, so the sun glint can be the colour the sun
+			// actually is after travelling through the air to this point.
+			//
+			// Deliberately NOT AtmosphereCommon.hlsl, which is the only declaration of the global
+			// `dirToSun` and would collide with this shader's own sun direction. DrawSky.shader
+			// sets the same precedent for the same reason. The uniforms this header declares
+			// (planetRadius, atmosphereRadius, atmosphereThickness, transmittanceLutSize) and the
+			// TransmittanceLUT texture arrive as globals from AtmosphereEffect.BindGlobalResources.
+			#include "Assets/Post Processing/Effects/Atmosphere/Shader Common/TransmittanceCommon.hlsl"
+
+			sampler2D TransmittanceLUT;
 
 			struct appdata
 			{
@@ -89,6 +105,8 @@ Shader "Custom/Ocean"
 			
 			float4 _FresnelCol;
 			float _FresnelWeight, _FresnelPower;
+
+			float _GlintTransmittanceWeight;
 
 			// Foam
 			sampler2D _FoamDistanceMap;
@@ -169,8 +187,11 @@ Shader "Custom/Ocean"
 				return o;
 			}
 
-			float calculateSpecular(float3 normal, float3 viewDir, float3 dirToSun, float smoothness) {
-				float specularAngle = acos(dot(normalize(dirToSun - viewDir), normal));
+			// Parameter renamed from `dirToSun` to `sunDir`: AtmosphereCommon.hlsl declares a global
+			// of the former name, and although this shader deliberately does not include it, a
+			// shadowed uniform is the kind of thing that fails silently rather than loudly.
+			float calculateSpecular(float3 normal, float3 viewDir, float3 sunDir, float smoothness) {
+				float specularAngle = acos(dot(normalize(sunDir - viewDir), normal));
 				float specularExponent = specularAngle / smoothness;
 				float specularHighlight = exp(-max(0,specularExponent) * specularExponent);
 				return specularHighlight;
@@ -187,7 +208,7 @@ Shader "Custom/Ocean"
 				float mipLevel = calculateGeoMipLevel(texCoord, _OceanCol_TexelSize.zw);
 
 				float shadows = LIGHT_ATTENUATION(i);
-				float3 dirToSun = _WorldSpaceLightPos0.xyz;
+				float3 sunDir = _WorldSpaceLightPos0.xyz;
 				float3 viewDir = normalize(i.worldPos - _WorldSpaceCameraPos.xyz);
 				
 				
@@ -202,22 +223,22 @@ Shader "Custom/Ocean"
 
 				// ---- Calculate specular highlight---- 
 				float3 specularNormal = waveNormal;
-				float specularHighlight = saturate(calculateSpecular(specularNormal, viewDir, dirToSun, _SpecularSmoothness));
+				float specularHighlight = saturate(calculateSpecular(specularNormal, viewDir, sunDir, _SpecularSmoothness));
 				float specularStrength = lerp(0, 1, saturate(shadows * 5));
 				specularStrength *= smoothstep(0.4f, 0.5, shadows);
 				specularHighlight *= specularStrength;
 
 				// # Apply shading and specular highlight
-				float shading = dot(sphereNormal, dirToSun) * 0.5 + 0.5;
+				float shading = dot(sphereNormal, sunDir) * 0.5 + 0.5;
 				shading = shading * shading;
-				float waveShading = dot(waveNormal, dirToSun);
+				float waveShading = dot(waveNormal, sunDir);
 				//waveShading = max(0.5, waveShading);
 				//return waveShading;
 				//shading = lerp(shading, waveShading, 0.25);
 				float grey = dot(oceanCol, float3(0.3, 0.3, 0.4));
 				//return 1-grey;
 				//shading += saturate(waveShading-0.75) * (1-grey) * 0.75;
-				float waveShadeMask = lerp(0.4, 0.95, smoothstep(0.2, 1, dot(sphereNormal, dirToSun)));
+				float waveShadeMask = lerp(0.4, 0.95, smoothstep(0.2, 1, dot(sphereNormal, sunDir)));
 			//	return dot(waveNormal, viewDir);
 				//shading += smoothstep(-0.1,0.5,dot(waveNormal, viewDir)) * 3;
 				float ripple = saturate(smoothstep(-0.53,0.54,dot(waveNormal, viewDir)));
@@ -230,7 +251,24 @@ Shader "Custom/Ocean"
 			//	//return waveShadeMask;
 				//shading += saturate(waveShading-waveShadeMask) * (1-grey) * 1;
 				//return saturate(waveShading-waveShadeMask) * (1-grey) * 1;
-				oceanCol = saturate(oceanCol * (1-specularHighlight) * shading) + specularHighlight * _LightColor0.rgb;
+				// Colour the glint by the sun's own transmittance to this point, so it reddens and
+				// dims through a sunset instead of staying white.
+				//
+				// `_LightColor0` alone is near-white here: Sun.cs estimates it from a gradient keyed
+				// on dot(camera, sun), which is one colour for the whole globe and an approximation
+				// its own comment flags. The transmittance LUT answers the same question per pixel
+				// and physically.
+				//
+				// Sampled at a canonical sea-level position, NOT at i.worldPos. The ocean mesh is
+				// relief-corrected and drawn with Offset 1,1, so its radius is not exactly
+				// planetRadius - and transmittanceRayHitsGround returns true for *every* downward
+				// direction once radius < planetRadius, which would return exactly zero and black
+				// out the glint at sunset, the one moment this exists for.
+				float3 seaLevelPos = sphereNormal * (planetRadius + 1e-3);
+				float3 sunTransmittance = sampleTransmittanceLUT(TransmittanceLUT, seaLevelPos, sunDir);
+				float3 glintCol = _LightColor0.rgb * lerp(1, sunTransmittance, _GlintTransmittanceWeight);
+
+				oceanCol = saturate(oceanCol * (1-specularHighlight) * shading) + specularHighlight * glintCol;
 
 				// # Apply foam
 				float4 foam = calculateFoam(texCoord, pointOnUnitSphere, viewDir);
@@ -240,7 +278,7 @@ Shader "Custom/Ocean"
 				// First, a little fix to the shadow value. When sun is on far side of planet, the far chunks of the earth
 				// often don't get rendered for shadows due to culling distance. This means the ocean sometimes has chunks of
 				// shadow missing. So crude fix is to just force the shadow value to zero (shadows on) when sufficiently dark.
-				float nightT = saturate(dot(sphereNormal,-dirToSun)); // 0 at sunrise/sunset to 1 at midnight
+				float nightT = saturate(dot(sphereNormal,-sunDir)); // 0 at sunrise/sunset to 1 at midnight
 				float nightShadowFixT = smoothstep(0.2,0.3,nightT);
 				shadows = lerp(shadows, 0, smoothstep(0.2,0.3,nightT));
 				// Apply the shadows to the ocean colour
