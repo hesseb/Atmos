@@ -157,6 +157,10 @@ public class WorldScaleController : MonoBehaviour
 		// Unwind the previous preset first, so each scope holds the *authored* values rather
 		// than the previous preset's - otherwise cycling twice would make the restore a no-op
 		// and the authored state would be lost.
+		// Captured before `current` moves on, so the camera's height can be carried across as a
+		// fraction of the planet rather than as a distance.
+		float previousScale = ScaleInEffect;
+
 		scope?.Dispose();
 		scope = new RestoreScope();
 		current = index;
@@ -312,21 +316,25 @@ public class WorldScaleController : MonoBehaviour
 
 			// modeSwitchAltitude is deliberately absent: it is a fraction of the planet radius, so
 			// it follows the scale on its own and there is nothing here to keep in step.
-			// Moved rather than just assigned, and last, after the new surface radius is in place.
+			// Keep the FRAMING across a scale change rather than a distance.
 			//
-			// Writing the field alone only works in Orbit mode: free-fly treats the transform as
-			// authoritative and merely derives altitude from it, so growing the planet under a
-			// free-flying camera left it at its old world radius - inside the globe. Even in orbit
-			// mode, an altitude carried over from another scale is the wrong height above a
-			// different-sized planet.
-			float previousAltitude = testbedCamera.altitude;
-			Vector3 previousPosition = testbedCamera.transform.position;
-			scope.Add(() =>
-			{
-				testbedCamera.altitude = previousAltitude;
-				testbedCamera.transform.position = previousPosition;
-			});
-			testbedCamera.SetAltitudeAboveSurface(preset.altitude);
+			// Forcing the preset's altitude meant landing 10 units above a 2400-unit globe at x16 -
+			// on top of the surface, with nothing recognisable in view. Holding the altitude as a
+			// fraction of the radius instead makes the swap a pure change of planet size: the same
+			// amount of world stays in frame, the same curvature, and what visibly differs is the
+			// atmosphere, which is the whole point of being able to switch.
+			//
+			// Moved rather than assigned, and last, after the new surface radius is in place -
+			// writing the field alone only works in Orbit mode, since free-fly treats the transform
+			// as authoritative and merely derives altitude from it.
+			float previousRadius = baseRadius * Mathf.Max(1e-3f, previousScale);
+			float previousAltitude = testbedCamera.transform.position.magnitude - previousRadius;
+			float altitudeFraction = previousAltitude / previousRadius;
+
+			// Never below the preset's working altitude, which is the height its atmosphere and
+			// camera speeds are tuned around.
+			float targetAltitude = Mathf.Max(preset.altitude, altitudeFraction * baseRadius * k);
+			testbedCamera.SetAltitudeAboveSurface(targetAltitude);
 		}
 
 		Debug.Log($"[WorldScale] {preset.id}: {Summary(preset)}", this);
