@@ -44,6 +44,11 @@ MonoBehaviour:
   multipleScatteringLUTSize: {x: 32, y: 32}
   multipleScatteringStrength: 1
   groundAlbedo: 0.1
+  skyViewLUTCompute: {fileID: 7200000, guid: 4b2e97f1c05d38a4bb71e6934c0af285, type: 3}
+  skyViewLUTSize: {x: 192, y: 128}
+  numSkyViewScatteringSteps: 32
+  skyViewLutAltitude: 0
+  skyViewHorizonV: 1
   aerialPerspectiveLUTCompute: {fileID: 7200000, guid: 5261cb094de7cb64189738546d046b7d, type: 3}
   aerialPerspectiveLUTSize: 32
   aerialPerspectiveStrength: 0.529
@@ -60,6 +65,7 @@ MonoBehaviour:
   rayleighCoefficients: {x: 1.876744, y: 4.1003814, z: 8.238811}
   transmittanceLUT: {fileID: 0}
   multipleScatteringLUT: {fileID: 0}
+  skyViewLUT: {fileID: 0}
   aerialPerspectiveLuminance: {fileID: 0}
   aerialPerspectiveTransmittance: {fileID: 0}
   sky: {fileID: 0}
