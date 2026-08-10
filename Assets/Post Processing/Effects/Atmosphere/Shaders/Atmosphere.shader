@@ -62,11 +62,6 @@
 				float nearClipPlane = _ProjectionParams.y;
 				float farClipPlane = _ProjectionParams.z;
 			
-				// sqrt, because the LUT's depth axis is quadratic - slices concentrate near the
-				// camera, where the air actually is. The compute squares this to get back to a
-				// distance; the two must move together.
-				float depthT = sqrt(remap01(nearClipPlane, terrestrialClipDst, sceneDepth));
-
 				float3 rayOrigin = _WorldSpaceCameraPos;
 				float3 rayDir = viewDir;
 
@@ -74,7 +69,7 @@
 				float2 hitInfo = raySphere(0, atmosphereRadius, rayOrigin, rayDir);
 				float dstToAtmosphere = hitInfo.x;
 				float dstThroughAtmosphere = hitInfo.y;
-			
+
 				if (sceneDepth >= farClipPlane) {
 					// Sky
 				}
@@ -82,6 +77,26 @@
 				else if (dstThroughAtmosphere > 0 && dstToAtmosphere < sceneDepth) {
 					float3 inPoint = rayOrigin + rayDir * (dstToAtmosphere);
 					float3 outPoint = rayOrigin + rayDir * min(dstToAtmosphere + dstThroughAtmosphere, sceneDepth);
+
+					// The depth axis spans the air in front of THIS ray, not a fixed distance.
+					//
+					// Two fixed-range attempts failed for opposite reasons. A far distance of
+					// bodyRadius left the whole visible scene inside five of the thirty-two slices
+					// at low altitude; making the range quadratic and camera-dependent fixed that
+					// but still gave only four slices from orbit, because it concentrates samples
+					// near the camera and from out there the air is all far away.
+					//
+					// Normalising by the atmosphere chord alone does not work either: a ray looking
+					// straight down is inside the atmosphere sphere, so its chord runs through the
+					// planet and out the far side - 322 units of "atmosphere" for 2 units of air.
+					//
+					// Clipping that chord at the ground is what makes it exact. The span is then
+					// always the air actually between the camera and what it is looking at, so all
+					// thirty-two slices are used at every altitude. The compute derives the same
+					// span from the same two intersections.
+					float dstToGround = rayIntersectSphere(inPoint, rayDir, planetRadius);
+					float span = dstToGround > 0 ? min(dstThroughAtmosphere, dstToGround) : dstThroughAtmosphere;
+					float depthT = saturate((sceneDepth - dstToAtmosphere) / max(1e-5, span));
 
 					float3 transmittance = tex3Dlod(TransmittanceLUT3D, float4(uv, depthT, 0)).rgb;
 					float3 luminance = tex3Dlod(AerialPerspectiveLUT, float4(uv,depthT, 0)).rgb;

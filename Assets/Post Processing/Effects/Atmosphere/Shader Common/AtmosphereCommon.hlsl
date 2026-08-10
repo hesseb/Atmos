@@ -36,7 +36,10 @@ float sunIlluminance;
 
 // Other
 float3 dirToSun;
-float terrestrialClipDst;
+
+// `terrestrialClipDst` used to live here: the far end of the aerial perspective LUT's depth
+// axis, fixed at bodyRadius. The axis is normalised per ray now - each ray's slices span the
+// air between the camera and whatever it hits - so there is no far distance left to declare.
 
 struct ScatteringParameters {
 	float3 rayleigh;

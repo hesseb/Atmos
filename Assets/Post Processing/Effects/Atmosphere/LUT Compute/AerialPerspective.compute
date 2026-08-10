@@ -2,7 +2,7 @@
 #include "../Shader Common/AtmosphereCommon.hlsl"
 #include "../Shader Common/RaymarchCommon.hlsl"
 
-// Header revision this file was last rebuilt against: quadratic aerial depth axis.
+// Header revision this file was last rebuilt against: per-ray aerial depth axis.
 
 // Unity does not reliably rebuild a .compute when an included .hlsl changes - the include is
 // not tracked as an import dependency. If the atmosphere's output looks uniformly scaled or
@@ -48,13 +48,15 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 	float2 uv = id.xy / (size - 1.0);
 
 	float3 rayDir = calculateViewDir(uv);
-	float3 rayPos = camPos + rayDir * nearClip;
 
-	float2 atmosphereHitInfo = raySphere(0, atmosphereRadius, rayPos, rayDir);
+	// camPos, not camPos + rayDir * nearClip. The composite shader does its ray-sphere test from
+	// _WorldSpaceCameraPos, and the depth axis is now defined relative to that intersection, so
+	// the two origins have to be identical or every slice lands at a slightly wrong distance.
+	float2 atmosphereHitInfo = raySphere(0, atmosphereRadius, camPos, rayDir);
 	float dstToAtmosphere = atmosphereHitInfo.x;
 	float dstThroughAtmosphere = atmosphereHitInfo.y;
 
-	float3 inPoint = rayPos + rayDir * dstToAtmosphere;
+	float3 inPoint = camPos + rayDir * dstToAtmosphere;
 
 	// Clip at the ground once, up front, rather than inside each slice's march. raymarch() does
 	// this internally, but raymarchSegment() deliberately does not: a later segment starting
@@ -80,26 +82,19 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 		// Writing at texel centres makes the mapping exact at every voxel.
 		float depthT = (z + 0.5) / size;
 
-		// The slice's far distance is measured from the CAMERA, but the march starts at the
-		// atmosphere boundary - so the distance already covered getting there has to come off,
-		// or the slice integrates that much too far.
+		// The depth axis spans the air in front of THIS ray - `maxLength`, the atmosphere
+		// chord already clipped at the ground - rather than a fixed distance from the camera.
 		//
-		// This was invisible from inside the atmosphere, where dstToAtmosphere is 0 and the two
-		// origins coincide. The testbed camera reaches altitude 250, i.e. radius 400 against an
-		// atmosphere top of 259.5, so it spends real time outside - and there the far endpoint
-		// over-extended by up to a whole atmosphere thickness.
-		// Quadratic in depthT, so slices bunch up near the camera where the air is densest.
+		// Two fixed-range versions failed for opposite reasons. A far distance of bodyRadius put
+		// the entire visible scene inside five of the thirty-two slices at low altitude; a
+		// quadratic, camera-dependent range fixed that end and still left four slices from orbit,
+		// because it concentrates samples near the camera and from out there the air is all far
+		// away. Depth varies radially when looking at a sphere, so either way the shortage read
+		// as concentric banding across the planet.
 		//
-		// A linear axis was survivable when the atmosphere was 110 units thick against a 150-unit
-		// far distance. At 20 units thick it is not: from 2 units altitude the whole visible
-		// scene reaches only 24.6 units, which is voxels 0..5 of 32. Depth varies radially when
-		// looking at a sphere, so interpolating across six slices reads as concentric bands.
-		//
-		// The shader takes the square root of its linear depth to match. Both directions have to
-		// be changed together or the fog simply lands at the wrong distance.
-		float linearT = depthT * depthT;
-		float distanceFromCamera = nearClip + (terrestrialClipDst - nearClip) * linearT;
-		float target = clamp(distanceFromCamera - dstToAtmosphere, 0, maxLength);
+		// Normalising per ray removes the failure mode instead of moving it: every ray gets all
+		// thirty-two slices across exactly the air it passes through, at any altitude.
+		float target = depthT * maxLength;
 
 		if (dstThroughAtmosphere > 0 && target > marched) {
 			// dont include earth shadow (causes issues due to low texture size)
