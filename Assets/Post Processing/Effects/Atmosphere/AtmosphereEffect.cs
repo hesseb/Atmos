@@ -111,6 +111,36 @@ public class AtmosphereEffect : PostProcessingEffect
 	/// </summary>
 	[Range(0, 1)] public float groundAlbedo = 0.1f;
 
+	[Header("Sky View LUT (2D)")]
+	public ComputeShader skyViewLUTCompute;
+	/// <summary>
+	/// 192 x 128 is Hillaire's size. The parameterisation crowds v hard toward the horizon, so
+	/// most of that height is spent on the band that actually varies.
+	/// </summary>
+	public Vector2Int skyViewLUTSize = new Vector2Int(192, 128);
+	public int numSkyViewScatteringSteps = 32;
+	/// <summary>
+	/// Altitude the LUT is evaluated at. 0 - sea level - is right for a surface reflection, for
+	/// two reasons that happen to agree.
+	///
+	/// The Mie scale height is 1.32 world units, so at the camera's 10 units there is 0.05% of
+	/// sea-level Mie density overhead: a camera-altitude LUT would hand the ocean a clean blue sky
+	/// exactly when the warm horizon glow is what is wanted. And the aerial perspective already
+	/// applies the camera-to-surface segment over the ocean pixel afterwards, so evaluating at sea
+	/// level is what makes that segment count exactly once rather than twice.
+	/// </summary>
+	public float skyViewLutAltitude = 0f;
+	/// <summary>
+	/// Where the horizon sits in v. 1 stores the upper hemisphere only.
+	///
+	/// A sea-level LUT has a definitionally black lower half - a below-horizon ray hits the ground
+	/// at distance zero and the march clips there. Storing it would waste half the texels and put a
+	/// black texel adjacent to the horizon, where bilinear filtering would darken the single most
+	/// visible band in the image. 0.5 recovers Hillaire's full-sphere split for a consumer at
+	/// altitude, from the same definition.
+	/// </summary>
+	[Range(0.5f, 1f)] public float skyViewHorizonV = 1f;
+
 	[Header("Aerial Perpspective LUT")]
 	public ComputeShader aerialPerspectiveLUTCompute;
 	public int aerialPerspectiveLUTSize;
@@ -153,6 +183,7 @@ public class AtmosphereEffect : PostProcessingEffect
 	[Header(("Debug"))]
 	public RenderTexture transmittanceLUT;
 	public RenderTexture multipleScatteringLUT;
+	public RenderTexture skyViewLUT;
 	public RenderTexture aerialPerspectiveLuminance;
 	public RenderTexture aerialPerspectiveTransmittance;//
 	public RenderTexture sky;
@@ -202,6 +233,7 @@ public class AtmosphereEffect : PostProcessingEffect
 			{
 				lutUpdateRequired = false;
 				RenderSky(activeCamera);
+				RenderSkyViewLUT(activeCamera);
 				RenderAerialPerspectiveLUTs(activeCamera);
 			}
 		}
@@ -230,6 +262,7 @@ public class AtmosphereEffect : PostProcessingEffect
 
 		if (transmittanceLUT != null) { Shader.SetGlobalTexture("TransmittanceLUT", transmittanceLUT); }
 		if (multipleScatteringLUT != null) { Shader.SetGlobalTexture("MultipleScatteringLUT", multipleScatteringLUT); }
+		if (skyViewLUT != null) { Shader.SetGlobalTexture("SkyViewLUT", skyViewLUT); }
 	}
 
 	void OnDisable()
@@ -283,6 +316,7 @@ public class AtmosphereEffect : PostProcessingEffect
 			sharedAtmosphereValues = GetShaderValues();
 			sharedAtmosphereValues.Apply(material);
 			if (multipleScatteringLUTCompute != null) { sharedAtmosphereValues.Apply(multipleScatteringLUTCompute); }
+			if (skyViewLUTCompute != null) { sharedAtmosphereValues.Apply(skyViewLUTCompute); }
 			sharedAtmosphereValues.Apply(transmittanceLUTCompute);
 			sharedAtmosphereValues.Apply(aerialPerspectiveLUTCompute);
 			sharedAtmosphereValues.Apply(skyRenderCompute);
@@ -290,6 +324,7 @@ public class AtmosphereEffect : PostProcessingEffect
 
 			InitAndRenderTransmittanceLUT();
 			InitAndRenderMultipleScatteringLUT();
+			InitSkyViewLUT();
 			InitAeiralPerspectiveLUTs();
 			InitSkyLUT();
 
@@ -386,6 +421,11 @@ public class AtmosphereEffect : PostProcessingEffect
 		values.floats.Add(("multipleScatteringStrength", multipleScatteringStrength));
 		values.floats.Add(("groundAlbedo", groundAlbedo));
 
+		// Sky view. The size goes as a float2 because both the write and the read divide by it.
+		values.vectors.Add(("skyViewLutSize", new Vector2(skyViewLUTSize.x, skyViewLUTSize.y)));
+		values.floats.Add(("skyViewLutRadius", bodyRadius + skyViewLutAltitude));
+		values.floats.Add(("skyViewHorizonV", skyViewHorizonV));
+
 		// Ozone values. The tent was `1 - |peak01 - h01| * falloff` in normalised altitude, so
 		// its half-width in world units is thickness / falloff.
 		values.floats.Add(("ozonePeakAltitude", ozonePeakDensityAltitude * thickness));
@@ -475,6 +515,21 @@ public class AtmosphereEffect : PostProcessingEffect
 		ComputeHelper.Dispatch(multipleScatteringLUTCompute, multipleScatteringLUT);
 	}
 
+	/// <summary>
+	/// Creates the sky view LUT. Filled per frame by RenderSkyViewLUT, not here: unlike the
+	/// transmittance and multiple-scattering LUTs it depends on the sun's elevation, which moves.
+	/// </summary>
+	void InitSkyViewLUT()
+	{
+		if (skyViewLUTCompute == null) { return; }
+
+		// SFloat: this is a radiance like the sky texture, not a fraction like the transmittance LUT.
+		ComputeHelper.CreateRenderTexture(ref skyViewLUT, skyViewLUTSize.x, skyViewLUTSize.y,
+			FilterMode.Bilinear, GraphicsFormat.R16G16B16A16_SFloat, "Sky View LUT");
+
+		BindComputeResources();
+	}
+
 	void InitAeiralPerspectiveLUTs()
 	{
 		GraphicsFormat aerialPerspectiveLUTFormat = GraphicsFormat.R16G16B16A16_SFloat;
@@ -533,6 +588,14 @@ public class AtmosphereEffect : PostProcessingEffect
 			if (aerialPerspectiveLUTCompute != null) { aerialPerspectiveLUTCompute.SetTexture(0, "MultipleScatteringLUT", multipleScatteringLUT); }
 		}
 
+		if (skyViewLUTCompute != null && skyViewLUT != null)
+		{
+			skyViewLUTCompute.SetTexture(0, "SkyViewResult", skyViewLUT);
+			skyViewLUTCompute.SetTexture(0, "TransmittanceLUT", transmittanceLUT);
+			if (multipleScatteringLUT != null) { skyViewLUTCompute.SetTexture(0, "MultipleScatteringLUT", multipleScatteringLUT); }
+			skyViewLUTCompute.SetInt("numSkyViewSteps", numSkyViewScatteringSteps);
+		}
+
 		if (skyRenderCompute != null && sky != null)
 		{
 			skyRenderCompute.SetTexture(0, "TransmittanceLUT", transmittanceLUT);
@@ -558,6 +621,32 @@ public class AtmosphereEffect : PostProcessingEffect
 		SetRaymarchParams(cam, skyRenderCompute);
 		skyRenderCompute.SetVector(ShaderParamID.dirToSun, -light.transform.forward);
 		ComputeHelper.Dispatch(skyRenderCompute, sky);
+	}
+
+	/// <summary>
+	/// Fills the sky view LUT for this frame's sun elevation.
+	///
+	/// Built in a canonical frame - up is +Y, sun in the +X/+Y half-plane - rather than the world
+	/// one, which is why `dirToSun` is fabricated here instead of being the real sun direction.
+	/// `raymarch` reads that global internally and HLSL globals are read-only in-shader, so the
+	/// frame has to come from the CPU. MultipleScattering.compute is set up the same way.
+	///
+	/// Exact rather than approximate, by spherical symmetry: the sky at a point depends only on the
+	/// local sun elevation and the direction relative to (up, sun). The consequence worth knowing is
+	/// that the LUT holds ONE sun elevation - the reference point's - while the visible ocean spans
+	/// up to 20 degrees of arc, so the far water is given the near water's sun. Aerial perspective
+	/// hides much of that; the clean fix is a third LUT axis, noted in NOTES.
+	/// </summary>
+	void RenderSkyViewLUT(Camera cam)
+	{
+		if (skyViewLUTCompute == null || skyViewLUT == null || light == null) { return; }
+
+		Vector3 up = cam.transform.position.normalized;
+		float cosSunZenith = Mathf.Clamp(Vector3.Dot(up, -light.transform.forward), -1f, 1f);
+		float sinSunZenith = Mathf.Sqrt(Mathf.Max(0f, 1f - cosSunZenith * cosSunZenith));
+
+		skyViewLUTCompute.SetVector(ShaderParamID.dirToSun, new Vector3(sinSunZenith, cosSunZenith, 0f));
+		ComputeHelper.Dispatch(skyViewLUTCompute, skyViewLUT);
 	}
 
 	void SetRaymarchParams(Camera cam, ComputeShader raymarchCompute)
@@ -600,7 +689,9 @@ public class AtmosphereEffect : PostProcessingEffect
 
 	public override void OnDestroy()
 	{
-		ComputeHelper.Release(aerialPerspectiveLuminance, sky, transmittanceLUT, aerialPerspectiveTransmittance);
+		// multipleScatteringLUT and skyViewLUT were both missing from this list.
+		ComputeHelper.Release(aerialPerspectiveLuminance, sky, transmittanceLUT, aerialPerspectiveTransmittance,
+			multipleScatteringLUT, skyViewLUT);
 	}
 
 

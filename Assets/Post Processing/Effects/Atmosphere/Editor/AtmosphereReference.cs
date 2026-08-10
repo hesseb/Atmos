@@ -107,6 +107,63 @@ static class AtmosphereReference
 		cosZenith = Mathf.Clamp(cosZenith, -1f, 1f);
 	}
 
+	// ------------------------------------------------------------ sky view mapping mirror
+
+	/// <summary>Mirror of `skyViewHorizonZenith`.</summary>
+	public static float SkyViewHorizonZenith(AtmosphereEffect a, float radius)
+	{
+		return Mathf.PI - Mathf.Asin(Mathf.Clamp01(a.bodyRadius / Mathf.Max(radius, a.bodyRadius)));
+	}
+
+	/// <summary>Mirror of `skyViewLutUv`. Direction to LUT coordinates.</summary>
+	public static Vector2 SkyViewLutUv(AtmosphereEffect a, float radius, float cosViewZenith, float cosAzimuth)
+	{
+		float thetaH = SkyViewHorizonZenith(a, radius);
+		float theta = Mathf.Acos(Mathf.Clamp(cosViewZenith, -1f, 1f));
+
+		float v;
+		if (theta < thetaH)
+		{
+			v = a.skyViewHorizonV * (1f - Mathf.Sqrt(Mathf.Clamp01(1f - theta / Mathf.Max(1e-4f, thetaH))));
+		}
+		else
+		{
+			float beta = Mathf.Max(1e-4f, Mathf.PI - thetaH);
+			v = a.skyViewHorizonV + (1f - a.skyViewHorizonV) * Mathf.Sqrt(Mathf.Clamp01((theta - thetaH) / beta));
+		}
+
+		float u = Mathf.Sqrt(Mathf.Clamp01(0.5f - 0.5f * Mathf.Clamp(cosAzimuth, -1f, 1f)));
+		return new Vector2(
+			0.5f / a.skyViewLUTSize.x + Mathf.Clamp01(u) * (1f - 1f / a.skyViewLUTSize.x),
+			0.5f / a.skyViewLUTSize.y + Mathf.Clamp01(v) * (1f - 1f / a.skyViewLUTSize.y));
+	}
+
+	/// <summary>Mirror of `skyViewLutParams`. LUT coordinates back to a direction.</summary>
+	public static void SkyViewLutParams(AtmosphereEffect a, Vector2 uv, float radius,
+		out float cosViewZenith, out float cosAzimuth)
+	{
+		float unitX = (uv.x - 0.5f / a.skyViewLUTSize.x) / (1f - 1f / a.skyViewLUTSize.x);
+		float unitY = (uv.y - 0.5f / a.skyViewLUTSize.y) / (1f - 1f / a.skyViewLUTSize.y);
+
+		float thetaH = SkyViewHorizonZenith(a, radius);
+
+		float theta;
+		if (unitY < a.skyViewHorizonV)
+		{
+			float c = unitY / Mathf.Max(1e-4f, a.skyViewHorizonV);
+			theta = thetaH * (1f - (1f - c) * (1f - c));
+		}
+		else
+		{
+			float beta = Mathf.PI - thetaH;
+			float c = (unitY - a.skyViewHorizonV) / Mathf.Max(1e-4f, 1f - a.skyViewHorizonV);
+			theta = thetaH + beta * c * c;
+		}
+
+		cosViewZenith = Mathf.Cos(theta);
+		cosAzimuth = 1f - 2f * unitX * unitX;
+	}
+
 	/// <summary>The horizon cosine at a radius: the lowest direction that still misses the ground.</summary>
 	public static float HorizonCosine(AtmosphereEffect a, float radius)
 	{

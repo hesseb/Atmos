@@ -48,6 +48,7 @@ static class AtmosphereValidation
 		failures += CheckOpticalDepth(report, atmosphere);
 		failures += CheckSunsetGeometry(report, atmosphere);
 		failures += CheckTransmittanceMapping(report, atmosphere);
+		failures += CheckSkyViewMapping(report, atmosphere);
 		failures += CheckMarchQuadrature(report, atmosphere);
 		failures += CheckToneMapBand(report, atmosphere);
 		failures += CheckIlluminanceBookkeeping(report, atmosphere);
@@ -297,6 +298,70 @@ static class AtmosphereValidation
 		return Mathf.Abs(ratio - 1f) < 0.2f
 			? Pass(report, $"blue horizon optical depth is {F(ratio)}x Earth's")
 			: Warn(report, $"blue horizon optical depth is {F(ratio)}x Earth's, so sunsets will not read as Earth-like");
+	}
+
+	/// <summary>
+	/// The sky view LUT's mapping must round-trip, and its horizon must land where it claims.
+	///
+	/// Same risk as the transmittance mapping, and the reason both exist as single definitions: the
+	/// compute writes through the inverse and every reader goes through the forward map, so if the
+	/// two disagree the LUT is filled correctly and sampled from the wrong place. The result is a
+	/// plausible sky, not a broken one.
+	///
+	/// The horizon assertions matter more here than elsewhere. The whole point of the
+	/// parameterisation is that v crowds toward the horizon, so if the horizon is not where the
+	/// mapping thinks it is, the resolution is spent on the wrong band.
+	/// </summary>
+	static int CheckSkyViewMapping(StringBuilder report, AtmosphereEffect a)
+	{
+		report.Append("\n## Sky view LUT mapping\n\n");
+
+		float radius = a.bodyRadius + a.skyViewLutAltitude;
+		float worstZenith = 0f, worstAzimuth = 0f;
+
+		for (int i = 0; i <= 48; i++)
+		{
+			for (int j = 0; j <= 48; j++)
+			{
+				var uv = new Vector2(
+					0.5f / a.skyViewLUTSize.x + (i / 48f) * (1f - 1f / a.skyViewLUTSize.x),
+					0.5f / a.skyViewLUTSize.y + (j / 48f) * (1f - 1f / a.skyViewLUTSize.y));
+
+				AtmosphereReference.SkyViewLutParams(a, uv, radius, out float cosZenith, out float cosAzimuth);
+				Vector2 back = AtmosphereReference.SkyViewLutUv(a, radius, cosZenith, cosAzimuth);
+
+				worstAzimuth = Mathf.Max(worstAzimuth, Mathf.Abs(back.x - uv.x));
+				worstZenith = Mathf.Max(worstZenith, Mathf.Abs(back.y - uv.y));
+			}
+		}
+
+		// The horizon zenith, and how much of v is spent near it.
+		float horizonZenith = AtmosphereReference.SkyViewHorizonZenith(a, radius) * Mathf.Rad2Deg;
+		AtmosphereReference.SkyViewLutParams(a,
+			new Vector2(0.5f, a.skyViewHorizonV * (1f - 1f / a.skyViewLUTSize.y) + 0.5f / a.skyViewLUTSize.y),
+			radius, out float cosAtHorizon, out _);
+		float horizonErr = Mathf.Abs(Mathf.Acos(Mathf.Clamp(cosAtHorizon, -1f, 1f)) * Mathf.Rad2Deg - horizonZenith);
+
+		// Angular span of the texel nearest the horizon, against a uniform mapping - the crowding
+		// this parameterisation exists for.
+		AtmosphereReference.SkyViewLutParams(a,
+			new Vector2(0.5f, a.skyViewHorizonV * (1f - 1.5f / a.skyViewLUTSize.y) + 0.5f / a.skyViewLUTSize.y),
+			radius, out float cosNextToHorizon, out _);
+		float crowded = Mathf.Abs(Mathf.Acos(Mathf.Clamp(cosNextToHorizon, -1f, 1f)) * Mathf.Rad2Deg - horizonZenith);
+		float uniform = horizonZenith / a.skyViewLUTSize.y;
+
+		report.Append($"- {a.skyViewLUTSize.x}x{a.skyViewLUTSize.y}, evaluated at radius {F(radius)} "
+				+ $"(altitude {F(a.skyViewLutAltitude)}), horizonV {F(a.skyViewHorizonV)}\n")
+			.Append($"- horizon zenith {F(horizonZenith)} deg\n")
+			.Append($"- texel nearest the horizon spans {F(crowded)} deg against {F(uniform)} "
+				+ $"for a uniform mapping, i.e. {F(uniform / Mathf.Max(1e-6f, crowded))}x the resolution "
+				+ "where sunset colour lives\n");
+
+		int failures = 0;
+		failures += Assert(report, "mapping round-trips in the zenith coordinate", worstZenith, 0.0, 1e-5);
+		failures += Assert(report, "mapping round-trips in the azimuth coordinate", worstAzimuth, 0.0, 1e-5);
+		failures += Assert(report, "v = horizonV lands on the horizon", horizonErr, 0.0, 1e-3);
+		return failures;
 	}
 
 	/// <summary>
