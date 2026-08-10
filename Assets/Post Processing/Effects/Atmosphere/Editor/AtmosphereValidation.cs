@@ -275,20 +275,14 @@ static class AtmosphereValidation
 	/// </summary>
 	static int CheckIlluminanceBookkeeping(StringBuilder report, AtmosphereEffect a)
 	{
-		report.Append("
-## Illuminance bookkeeping
-
-");
+		report.Append("\n## Illuminance bookkeeping\n\n");
 
 		double meanPhase = IntegrateOverSphere(mu => AtmosphereReference.RayleighPhase(mu)) / (4.0 * System.Math.PI);
 		double effective = a.sunIlluminance * meanPhase;
 
-		report.Append($"- mean Rayleigh phase over the sphere {F((float)meanPhase)}, i.e. 1/4pi
-")
-			.Append($"- E x mean phase = {F((float)effective)}, against the 1 the hardcoded phase used
-")
-			.Append($"- Mie keeps its own phase, so it gains E = {F(a.sunIlluminance)}x against Rayleigh
-");
+		report.Append($"- mean Rayleigh phase over the sphere {F((float)meanPhase)}, i.e. 1/4pi\n")
+			.Append($"- E x mean phase = {F((float)effective)}, against the 1 the hardcoded phase used\n")
+			.Append($"- Mie keeps its own phase, so it gains E = {F(a.sunIlluminance)}x against Rayleigh\n");
 
 		return Assert(report, "E x mean Rayleigh phase reproduces the old unit weight", effective, 1.0, 1e-4);
 	}
