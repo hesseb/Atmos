@@ -38,8 +38,11 @@ public class WorldScaleController : MonoBehaviour
 		"world units, so all of them have to move with the planet.")]
 	public RenderSettingsController renderSettings;
 
-	[Tooltip("Labels cache their globe radius when they are built, so they need telling.")]
+	[Tooltip("Labels pose from the live globe radius; this is only nudged in case it is built late.")]
 	public CountryLabelSystem labelSystem;
+
+	[Tooltip("Positions are computed once in Awake into a buffer, so they need regenerating.")]
+	public CityLightGenerator cityLights;
 
 	[Tooltip("Holds one terrain copy per planet scale, so relief stays at its authored " +
 		"world-unit height instead of scaling with the globe.")]
@@ -87,6 +90,7 @@ public class WorldScaleController : MonoBehaviour
 		// never scaled. Terrain then vanished past 600 units at every planet scale.
 		if (renderSettings == null) { renderSettings = FindFirstObjectByType<RenderSettingsController>(); }
 		if (labelSystem == null) { labelSystem = FindFirstObjectByType<CountryLabelSystem>(); }
+		if (cityLights == null) { cityLights = FindFirstObjectByType<CityLightGenerator>(); }
 
 		// TestbedCamera holds the rendering camera explicitly; that is more reliable than
 		// GetComponent, which fails here because the Camera lives on its own GameObject.
@@ -250,14 +254,13 @@ public class WorldScaleController : MonoBehaviour
 				scope.Add(() => renderSettings.ApplySettings());
 			}
 
-			// Labels bake worldPosition = anchorDirection * radius once, when they are built, so
-			// without this they stay on the radius the globe had at startup - floating in space.
-			if (labelSystem != null && heightSettings != null)
-			{
-				labelSystem.SetGlobeRadius(heightSettings.worldRadius);
-				float authoredRadius = heightSettings.worldRadius / k;
-				scope.Add(() => labelSystem.SetGlobeRadius(authoredRadius));
-			}
+			// Labels pose from the live radius and notice a change themselves, so they only need
+			// a nudge in case this ran before their own Start built them.
+			if (labelSystem != null) { labelSystem.SetGlobeRadius(); }
+
+			// City lights are computed in Awake into a buffer drawn indirectly, so nothing short
+			// of regenerating them follows a radius change.
+			if (cityLights != null) { cityLights.Rebuild(); }
 
 			if (testbedCamera != null)
 			{
@@ -281,9 +284,21 @@ public class WorldScaleController : MonoBehaviour
 
 		if (testbedCamera != null)
 		{
+			// Both speeds are absolute rates, and both misbehave on a scaled planet - in opposite
+			// directions, which is why one correction cannot serve both.
+			//
+			// Panning is an arc rate, so the surface speed it produces is arc * R and grows with
+			// the planet. The visible width is the horizon, sqrt(2*R*h), which grows only as
+			// sqrt(R). Apparent speed therefore scales as R/sqrt(R) = sqrt(R), and panning felt
+			// four times too fast at x16.
+			//
+			// Flying is a world-unit rate, independent of R, against that same widening view - so
+			// it feels slower by the same factor.
+			float speedCorrection = Mathf.Sqrt(Mathf.Max(1e-3f, preset.planetScale));
+
 			scope.Set(() => testbedCamera.referenceAltitude, v => testbedCamera.referenceAltitude = v, preset.referenceAltitude);
-			scope.Set(() => testbedCamera.panSpeed, v => testbedCamera.panSpeed = v, preset.panSpeed);
-			scope.Set(() => testbedCamera.flySpeed, v => testbedCamera.flySpeed = v, preset.flySpeed);
+			scope.Set(() => testbedCamera.panSpeed, v => testbedCamera.panSpeed = v, preset.panSpeed / speedCorrection);
+			scope.Set(() => testbedCamera.flySpeed, v => testbedCamera.flySpeed = v, preset.flySpeed * speedCorrection);
 			// Orbit mode re-applies the pose every frame, so writing the field is enough to move
 			// the camera. Free-fly derives altitude from the transform instead and will not
 			// jump - which is the right behaviour, since a preset should not teleport a camera

@@ -2050,6 +2050,7 @@ MonoBehaviour:
   renderCamera: {fileID: 0}
   renderSettings: {fileID: 0}
   labelSystem: {fileID: 0}
+  cityLights: {fileID: 0}
   terrainLoader: {fileID: 0}
   cycleKey: 288
   applyOnStart: 1
