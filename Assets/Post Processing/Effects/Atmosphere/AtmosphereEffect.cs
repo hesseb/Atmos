@@ -260,6 +260,20 @@ public class AtmosphereEffect : PostProcessingEffect
 	{
 		sharedAtmosphereValues?.ApplyGlobal();
 
+		// The tone map, so a scene shader can put sky radiance into the camera buffer at the same
+		// exposure the sky pass used.
+		//
+		// Not part of ShaderValues, which the atmosphere's own materials get - these are set
+		// per-material there. They matter here because the sky is written to the colour buffer
+		// already tone-mapped, so an ocean reflecting raw radiance would be at a wildly different
+		// brightness from the sky one pixel above it. They also change with the world-scale preset,
+		// which is the reason none of this can be authored on the ocean material.
+		Shader.SetGlobalFloat("intensity", intensity);
+		Shader.SetGlobalFloat("contrast", contrast);
+		Shader.SetGlobalFloat("whitePoint", whitePoint);
+		Shader.SetGlobalFloat("ditherStrength", ditherStrength);
+		if (blueNoise != null) { Shader.SetGlobalTexture("BlueNoise", blueNoise); }
+
 		if (transmittanceLUT != null) { Shader.SetGlobalTexture("TransmittanceLUT", transmittanceLUT); }
 		if (multipleScatteringLUT != null) { Shader.SetGlobalTexture("MultipleScatteringLUT", multipleScatteringLUT); }
 		if (skyViewLUT != null) { Shader.SetGlobalTexture("SkyViewLUT", skyViewLUT); }
