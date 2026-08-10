@@ -19,8 +19,14 @@ public class AtmosphereEffect : PostProcessingEffect
 	public Shader atmosphereShader;
 	public Vector4 testParams = new Vector4(7, 1.26f, 0.1f, 3);
 
-	// Num raymarch steps when drawing aerial perspective (planet viewed through atmosphere)
-	public int numAerialScatteringSteps = 20;
+	/// <summary>
+	/// Raymarch steps per depth slice of the aerial perspective LUT.
+	///
+	/// Was `numAerialScatteringSteps`, the steps for a whole march from the atmosphere boundary
+	/// to each slice - which meant the far slices covered the entire clip distance in 20 steps.
+	/// The march is now incremental, so this is per slice and the total is size x this.
+	/// </summary>
+	public int aerialStepsPerSlice = 6;
 
 
 	[Header("Rayleigh Scattering")]
@@ -438,8 +444,9 @@ public class AtmosphereEffect : PostProcessingEffect
 		aerialPerspectiveLUTCompute.SetFloat(ShaderParamID.nearClip, cam.nearClipPlane);
 		aerialPerspectiveLUTCompute.SetFloat(ShaderParamID.farClip, cam.farClipPlane);
 		aerialPerspectiveLUTCompute.SetVector(ShaderParamID.dirToSun, -light.transform.forward);
-		// Render
-		ComputeHelper.Dispatch(aerialPerspectiveLUTCompute, aerialPerspectiveLuminance);
+		// 2D, over (x, y) only: each thread now walks the depth slices itself, so dispatching
+		// over the volume would launch `size` threads per column all writing the same voxels.
+		ComputeHelper.Dispatch(aerialPerspectiveLUTCompute, aerialPerspectiveLUTSize, aerialPerspectiveLUTSize, 1);
 	}
 
 
@@ -491,7 +498,7 @@ public class AtmosphereEffect : PostProcessingEffect
 			aerialPerspectiveLUTCompute.SetTexture(0, "AerialPerspectiveTransmittance", aerialPerspectiveTransmittance);
 			aerialPerspectiveLUTCompute.SetTexture(0, "TransmittanceLUT", transmittanceLUT);
 			aerialPerspectiveLUTCompute.SetInt("size", aerialPerspectiveLUTSize);
-			aerialPerspectiveLUTCompute.SetInt("numScatteringSteps", numAerialScatteringSteps);
+			aerialPerspectiveLUTCompute.SetInt("stepsPerSlice", aerialStepsPerSlice);
 		}
 	}
 

@@ -1,4 +1,4 @@
-// Header revision this file was last rebuilt against: stage 3 (multiple scattering).
+// Header revision this file was last rebuilt against: stage 5 (resumable march segments).
 
 // Bakes the physically based sky into the baseline's 2D gradient LUT.
 //

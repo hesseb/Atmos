@@ -21,7 +21,7 @@ MonoBehaviour:
   atmosphereThickness: 110
   atmosphereShader: {fileID: 4800000, guid: 8108d0319e05d334593582429a931fb0, type: 3}
   testParams: {x: 1.7, y: 2.74, z: 2.7, w: 81.29}
-  numAerialScatteringSteps: 20
+  aerialStepsPerSlice: 6
   wavelengthsRGB: {x: 680, y: 550, z: 440}
   wavelengthScale: 593.483
   rayleighDensityAvg: 0.08

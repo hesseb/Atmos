@@ -90,7 +90,8 @@ static class AtmosphereValidation
 			.Append($"- scale height ratio {F(a.rayleighDensityAvg / a.mieDensityAvg)} : 1 (Earth 6.67 : 1)\n")
 			.Append($"- thickness / radius {F(a.atmosphereThickness / a.bodyRadius)} against Earth's 0.0157, " +
 				"so **curvature is not to scale** even though the vertical structure now is\n")
-			.Append($"- sky / aerial steps {a.numSkyScatteringSteps} / {a.numAerialScatteringSteps}; " +
+			.Append($"- sky steps {a.numSkyScatteringSteps}; aerial {a.aerialStepsPerSlice} per slice " +
+				$"x {a.aerialPerspectiveLUTSize} slices = {a.aerialStepsPerSlice * a.aerialPerspectiveLUTSize} total; " +
 				$"a sky ray from the ground to the horizon is ~212 units, i.e. " +
 				$"{F(212f / a.numSkyScatteringSteps)} units per step against a Mie scale height of " +
 				$"{F(a.mieDensityAvg * a.atmosphereThickness)}\n\n");
@@ -255,11 +256,23 @@ static class AtmosphereValidation
 
 		Vector3 exact = AtmosphereReference.VerticalOpticalDepth(a, 200000);
 		double exactMie = AtmosphereReference.MieVerticalOpticalDepth(a, 200000);
-		int worstSteps = 0;
+		string worstLabel = "";
 		float worstError = 0f;
 
-		foreach (int steps in new[] { a.numSkyScatteringSteps, a.numAerialScatteringSteps })
+		// Compared by step SIZE rather than step count, because the two marches no longer measure
+		// the same thing. The sky march spans the atmosphere in numSkyScatteringSteps; the aerial
+		// perspective now advances one slice at a time, so its step is a slice's depth divided by
+		// the per-slice count, and its total step count says nothing about its resolution.
+		float skyStep = a.atmosphereThickness / Mathf.Max(1, a.numSkyScatteringSteps);
+		float aerialStep = a.bodyRadius / Mathf.Max(1, a.aerialPerspectiveLUTSize)
+			/ Mathf.Max(1, a.aerialStepsPerSlice);
+
+		foreach ((string label, float stepSize) in new[] { ("sky", skyStep), ("aerial", aerialStep) })
 		{
+			// The reference integrates a vertical column, so a step size is expressed back as the
+			// number of steps that column would take at that size.
+			int steps = Mathf.Max(1, Mathf.RoundToInt(a.atmosphereThickness / stepSize));
+
 			Vector3 mid = AtmosphereReference.VerticalOpticalDepth(a, steps);
 			Vector3 left = AtmosphereReference.VerticalOpticalDepthLeftRiemann(a, steps);
 
@@ -275,11 +288,11 @@ static class AtmosphereValidation
 			float midMieErr = (float)(100.0 * System.Math.Abs(1.0 - midMie / exactMie));
 			float leftMieErr = (float)(100.0 * System.Math.Abs(1.0 - leftMie / exactMie));
 
-			report.Append($"- {steps} steps, {F(a.atmosphereThickness / steps)} u per step:\n")
+			report.Append($"- {label} march, {F(stepSize)} u per step:\n")
 				.Append($"    blue total  midpoint {F(midErr)}%, left-Riemann {F(leftErr)}%\n")
 				.Append($"    Mie alone   midpoint {F(midMieErr)}%, left-Riemann {F(leftMieErr)}%\n");
 
-			if (midMieErr > worstError) { worstError = midMieErr; worstSteps = steps; }
+			if (midMieErr > worstError) { worstError = midMieErr; worstLabel = label; }
 		}
 
 		report.Append($"- Mie scale height {F(a.mieDensityAvg * a.atmosphereThickness)} u is the "
@@ -291,7 +304,7 @@ static class AtmosphereValidation
 		// not a number change here.
 		return worstError < 5f
 			? Pass(report, "both step counts resolve the Mie layer")
-			: Warn(report, $"{worstSteps} steps leaves {F(worstError)}% error in Mie optical depth");
+			: Warn(report, $"the {worstLabel} march leaves {F(worstError)}% error in Mie optical depth");
 	}
 
 	/// <summary>

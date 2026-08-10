@@ -49,6 +49,14 @@ struct ScatteringResult {
 	float3 transmittance;
 };
 
+// A march in progress: what has been accumulated so far, and what is left of the view ray's
+// transmittance. Carried across the aerial perspective's depth slices so one ray is integrated
+// once instead of 32 times from scratch.
+struct ScatteringState {
+	float3 luminance;
+	float3 transmittance;
+};
+
 ScatteringParameters getScatteringValues(float3 rayPos) {
 	ScatteringParameters scattering;
 
@@ -208,21 +216,26 @@ float3 integralFactor(float3 opticalDepth, float3 transmittance) {
 	return lerp(quotient, series, nearZero);
 }
 
-ScatteringResult raymarch(float3 rayPos, float3 rayDir, float rayLength, int numSteps, sampler2D transmittanceLUT, float earthShadowRadius) {
-	float3 luminance = 0;
-	float3 transmittance = 1;
+/// The body of the march, factored out so it can be resumed.
+///
+/// The aerial perspective needs to continue one ray across 32 depth slices, writing the running
+/// totals as it passes each. Re-marching from the camera per slice is O(N^2) and, worse, makes
+/// consecutive slices discretisations of *different* integrals - they disagree by more than
+/// their own quadrature error, so the fog is not even monotonic in depth.
+///
+/// Splitting the loop out rather than copying it keeps one implementation of the physics, which
+/// matters more here than usual: a second copy would be the fourth place the scattering integral
+/// is written down.
+void raymarchSegment(inout ScatteringState state, float3 segmentStart, float3 rayDir,
+	float segmentLength, int numSteps, sampler2D transmittanceLUT, float earthShadowRadius)
+{
+	if (segmentLength <= 0 || numSteps <= 0) { return; }
 
-	// Stop at the ground.
-	//
-	// Nothing clipped the march before, so a downward ray integrated the full atmosphere chord
-	// straight through the planet's interior - and because altitude is clamped at zero, those
-	// interior samples were evaluated at *sea-level* density. The planet was therefore not an
-	// occluder but a solid block of maximum scattering. The earth-shadow test hid most of it by
-	// zeroing the sun term, which is why it never looked obviously broken.
-	float dstToGround = rayIntersectSphere(rayPos, rayDir, planetRadius);
-	if (dstToGround > 0) { rayLength = min(rayLength, dstToGround); }
+	float3 luminance = state.luminance;
+	float3 transmittance = state.transmittance;
 
-	float stepSize = rayLength / numSteps;
+	float stepSize = segmentLength / numSteps;
+	float3 rayPos = segmentStart;
 
 	// Sample at the midpoint of each segment rather than its start.
 	//
@@ -335,10 +348,32 @@ ScatteringResult raymarch(float3 rayPos, float3 rayDir, float rayLength, int num
 		// Move to next sample point along ray
 		rayPos += rayDir * stepSize;
 	}
-	
+
+	state.luminance = luminance;
+	state.transmittance = transmittance;
+}
+
+ScatteringResult raymarch(float3 rayPos, float3 rayDir, float rayLength, int numSteps, sampler2D transmittanceLUT, float earthShadowRadius) {
+	// Stop at the ground.
+	//
+	// Nothing clipped the march before, so a downward ray integrated the full atmosphere chord
+	// straight through the planet's interior - and because altitude is clamped at zero, those
+	// interior samples were evaluated at *sea-level* density. The planet was therefore not an
+	// occluder but a solid block of maximum scattering. The earth-shadow test hid most of it by
+	// zeroing the sun term, which is why it never looked obviously broken.
+	float dstToGround = rayIntersectSphere(rayPos, rayDir, planetRadius);
+	if (dstToGround > 0) { rayLength = min(rayLength, dstToGround); }
+
+	ScatteringState state;
+	state.luminance = 0;
+	state.transmittance = 1;
+
+	raymarchSegment(state, rayPos, rayDir, rayLength, numSteps, transmittanceLUT, earthShadowRadius);
+
 	ScatteringResult result;
-	result.luminance = luminance;
-	result.transmittance = transmittance;
+	result.luminance = state.luminance;
+	result.transmittance = state.transmittance;
 	return result;
 }
+
 
