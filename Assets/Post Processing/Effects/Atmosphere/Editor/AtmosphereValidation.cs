@@ -254,6 +254,7 @@ static class AtmosphereValidation
 		report.Append("\n## View march quadrature\n\n");
 
 		Vector3 exact = AtmosphereReference.VerticalOpticalDepth(a, 200000);
+		double exactMie = AtmosphereReference.MieVerticalOpticalDepth(a, 200000);
 		int worstSteps = 0;
 		float worstError = 0f;
 
@@ -265,21 +266,32 @@ static class AtmosphereValidation
 			float midErr = 100f * Mathf.Abs(1f - mid.z / exact.z);
 			float leftErr = 100f * Mathf.Abs(1f - left.z / exact.z);
 
-			report.Append($"- {steps} steps: midpoint {F(midErr)}% error in blue, "
-				+ $"left-Riemann {F(leftErr)}% <- what it did before\n");
+			// Per species, because the total is dominated by Rayleigh and hides the species that
+			// actually fails. Reporting only the blue total let this check pass while the aerial
+			// perspective was resolving Mie to within a factor of two - the exact shape of
+			// misleading green tick this harness exists to prevent.
+			double midMie = AtmosphereReference.MieVerticalOpticalDepth(a, steps);
+			double leftMie = AtmosphereReference.MieVerticalOpticalDepth(a, steps, leftRiemann: true);
+			float midMieErr = (float)(100.0 * System.Math.Abs(1.0 - midMie / exactMie));
+			float leftMieErr = (float)(100.0 * System.Math.Abs(1.0 - leftMie / exactMie));
 
-			if (midErr > worstError) { worstError = midErr; worstSteps = steps; }
+			report.Append($"- {steps} steps, {F(a.atmosphereThickness / steps)} u per step:\n")
+				.Append($"    blue total  midpoint {F(midErr)}%, left-Riemann {F(leftErr)}%\n")
+				.Append($"    Mie alone   midpoint {F(midMieErr)}%, left-Riemann {F(leftMieErr)}%\n");
+
+			if (midMieErr > worstError) { worstError = midMieErr; worstSteps = steps; }
 		}
 
 		report.Append($"- Mie scale height {F(a.mieDensityAvg * a.atmosphereThickness)} u is the "
-			+ "binding constraint; Rayleigh is resolved at both step counts\n");
+			+ "binding constraint, and it is only ~4% of blue extinction, so a total-blue "
+			+ "figure understates how badly it is resolved\n");
 
 		// A warning rather than a failure: the aerial perspective's step count is genuinely too
 		// low for the Mie layer, and the fix is the incremental march that makes steps cheap,
 		// not a number change here.
 		return worstError < 5f
-			? Pass(report, "both step counts resolve the density profile")
-			: Warn(report, $"{worstSteps} steps leaves {F(worstError)}% quadrature error in blue");
+			? Pass(report, "both step counts resolve the Mie layer")
+			: Warn(report, $"{worstSteps} steps leaves {F(worstError)}% error in Mie optical depth");
 	}
 
 	/// <summary>
