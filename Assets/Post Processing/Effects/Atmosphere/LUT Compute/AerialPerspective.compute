@@ -2,7 +2,7 @@
 #include "../Shader Common/AtmosphereCommon.hlsl"
 #include "../Shader Common/RaymarchCommon.hlsl"
 
-// Header revision this file was last rebuilt against: per-ray aerial depth axis.
+// Header revision this file was last rebuilt against: continuous horizon span.
 
 // Unity does not reliably rebuild a .compute when an included .hlsl changes - the include is
 // not tracked as an import dependency. If the atmosphere's output looks uniformly scaled or
@@ -64,6 +64,24 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 	float maxLength = dstThroughAtmosphere;
 	float dstToGround = rayIntersectSphere(inPoint, rayDir, planetRadius);
 	if (dstToGround > 0) { maxLength = min(maxLength, dstToGround); }
+
+	// Cap the span at the distance to the planet's tangent point, so the depth axis is CONTINUOUS
+	// across the horizon.
+	//
+	// Without this, a ray just below the horizon has span = its ground distance (55.7 units from
+	// 10 up) while a ray just above has span = the whole atmosphere chord (268) - a 4.8x jump
+	// between adjacent texels. This LUT is only 32x32 in screen space, so that jump is bilinearly
+	// smeared across ~80 pixels at 1440p, and ground pixels beside the horizon end up reading
+	// texels whose ray missed the planet entirely and therefore carry a far longer, brighter
+	// march. It shows as a serrated bright band hugging the horizon, worst at sunset when the
+	// in-scattered luminance is strongest and most coloured.
+	//
+	// The clamp costs nothing on the ground side: a ray that hits the planet always reaches it at
+	// or before the tangent distance, so min() leaves every ground ray untouched. It only
+	// truncates rays that MISS the planet - and those are sky, where the composite takes its sky
+	// branch and never reads this LUT.
+	float horizonDst = sqrt(max(0, dot(inPoint, inPoint) - planetRadius * planetRadius));
+	maxLength = min(maxLength, horizonDst);
 
 	ScatteringState state;
 	state.luminance = 0;

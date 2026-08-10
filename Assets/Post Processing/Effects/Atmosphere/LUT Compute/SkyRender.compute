@@ -3,7 +3,7 @@
 #include "../Shader Common/AtmosphereCommon.hlsl"
 #include "../Shader Common/RaymarchCommon.hlsl"//
 
-// Header revision this file was last rebuilt against: 750 km planet + densityMultiplier.
+// Header revision this file was last rebuilt against: horizon lift + texel-centre sampling.
 
 // Unity does not reliably rebuild a .compute when an included .hlsl changes - the include is
 // not tracked as an import dependency. If the atmosphere's output looks uniformly scaled or
@@ -26,8 +26,56 @@ void RenderSkyLUT (uint3 id : SV_DispatchThreadID)
 	
 	if (id.x >= size.x || id.y >= size.y) { return; }
 
-	float2 texCoord = id.xy / float2(size - 1.0);
+	// Texel CENTRES, not id/(size-1).
+	//
+	// DrawSky samples this at a raw screen uv, and a bilinear fetch at uv reads texel centre
+	// uv*size - 0.5. Writing texel i as though it held the direction at i/(size-1) therefore
+	// misregisters the whole texture against the screen by up to half a texel at the edges,
+	// zero in the middle - which is why the horizon artefact came and went with camera pitch,
+	// as the skyline moved up and down through that gradient. Same fix as LutMapping.hlsl
+	// applies to the other LUTs.
+	float2 texCoord = (id.xy + 0.5) / float2(size);
 	float3 viewDir = calculateViewDir(texCoord);
+
+	// Lift directions that point below the horizon back up onto it.
+	//
+	// raymarch clips at the ground, so a below-horizon ray returns a short, dark march. This
+	// texture is only 128x256 and is bilinearly upscaled to the screen, so that dark region bleeds
+	// UPWARD across the geometry horizon: a dark band hugging the skyline, stepped by the texel
+	// grid, and dark enough that the sky pass's star blend lets stars show through it. Worst at
+	// sunrise and sunset, when the sky immediately above the horizon should be at its brightest and
+	// the contrast with the bled-in dark is largest.
+	//
+	// Below-horizon texels are always covered by terrain or ocean, so holding the horizon-grazing
+	// value there costs nothing visible and makes the texture continuous exactly where it is
+	// sampled most steeply. Same reasoning as skyViewHorizonV = 1 in the sky view LUT.
+	float camRadius = length(camPos);
+	if (camRadius > 1e-4) {
+		float3 up = camPos / camRadius;
+		float cosHorizon = -sqrt(saturate(1 - (planetRadius * planetRadius) / (camRadius * camRadius)));
+		float cosView = dot(up, viewDir);
+
+		// A HAIR above the horizon, not onto it.
+		//
+		// A ray exactly on the horizon grazes the planet, so raymarch clips it at the tangent
+		// point - 55.7 units from 10 up, against 268 for a ray that misses and marches the whole
+		// chord. Lifting onto the horizon therefore leaves a step of roughly half the luminance
+		// at the skyline, which is the part of the artefact that survived the first attempt.
+		// Clearing it by 0.12 degrees - about half a texel of the 256-tall sky - makes the ray
+		// miss, so these texels hold the same value as the sky immediately above them and the
+		// bleed becomes invisible rather than merely smaller.
+		cosHorizon = min(1, cosHorizon + 2e-3);
+
+		if (cosView < cosHorizon) {
+			// Rotate onto that cone, keeping the azimuth.
+			float3 tangent = viewDir - up * cosView;
+			float tangentLen = length(tangent);
+			if (tangentLen > 1e-4) {
+				float sinHorizon = sqrt(saturate(1 - cosHorizon * cosHorizon));
+				viewDir = normalize((tangent / tangentLen) * sinHorizon + up * cosHorizon);
+			}
+		}
+	}
 
 	float2 hitInfo = raySphere(0, atmosphereRadius, camPos, viewDir);
 	float dstToAtmosphere = hitInfo.x;

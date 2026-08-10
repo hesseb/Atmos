@@ -113,6 +113,16 @@
 					// span from the same two intersections.
 					float dstToGround = rayIntersectSphere(inPoint, rayDir, planetRadius);
 					float span = dstToGround > 0 ? min(dstThroughAtmosphere, dstToGround) : dstThroughAtmosphere;
+
+					// Capped at the tangent distance, identically to the compute, so the depth axis
+					// is continuous across the horizon. See the long note in AerialPerspective.compute:
+					// without it, adjacent texels either side of the horizon differ in span by ~4.8x,
+					// and bilinear interpolation of that jump paints a serrated bright band along the
+					// horizon. Ground rays are untouched - they always reach the planet at or before
+					// the tangent - so this only truncates rays that miss, which are sky.
+					float horizonDst = sqrt(max(0, dot(inPoint, inPoint) - planetRadius * planetRadius));
+					span = min(span, horizonDst);
+
 					float depthT = saturate((sceneDepth - dstToAtmosphere) / max(1e-5, span));
 
 					float3 transmittance = tex3Dlod(TransmittanceLUT3D, float4(uv, depthT, 0)).rgb;

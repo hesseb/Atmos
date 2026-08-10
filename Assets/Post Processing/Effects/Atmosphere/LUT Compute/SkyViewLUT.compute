@@ -1,0 +1,65 @@
+#pragma kernel RenderSkyViewLUT
+#include "../Shader Common/AtmosphereCommon.hlsl"
+#include "../Shader Common/SkyViewCommon.hlsl"
+
+// Header revision this file was last rebuilt against: sky view LUT, initial.
+
+// Unity does not reliably rebuild a .compute when an included .hlsl changes - the include is
+// not tracked as an import dependency. If the atmosphere's output looks uniformly scaled or
+// otherwise stale after editing anything under Shader Common, reimport this file.
+
+// Sky radiance as a function of direction, so shaders that are not the sky pass can ask what
+// colour the sky is somewhere other than straight ahead. The ocean's reflection is the first
+// consumer; the sky pass itself could later be served from the same LUT at camera altitude.
+//
+// Built in a CANONICAL FRAME rather than the world one: up is +Y and the sun lies in the +X/+Y
+// half-plane, with `dirToSun` set to match from C#. `raymarch` reads the global `dirToSun`
+// internally and HLSL globals are read-only in-shader, so the frame has to be fabricated on the
+// CPU - which is exactly what MultipleScattering.compute already does.
+//
+// That is exact, not an approximation, because the atmosphere is spherically symmetric: the sky
+// at any point depends only on the local sun elevation and the direction relative to (up, sun).
+// It also means the LUT is independent of where the camera is and which way it faces - only the
+// sun's elevation moves it.
+
+RWTexture2D<float4> SkyViewResult;
+sampler2D TransmittanceLUT;
+
+int numSkyViewSteps;
+
+[numthreads(8, 8, 1)]
+void RenderSkyViewLUT(uint3 id : SV_DispatchThreadID)
+{
+	uint2 size = (uint2)skyViewLutSize;
+	if (id.x >= size.x || id.y >= size.y) { return; }
+
+	float cosViewZenith, cosAzimuth;
+	skyViewLutParams((id.xy + 0.5) / skyViewLutSize, skyViewLutRadius, cosViewZenith, cosAzimuth);
+
+	float3 origin = float3(0, skyViewLutRadius, 0);
+
+	// Rebuild the direction in the canonical frame. sin is taken from the cosines rather than
+	// carried through an angle, which keeps this exactly consistent with the inverse mapping.
+	float sinZenith = sqrt(saturate(1 - cosViewZenith * cosViewZenith));
+	float sinAzimuth = sqrt(saturate(1 - cosAzimuth * cosAzimuth));
+	float3 viewDir = float3(sinZenith * cosAzimuth, cosViewZenith, sinZenith * sinAzimuth);
+
+	float3 luminance = 0;
+
+	float2 hitInfo = raySphere(0, atmosphereRadius, origin, viewDir);
+	if (hitInfo.y > 0)
+	{
+		// Same calling convention as SkyRender.compute and BakeSkyGradient.compute: start at the
+		// atmosphere boundary, march the chord, and let raymarch clip at the ground.
+		//
+		// planetRadius as the earth-shadow radius, matching the sky pass - the shadowed band
+		// belongs in this LUT for the same reason it belongs in the sky.
+		float3 inPoint = origin + viewDir * hitInfo.x;
+		luminance = raymarch(inPoint, viewDir, hitInfo.y, numSkyViewSteps, TransmittanceLUT, planetRadius).luminance;
+	}
+
+	// No sun disc. The disc IS the ocean's glint, which the ocean draws analytically, so including
+	// it here would double-count it - and at 0.2667 degrees it is below this LUT's angular
+	// resolution across most of the sky anyway.
+	SkyViewResult[id.xy] = float4(luminance, 1);
+}

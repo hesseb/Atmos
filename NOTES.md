@@ -1636,3 +1636,204 @@ point.
 Non-uniform stepping, the SkyView LUT and sky-pass depth rejection all belong to the optimization
 phase; the cubemap variant's tone-map decision and the art-directed haze hybrid are parked; the
 report sections come with the report.
+
+---
+
+## Session summary: sky-derived surface colour, ocean then land
+
+Both the water and the ground now take their colour from the atmosphere rather than from authored
+constants. Previously the sky could be rendering a correct sunset while the sea two pixels below it
+stayed flat blue with a white sun reflection, and the land beside that did not move at all.
+
+### The new piece: a direction-indexed sky LUT
+
+`SkyViewCommon.hlsl` + `SkyViewLUT.compute`, Hillaire 2020 section 5.3. The existing `sky` texture
+could not answer this question at all: it is indexed by `calculateViewDir(uv)` over the current
+camera's frustum corners, so it only holds directions that happen to be on screen - and a reflected
+ray routinely is not. 192x128, 32 steps, ~786 k samples/frame against the screen-space sky pass's
+8.4 M, which is itself the argument for the deferred sky-pass optimization.
+
+Three decisions in it that are not obvious:
+
+- **Baked at sea level, not camera altitude.** The consumer is a surface at `r = planetRadius`, and
+  the aerial perspective post-process already applies the camera-to-surface segment afterwards.
+  Evaluating at sea level is what makes that segment count exactly once.
+- **`skyViewHorizonV = 1`,** i.e. upper hemisphere only. A sea-level LUT has a definitionally black
+  lower half, and storing it would put a black texel next to the horizon, where bilinear filtering
+  would darken the single most visible band. 0.5 later recovers Hillaire's full-sphere split.
+- **Built in a canonical frame** (up = +Y, sun in the +X/+Y half-plane) with `dirToSun` fabricated
+  from C#, as `MultipleScattering.compute` already does - `raymarch` reads that global internally and
+  HLSL globals are read-only in-shader. Exact by spherical symmetry, and it means the LUT depends
+  only on the sun's elevation, not on the camera at all.
+
+### Ocean
+
+Schlick Fresnel at `F0 = 0.02` driving a real reflection, composited with `lerp` rather than `+=` -
+the correct energy split, and it reproduces the sky pixel exactly as `F -> 1`, which is what makes
+the horizon line seamless. Glint coloured by sun transmittance. Sky ambient. A night floor
+(`_NightAmbient`, plus a moon glint) because a sun-only scattering model leaves the water
+mathematically black.
+
+### Land
+
+The audit turned up two things that changed the shape of the work:
+
+1. **`Terrain.shader` never read `_LightColor0`.** The only shader in the project that does is
+   `Ocean.shader`. So `Sun.cs`'s `sunColGradient` - whose first key is a deep orange - reached the
+   water and nothing else. Land's sun was a *scalar*, i.e. pure white at every hour of the day.
+2. **Land had no daylight ambient whatsoever.** `_BrightnessAdd = 0.05` was the entire fill light and
+   it carries no colour. The `_Ambient` entry in `Terrain.mat` is not declared by the shader. Nothing
+   in the project reads Unity's ambient either - no `ShadeSH9`, no `UNITY_LIGHTMODEL_AMBIENT`.
+
+That made land *cleaner* than the ocean: there was no existing colour term to double-count against.
+`SurfaceLighting.hlsl` now holds `sampleLightColour` and `sampleSkyViewSafe`, shared by both shaders,
+because both need the same three guards and each fails quietly rather than loudly. Terrain gets sun
+colour per pixel, sky ambient multiplied by the albedo, a transmittance-tinted lake specular, and a
+diffuse moon term. City lights already lit the night side via `_LightMap` and needed nothing.
+
+The gradient is retired in physically based mode by one line in the ocean -
+`lerp(_LightColor0.rgb, 1, skyReflectionStrength)` - rather than by touching `Sun.cs`, the scene or
+`RenderingManager`. Baseline keeps the glint it was authored with; `Sun.cs` stays the baseline's path
+rather than becoming dead code.
+
+### The measurement gate
+
+`skyReflectionStrength`, published by `RenderingManager`, is 1 only in physically based mode. Without
+it the baseline and null modes would light their surfaces from whatever the LUTs last held during a
+physically based frame - a frozen sky, which is not a defensible control condition. With it, terrain
+in baseline mode is arithmetically identical to before this work, and the ocean's and land's
+sky-derived colour is reported as a further benefit of the physically based sky rather than being
+silently folded into it.
+
+### Bugs found in the process, worth remembering
+
+- **`toneMap(0)` is about -0.05, not 0.** The contrast pivot is a pedestal
+  (`lerp(0.5, 0, 1.45) = -0.225`). An unclamped "ambient" therefore *subtracts* at night, pushing an
+  already black surface below black. Every sky-derived term needs `max(0, ...)`.
+- **Multiplying a baked lit-appearance map by coloured light squares its hue.** `_OceanCol` is not an
+  albedo, and treating it as one took the ocean's B/R ratio from 5:1 to 10.3:1. The distinction that
+  decides additive vs multiplicative is whether the texture is albedo or already-lit appearance -
+  terrain's colour maps are used multiplicatively already, so there the physical form is also safe.
+  This one was written down as a hazard in the plan and then argued past anyway.
+- **A nested *relative* `#include` resolves against the includer's directory,** so a header that works
+  inside the atmosphere tree fails when included from `Assets/Scripts/Shaders/Game`. Symptom is the
+  pink error shader. All cross-tree includes are Assets-absolute now.
+- **`transmittanceRayHitsGround` returns true for every downward direction once `radius <
+  planetRadius`,** returning exactly zero. Both meshes are relief-corrected, so sampling at the
+  fragment position blacks the glint out at sunset - the one moment it exists for. Hence
+  `seaLevelPosition()`.
+- **The sky LUT must be lifted a hair *above* the horizon, not onto it,** and written at texel
+  centres; otherwise below-horizon darkness bleeds up as a serrated band.
+- **The aerial perspective depth axis must be capped at the tangent distance,** or the per-ray span
+  jumps ~4.8x across the horizon and bilinear interpolation of that jump paints a serrated band.
+- `DrawAtmosphereCommon.hlsl` had no include guard; it now does, since it is reachable by two paths.
+
+### Open before the next milestone
+
+The four items in the previous session summary all still stand. Added by this work:
+
+5. `_ShadowEdgeCol` is a warm orange `(0.255, 0.033, 0.008)`, hand-authored as a stand-in for
+   skylight in shadow. Now that real sky ambient exists, shadowed slopes should trend blue - it
+   wants pulling down, and the two terms are currently fighting.
+6. Watch the terminator. `_BrightnessAdd`'s fill is now multiplied by sun colour, which is genuinely
+   zero once the sun is below the local horizon, so the day term no longer has a floor there. Sky
+   ambient is what fills it, via `_SkyAmbientWeight`.
+7. Terrain does not occlude its own skylight - a valley floor gets the same ambient as a ridgeline,
+   and a coastal cliff does not block the ocean's reflected sky. A horizon-based occlusion factor is
+   the standard fix.
+8. The sky view LUT fixes the sun's elevation at one reference point, but the visible ocean spans
+   20.4 degrees of arc at x1. A 3D LUT with sun zenith as the third axis is the clean fix, and being
+   independent of both sun and camera position it could be baked once at init.
+
+---
+
+## Session summary: city lights on the water
+
+The night side had a black ocean sitting next to coastlines blazing with 151,601 city light
+instances. The water now picks up three things from them: a spill that reads at any altitude, a
+streak at grazing angles, and a soft glint on the water facing a city.
+
+### Getting at data the shader cannot iterate
+
+The lights are point instances in a `StructuredBuffer`, drawn with `DrawMeshInstancedIndirect`.
+Nothing per-pixel can loop over them. But `CityLightSpawner.compute` rejection-samples those points
+from the NASA night-lights map, so a field baked from that same map agrees with the lights actually
+drawn - without the ocean touching the buffer at all. That equivalence is the whole basis of this.
+
+`CityLightField.compute` bakes a 2048x1024 RGBA: bearing to the surrounding light in the local
+east/north basis, the glow itself, and how one-sided that bearing is.
+
+**The gather is done in angular space** - offsets are rotations of the sphere point, not steps in
+UV. Equirectangular distortion disappears, the seam at u=0 needs no special case, and the result is
+invariant under F7, because an angle does not care how big the planet is. Accumulating the sample
+bearings in the same loop yields the direction field for free.
+
+Two details in the bake are load-bearing rather than incidental. Samples are taken from a mip chosen
+so each tap averages the gap to its neighbour on the ring - without it the far field is pure
+aliasing. And the dispatch is split into horizontal bands, because one dispatch for the whole image
+is long enough to trip the Windows GPU watchdog and reset the driver mid-bake.
+
+### The coherence channel, which was not in the plan
+
+The plan listed "a centroid is not a light source" as an unfixable limitation: one bearing per texel
+means two cities across a bay average into a direction pointing at neither. That showed up as a
+serrated seam down the middle of the Strait of Gibraltar, where the averaged bearing flips hard from
+one bank to the other.
+
+It is not unfixable. The bake computes `length(dirAccum)` and throws it away when normalising, and
+that length relative to the unsigned total is exactly how one-sided the light is: 1 when it all
+arrives from one bearing, 0 when opposite banks cancel. The fourth channel was holding a
+nearest-lit-land distance nothing read, so it carries coherence instead and the glint fades out
+where the bearing is meaningless rather than drawing an edge along the flip.
+
+Measured on the real map: Gibraltar 0.095, Sea of Marmara 0.092, Dover 0.097, against 0.877 off
+Lisbon, 0.742 off Los Angeles, 0.719 off New Jersey. Eightfold separation between the cases that
+broke and the cases that worked.
+
+### Deliberately not gated on skyReflectionStrength
+
+Unlike every sky-derived term added to the ocean and terrain before it. City lights are emissive
+scene dressing, not atmosphere; gating them would make the baseline and physically based images
+differ in something other than the sky, which is the exact failure that gate exists to prevent.
+
+### Bugs found in the process, worth remembering
+
+- **Three separate factors compounded to 1/380th of white**, and the effect was invisible. Squaring
+  the sqrt-encoded field back to linear, modulating the spill by the night ocean's own dark colour,
+  and slider ranges sized for neither. The general lesson: when a term is built from several
+  multiplied factors each below 1, estimate the product before deciding it is a tuning problem.
+- **A gamma-space project wants the encoded value, not the decoded one.** The field stores sqrt(glow)
+  for precision in the darks; squaring it back on read is the faithful decode, but the buffer being
+  added to is gamma-encoded, so the stored value is the one that belongs there - and squaring also
+  steepened the falloff into a thin rim rather than a glow.
+- **Marching a blurred field over less than its own blur radius returns the blur.** The streak was
+  marching the baked field 0.02 rad when the bake had already averaged it isotropically over 0.05,
+  which is why it was indistinguishable from the spill. Marching the sharp source map fixed it.
+- **A specular lobe is the wrong model for an extended source over a direction field.**
+  `calculateSpecular` fires where the half-vector matches the wave normal, which for a fixed light
+  traces the one coherent glint path - but over a bearing field that swings per pixel, the condition
+  is met along curves that sweep as the camera moves. `pow(aim, 12)` has the same problem for the
+  same reason: a sharp threshold through a smooth field is a contour line, and a contour line is a
+  curve in space rather than a blob.
+- **Normalising a vector that is about to go to zero produces noise, not a direction.** The glint's
+  aim direction is the reflected ray's tangential component, which vanishes looking straight down -
+  so from overhead it was per-pixel noise. Multiplying by the component's length removes the noise
+  exactly where it lives and happens to state the physics too.
+- `Assets/Scripts/Types/Shape.cs` declares a `Path` struct in the global namespace, and a global type
+  beats a using-imported one - so `System.IO.Path` silently resolves to it.
+- A CPU reference in Python over the real source data caught the direction-channel sign and the
+  coherence separation before either cost an in-editor round trip. Worth doing again for anything
+  baked. Note that PIL's row 0 is north while the UV convention here puts v=0 at the south pole; the
+  flip cancels between input and output, so a preview can look correct while lookups by latitude are
+  wrong.
+
+### Open before the next milestone
+
+Everything listed in the two previous summaries still stands. Nothing new blocks clouds.
+
+- The march has no occlusion, so a city behind a headland still streaks through it.
+- The field is static and cannot follow the lights' own turn-on animation, so at the terminator the
+  water glows slightly before or after the lights themselves.
+- The streak reach is fixed, so a very distant city produces no streak however bright it is.
+- All three terms are authored rather than physical, and belong in the report beside `_AmbientNight`
+  and `_NightAmbient` as declared approximations.
