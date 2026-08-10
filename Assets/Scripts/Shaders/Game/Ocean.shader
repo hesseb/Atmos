@@ -53,9 +53,9 @@ Shader "Custom/Ocean"
 		[Header(City Lights)]
 		_CityLightField("City Light Field", 2D) = "black" {}
 		_CityLightCol("City Light Colour", Color) = (0.443, 0.312, 0.190, 1)
-		_CitySpillStrength("Spill Strength", Range(0, 4)) = 1
-		_CityStreakStrength("Streak Strength", Range(0, 16)) = 4
-		_CityGlintStrength("Glint Strength", Range(0, 16)) = 4
+		_CitySpillStrength("Spill Strength", Range(0, 8)) = 2
+		_CityStreakStrength("Streak Strength", Range(0, 40)) = 10
+		_CityGlintStrength("Glint Strength", Range(0, 16)) = 5
 		_CityGlintSmoothness("Glint Smoothness", Range(0.005, 0.3)) = 0.06
 		_CityStreakReach("Streak Reach (radians)", Range(0.002, 0.08)) = 0.02
 		_CityFadeMip("Zoom Fade Mip", Range(0, 10)) = 4
@@ -395,7 +395,12 @@ Shader "Custom/Ocean"
 				// would make the baseline and physically based images differ in something other than the
 				// sky, which is the exact failure that gate exists to prevent.
 				float4 cityField = tex2D(_CityLightField, texCoord);
-				float cityGlow = cityField.b * cityField.b;
+				// Used as stored, WITHOUT squaring back to linear glow. Two reasons, and the second is
+				// the one that decides it: this project renders in Gamma colour space, so the buffer
+				// this is added to is gamma-encoded and a square-root-ish quantity is the one that
+				// belongs there - and squaring compresses an already small field into invisibility,
+				// taking a bright coast from 0.20 to 0.04 and steepening the falloff into a thin rim.
+				float cityGlow = cityField.b;
 
 				// Matched to nightAmbient's ramp so the water lights up with the same curve the rest of
 				// the night side does. The city lights themselves fade in on their own turn-on animation,
@@ -417,13 +422,17 @@ Shader "Custom/Ocean"
 				float cityZoomFade = 1 - smoothstep(_CityFadeMip, _CityFadeMip + 2, cityFieldMip);
 
 				// The spill: light landing ON the water from the city, so it belongs with the other body
-				// terms and takes the same form as nightAmbient - the ocean's own colour lifted by a light
-				// it is being bathed in. This is the term that stops a harbour reading as a black void
-				// beside a bright city, and unlike the streak and glint it does not depend on view angle,
-				// so it survives at any altitude.
+				// terms. This is what stops a harbour reading as a black void beside a bright city, and
+				// unlike the streak and glint it does not depend on view angle, so it survives at any
+				// altitude.
+				//
+				// Added rather than multiplied by oceanCol, unlike nightAmbient beside it. What is
+				// actually seen here is a city's skyglow reflected off the surface, which does not care
+				// what colour the water underneath is - and modulating by a night ocean that is itself
+				// dark was throwing away another factor of five on top of the squaring.
 				float3 citySpill = _CityLightCol.rgb * cityGlow * _CitySpillStrength * cityNight;
 
-				float3 bodyLit = saturate(saturate(oceanCol * shading) * sunVisibility + skyAmbient + oceanCol * (nightAmbient + citySpill));
+				float3 bodyLit = saturate(saturate(oceanCol * shading) * sunVisibility + skyAmbient + oceanCol * nightAmbient + citySpill);
 
 				// ---- Sky reflection ----
 				//
@@ -520,10 +529,10 @@ Shader "Custom/Ocean"
 					float t = (cityStep + 0.5) / CITY_STREAK_STEPS;
 					float angle = t * _CityStreakReach;
 					float3 q = sphereNormal * cos(angle) + cityMarchDir * sin(angle);
-					// Squared per tap, not after summing: the field stores sqrt(glow), so accumulating
-					// the stored values and squaring once would be a different quantity entirely.
+					// The stored value, matching cityGlow above - see the note there for why it is not
+					// squared back to linear.
 					float g = tex2Dlod(_CityLightField, float4(pointToUV(q), 0, cityFieldMip)).b;
-					cityStreak += g * g * (1 - t);
+					cityStreak += g * (1 - t);
 				}
 				cityStreak /= CITY_STREAK_STEPS;
 
