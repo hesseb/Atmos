@@ -1,3 +1,5 @@
+// Header revision this file was last rebuilt against: 750 km planet + densityMultiplier.
+
 // Bakes the physically based sky into the baseline's 2D gradient LUT.
 //
 // Deliberately includes AtmosphereCommon.hlsl and calls the same raymarch() the runtime sky
@@ -11,6 +13,15 @@
 #pragma kernel BakeSkyCubemapFace
 
 #include "../Atmosphere/Shader Common/AtmosphereCommon.hlsl"
+
+// Unity does not reliably rebuild a .compute when an included .hlsl changes - the include is
+// not tracked as an import dependency. If the atmosphere's output looks uniformly scaled or
+// otherwise stale after editing anything under Shader Common, reimport this file.
+//
+// That is not hypothetical: editing AtmosphereCommon.hlsl to work in absolute altitude left
+// this compute running the previous code against the new uniforms, which divided every
+// optical depth by the atmosphere thickness - a transmittance of 0.994 where it should have
+// been 0.525, with the colour ratios still perfectly correct.
 
 RWTexture2D<float4> Result;
 sampler2D TransmittanceLUT;

@@ -69,7 +69,11 @@ public class SimpleLodSystem : MonoBehaviour
 			int count = 0;
 			for (int i = 0; i < renderers.Count; i++)
 			{
-				if (renderers[i].ShowingHighRes) { count++; }
+				// Active copies only: terrain exists once per planet scale and only one is enabled,
+				// so counting the rest would inflate the figure the benchmark uses as evidence that
+				// two configurations rendered the same terrain workload.
+				if (renderers[i].ShowingHighRes && renderers[i].highRes != null
+					&& renderers[i].highRes.gameObject.activeInHierarchy) { count++; }
 			}
 			return count;
 		}
@@ -110,6 +114,18 @@ public class SimpleLodSystem : MonoBehaviour
 
 	void Process(RenderGroup renderer)
 	{
+		// Terrain now exists once per planet scale, with only the selected copy active. Skip the
+		// copies that are not selected - beyond the wasted work, counting them would inflate
+		// HighResCount, which the benchmark records as evidence that two configurations rendered
+		// the same terrain workload.
+		//
+		// Tested on the PARENT holder, not on highRes. This group owns highRes and toggles it
+		// itself, and it starts disabled, so an activeInHierarchy test on it is false for every
+		// group on the very first pass - which pinned the whole planet to its low-res meshes.
+		if (renderer.highRes == null) { return; }
+		Transform holder = renderer.highRes.transform.parent;
+		if (holder != null && !holder.gameObject.activeInHierarchy) { return; }
+
 		bool showHighRes = false;
 		switch (mode)
 		{

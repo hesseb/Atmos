@@ -57,13 +57,15 @@
 			float3 getAtmoCol(float2 uv, float3 originalCol, float viewLength, float3 viewDir) {
 				float3 outputCol = originalCol;
 				float nonlin_depth = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, uv);
-				float sceneDepth = LinearEyeDepth(nonlin_depth) * viewLength;
+
+				// Eye-space depth is kept as well as the radial distance, because the sky test has
+				// to be made on the former.
+				float eyeDepth = LinearEyeDepth(nonlin_depth);
+				float sceneDepth = eyeDepth * viewLength;
 
 				float nearClipPlane = _ProjectionParams.y;
 				float farClipPlane = _ProjectionParams.z;
 			
-				float depthT = remap01(nearClipPlane, terrestrialClipDst, sceneDepth);
-
 				float3 rayOrigin = _WorldSpaceCameraPos;
 				float3 rayDir = viewDir;
 
@@ -71,14 +73,47 @@
 				float2 hitInfo = raySphere(0, atmosphereRadius, rayOrigin, rayDir);
 				float dstToAtmosphere = hitInfo.x;
 				float dstThroughAtmosphere = hitInfo.y;
-			
-				if (sceneDepth >= farClipPlane) {
+
+				// Sky is decided on eye depth, not on the radial distance, and with a tolerance.
+				//
+				// sceneDepth is eyeDepth * viewLength, and viewLength is exactly 1 at the centre of
+				// the screen and greater everywhere else. So for an empty sky pixel the comparison
+				// clears the far plane comfortably off-centre but lands exactly on it at the
+				// centre, where float precision decides which way it goes. The pixels that fall
+				// through are a disc in the middle of the screen, which then takes the aerial
+				// perspective branch and gets fogged - a small translucent grey circle, fixed to
+				// the centre, visible only against sky.
+				//
+				// It shows up at large far planes because LinearEyeDepth loses precision there, so
+				// the reconstructed value falls short of the far plane more often. That is why it
+				// appeared on the bigger planet scales, whose cull distance scales with them.
+				if (eyeDepth >= farClipPlane * 0.999) {
 					// Sky
 				}
 				// View ray goes through atmosphere (and not blocked by anything in front of it)
 				else if (dstThroughAtmosphere > 0 && dstToAtmosphere < sceneDepth) {
 					float3 inPoint = rayOrigin + rayDir * (dstToAtmosphere);
 					float3 outPoint = rayOrigin + rayDir * min(dstToAtmosphere + dstThroughAtmosphere, sceneDepth);
+
+					// The depth axis spans the air in front of THIS ray, not a fixed distance.
+					//
+					// Two fixed-range attempts failed for opposite reasons. A far distance of
+					// bodyRadius left the whole visible scene inside five of the thirty-two slices
+					// at low altitude; making the range quadratic and camera-dependent fixed that
+					// but still gave only four slices from orbit, because it concentrates samples
+					// near the camera and from out there the air is all far away.
+					//
+					// Normalising by the atmosphere chord alone does not work either: a ray looking
+					// straight down is inside the atmosphere sphere, so its chord runs through the
+					// planet and out the far side - 322 units of "atmosphere" for 2 units of air.
+					//
+					// Clipping that chord at the ground is what makes it exact. The span is then
+					// always the air actually between the camera and what it is looking at, so all
+					// thirty-two slices are used at every altitude. The compute derives the same
+					// span from the same two intersections.
+					float dstToGround = rayIntersectSphere(inPoint, rayDir, planetRadius);
+					float span = dstToGround > 0 ? min(dstThroughAtmosphere, dstToGround) : dstThroughAtmosphere;
+					float depthT = saturate((sceneDepth - dstToAtmosphere) / max(1e-5, span));
 
 					float3 transmittance = tex3Dlod(TransmittanceLUT3D, float4(uv, depthT, 0)).rgb;
 					float3 luminance = tex3Dlod(AerialPerspectiveLUT, float4(uv,depthT, 0)).rgb;

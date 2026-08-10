@@ -224,5 +224,25 @@ public static class BenchmarkEnvironment
 			// SolarTime's whole derivation assumes geocentric mode.
 			warnings.Add("NOT_GEOCENTRIC");
 		}
+
+		// A baked baseline whose inputs have moved on still renders, still looks plausible, and
+		// silently measures the staleness rather than the technique. This puts it in warnings[]
+		// next to the numbers it invalidates.
+		AtmosphereEffect atmosphere = FindAtmosphere(refs);
+		foreach (string stale in SkyBakeStamp.FindStale(atmosphere, refs.baselineSky))
+		{
+			warnings.Add($"BAKE_STALE:{stale}");
+		}
+	}
+
+	static AtmosphereEffect FindAtmosphere(BenchmarkSceneRefs refs)
+	{
+		if (refs.postProcessing == null || refs.postProcessing.effects == null) { return null; }
+
+		foreach (PostProcessingEffect effect in refs.postProcessing.effects)
+		{
+			if (effect is AtmosphereEffect atmosphere) { return atmosphere; }
+		}
+		return null;
 	}
 }

@@ -1,0 +1,160 @@
+#pragma kernel CreateMultipleScatteringLUT
+#include "../Shader Common/AtmosphereCommon.hlsl"
+
+// Header revision this file was last rebuilt against: 750 km planet + densityMultiplier.
+//
+// Unity does not reliably rebuild a .compute when an included .hlsl changes - the include is
+// not tracked as an import dependency. If the atmosphere's output looks uniformly scaled or
+// otherwise stale after editing anything under Shader Common, reimport this file.
+
+// Hillaire 2020 section 4: scattering orders beyond the first are assumed isotropic and
+// spatially uniform over the neighbourhood of a point. Under that assumption order n is a
+// constant fraction f of order n-1, so the whole tail sums as a geometric series and the entire
+// multiply-scattered field collapses to two numbers per (altitude, sun elevation):
+//
+//   Psi_ms = L2 / (1 - f_ms)
+//
+// L2   - light that has scattered exactly once, arriving at the point from all directions, then
+//        re-emitted isotropically. Computed at unit solar irradiance, so the LUT never has to be
+//        rebaked when sunIlluminance changes.
+// f_ms - the fraction of a uniform unit radiance field that gets scattered back toward the
+//        point. Must stay below 1 or the series diverges; the harness asserts this.
+//
+// This is the single largest thing the inherited implementation was missing. It is also what
+// lights the earth-shadow band, which is currently solid black.
+
+RWTexture2D<float4> MultipleScatteringResult;
+sampler2D TransmittanceLUT;
+
+struct MultipleScatteringSample {
+	float3 L;    // second-order in-scatter toward the origin, at unit solar irradiance
+	float3 fms;  // fraction of a uniform unit radiance field rescattered toward the origin
+};
+
+/// One march outward from `origin` along `rayDir`, accumulating both quantities at once.
+///
+/// Deliberately a separate function rather than a call into raymarch(): this march uses an
+/// isotropic phase, needs two accumulators, and must NOT itself read the multiple-scattering
+/// LUT - which raymarch now does, and which would make the LUT depend on itself.
+MultipleScatteringSample marchForMultipleScattering(float3 origin, float3 rayDir, float3 sunDir)
+{
+	MultipleScatteringSample result;
+	result.L = 0;
+	result.fms = 0;
+
+	float2 atmosphereHit = raySphere(0, atmosphereRadius, origin, rayDir);
+	float rayLength = atmosphereHit.y;
+	if (rayLength <= 0) { return result; }
+
+	// Stop at the ground, and remember whether we did - the surface bounce below needs it.
+	float dstToGround = rayIntersectSphere(origin, rayDir, planetRadius);
+	bool hitGround = dstToGround > 0;
+	if (hitGround) { rayLength = min(rayLength, dstToGround); }
+
+	// 32, against Hillaire's 20. This is an init-time dispatch, so the extra steps are free in
+	// every frame that matters, and the Mie scale height here is only 1.32 world units.
+	const int numSteps = 32;
+	const float isotropicPhase = 1.0 / (4.0 * PI);
+
+	float stepSize = rayLength / numSteps;
+	float3 transmittance = 1;
+
+	for (int i = 0; i < numSteps; i++) {
+		// Midpoint, for the same reason raymarch and getSunTransmittance are.
+		float3 samplePos = origin + rayDir * ((i + 0.5) * stepSize);
+		ScatteringParameters scattering = getScatteringValues(samplePos);
+
+		float3 opticalDepth = scattering.extinction * stepSize;
+		float3 sampleTransmittance = exp(-opticalDepth);
+		float3 factor = integralFactor(opticalDepth, sampleTransmittance);
+
+		float3 scatteringCoefficient = scattering.rayleigh + scattering.mie;
+		float3 weight = transmittance * scatteringCoefficient * stepSize * factor;
+
+		// f_ms: incoming radiance is 1 from every direction. Integrating that over the sphere
+		// gives 4*PI, which cancels the isotropic phase's 1/(4*PI) exactly - so what is left is
+		// simply sigma_s, with no phase factor and no 4*PI anywhere.
+		result.fms += weight;
+
+		// L2: sunlight that has scattered exactly once here. The transmittance LUT ignores the
+		// planet by convention, so the occlusion test has to be done by the caller - here.
+		float3 sunTransmittance = sampleTransmittanceLUT(TransmittanceLUT, samplePos, sunDir);
+		if (rayIntersectSphere(samplePos, sunDir, planetRadius) > 0) { sunTransmittance = 0; }
+
+		result.L += weight * isotropicPhase * sunTransmittance;
+
+		transmittance *= sampleTransmittance;
+	}
+
+	// Lambertian ground bounce, if this ray ended on the surface.
+	//
+	// Light reflected off the ground and scattered back down is genuinely part of the
+	// multiply-scattered field. Following Hillaire, it contributes to L2 but not to f_ms.
+	if (hitGround) {
+		float3 groundPos = origin + rayDir * dstToGround;
+		float3 normal = groundPos / length(groundPos);
+		float NdotL = saturate(dot(normal, sunDir));
+		float3 groundTransmittance = sampleTransmittanceLUT(TransmittanceLUT, groundPos, sunDir);
+
+		result.L += transmittance * groundTransmittance * NdotL * groundAlbedo / PI;
+	}
+
+	return result;
+}
+
+// One thread per texel, looping the 64 directions serially, rather than Hillaire's 64-thread
+// group with a groupshared reduction.
+//
+// A deliberate deviation, and worth recording as such: his layout exists to keep occupancy up
+// during a per-frame dispatch. This one runs once at initialisation, where occupancy is
+// irrelevant, and the serial loop has no reduction to get wrong.
+[numthreads(8, 8, 1)]
+void CreateMultipleScatteringLUT(uint2 id : SV_DispatchThreadID)
+{
+	uint2 size = (uint2)multipleScatteringLutSize;
+	if (id.x >= size.x || id.y >= size.y) { return; }
+
+	float radius, cosSunZenith;
+	multipleScatteringLutParams((id + 0.5) / multipleScatteringLutSize, radius, cosSunZenith);
+
+	float3 origin = float3(0, radius, 0);
+	float sinSunZenith = sqrt(saturate(1 - cosSunZenith * cosSunZenith));
+	float3 sunDir = float3(sinSunZenith, cosSunZenith, 0);
+
+	// 8x8 stratified directions over the sphere. Azimuth is linear in the cell index and polar
+	// angle goes through acos(1 - 2v), which is what makes equal cells cover equal solid angle -
+	// a linear polar angle would oversample the poles and bias the average.
+	const int sqrtSamples = 8;
+	float3 luminanceSum = 0;
+	float3 fmsSum = 0;
+
+	for (int a = 0; a < sqrtSamples; a++) {
+		for (int b = 0; b < sqrtSamples; b++) {
+			float theta = 2.0 * PI * (a + 0.5) / sqrtSamples;
+			float phi = acos(1.0 - 2.0 * (b + 0.5) / sqrtSamples);
+
+			float sinPhi, cosPhi;
+			sincos(phi, sinPhi, cosPhi);
+			float3 dir = float3(sinPhi * cos(theta), cosPhi, sinPhi * sin(theta));
+
+			MultipleScatteringSample s = marchForMultipleScattering(origin, dir, sunDir);
+			luminanceSum += s.L;
+			fmsSum += s.fms;
+		}
+	}
+
+	// Uniform sampling of the sphere, so the mean over directions IS the integral against
+	// dOmega/(4*PI). No extra solid-angle factor belongs here.
+	float invSamples = 1.0 / (sqrtSamples * sqrtSamples);
+	float3 L2 = luminanceSum * invSamples;
+	float3 fms = fmsSum * invSamples;
+
+	// The geometric series over scattering orders. The clamp is a guard, not a model: f_ms >= 1
+	// would mean the atmosphere returns more light than falls on it, and the harness fails on it
+	// rather than letting this quietly produce a finite-looking number.
+	float3 psi = L2 / max(1e-4, 1.0 - fms);
+
+	// Alpha carries the largest f_ms component so the convergence margin is inspectable from a
+	// readback - it is the one quantity that determines whether the series is valid at all.
+	MultipleScatteringResult[id] = float4(psi, max(fms.r, max(fms.g, fms.b)));
+}

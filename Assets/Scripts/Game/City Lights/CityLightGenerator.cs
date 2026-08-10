@@ -49,6 +49,27 @@ public class CityLightGenerator : MonoBehaviour
 		//ComputeHelper.Release(allLights);
 	}
 
+	/// <summary>
+	/// Regenerates the lights against the current worldRadius.
+	///
+	/// Positions are computed once in Awake and live in a ComputeBuffer drawn with
+	/// DrawMeshInstancedIndirect, so neither a parent transform nor a later radius change moves
+	/// them - and Awake runs before every Start, so a world-scale preset applied in Start always
+	/// arrived too late. This lets the scale controller ask for them again.
+	/// </summary>
+	public void Rebuild()
+	{
+		if (mode != Mode.Generate)
+		{
+			Debug.LogWarning($"{nameof(CityLightGenerator)}: mode is {mode}, so lights keep the " +
+				"radius they were baked at and will not follow a world-scale change.", this);
+			return;
+		}
+
+		Generate();
+		CreateDebugVis();
+	}
+
 	void Generate()
 	{
 		ComputeHelper.CreateStructuredBuffer<CityLight>(ref allLights, numInstances);
@@ -103,11 +124,24 @@ public class CityLightGenerator : MonoBehaviour
 		debugMat.SetBuffer("CityLights", allLights);
 	}
 
+	/// <summary>
+	/// Bounds for the indirect draw, sized from the globe.
+	///
+	/// This was a fixed 1000-unit box at the origin. On a x16 planet every light sits at
+	/// radius 2400, entirely outside it, so Unity culled the whole draw and the night side
+	/// went dark.
+	/// </summary>
+	Bounds DrawBounds()
+	{
+		float radius = heightSettings != null ? heightSettings.worldRadius : 150f;
+		return new Bounds(Vector3.zero, Vector3.one * (radius * 2.5f));
+	}
+
 	void Update()
 	{
 		// Debug vis
 		debugMat.SetFloat("size", debugSize);
-		Graphics.DrawMeshInstancedIndirect(debugMesh, 0, debugMat, new Bounds(Vector3.zero, Vector3.one * 1000), argsBuffer, camera: null, castShadows: UnityEngine.Rendering.ShadowCastingMode.Off, receiveShadows: false);
+		Graphics.DrawMeshInstancedIndirect(debugMesh, 0, debugMat, DrawBounds(), argsBuffer, camera: null, castShadows: UnityEngine.Rendering.ShadowCastingMode.Off, receiveShadows: false);
 	}
 
 	[NaughtyAttributes.Button("Save To File", NaughtyAttributes.EButtonEnableMode.Playmode)]

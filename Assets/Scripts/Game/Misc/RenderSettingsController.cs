@@ -26,7 +26,15 @@ public class RenderSettingsController : MonoBehaviour
 		ApplySettings();
 	}
 
-	void ApplySettings()
+	/// <summary>
+	/// Pushes the culling and shadow values onto the camera and light.
+	///
+	/// Public because these are distances in world units, so they have to move with the planet
+	/// scale. `layerCullDistances` in particular culls per layer by distance alone, regardless
+	/// of the frustum, which is what made whole panels of a scaled-up planet vanish - and it is
+	/// applied in Awake, so anything set later was simply overwritten.
+	/// </summary>
+	public void ApplySettings()
 	{
 		ApplyCullingValues();
 		ApplyShadowSettings();

@@ -52,6 +52,12 @@ public class TestbedCamera : MonoBehaviour
 	// Radians of surface arc per second, at referenceAltitude.
 	public float panSpeed = 0.35f;
 	public float referenceAltitude = 10f;
+
+	[Tooltip("Minimum altitude to come out of a camera mode switch at, as a fraction of the " +
+		"planet radius. Only ever raises, so a camera already further out keeps its height. A " +
+		"fraction rather than a distance so it follows any planet scale on its own: 0.5 puts the " +
+		"camera at 1.5 radii, where the globe subtends about 84 degrees and fills the view.")]
+	[Range(0.05f, 2f)] public float modeSwitchAltitudeFraction = 0.5f;
 	public float headingSpeed = 60f;
 	public float pitchSpeed = 40f;
 	public float zoomSensitivity = 1.5f;
@@ -265,6 +271,34 @@ public class TestbedCamera : MonoBehaviour
 		}
 	}
 
+	/// <summary>
+	/// Places the camera a given height above the surface, in whichever mode it is in.
+	///
+	/// `altitude` alone is not enough. It only reaches the transform through ApplyPose, which
+	/// runs in Orbit mode only - in free-fly the position is authoritative and altitude is merely
+	/// derived from it. So changing the planet's radius under a free-flying camera left it at its
+	/// old world radius, which on a larger planet is underground.
+	///
+	/// Direction is preserved, so the swap reads as a zoom rather than a jump to somewhere else.
+	/// </summary>
+	public void SetAltitudeAboveSurface(float targetAltitude)
+	{
+		this.altitude = Mathf.Clamp(targetAltitude, minAltitude, maxAltitude);
+
+		if (mode == Mode.Orbit)
+		{
+			ApplyPose();
+			return;
+		}
+
+		// Free-fly: move along the current outward direction to the new radius, keeping the
+		// rotation. Falling back to the pole only matters if the camera is exactly at the centre.
+		Vector3 outward = transform.position.sqrMagnitude > 1e-6f
+			? transform.position.normalized
+			: Vector3.up;
+		transform.position = outward * (SurfaceRadius + this.altitude);
+	}
+
 	void ApplyPose()
 	{
 		var view = new CameraView
@@ -351,6 +385,22 @@ public class TestbedCamera : MonoBehaviour
 
 		if (newMode == Mode.Orbit) { SeedOrbitFromTransform(); }
 		mode = newMode;
+
+		// Come out of the switch at a height that can be flown from.
+		//
+		// Free-fly does not maintain `altitude` - the transform is authoritative there and the
+		// field is only derived on the way back, through a Clamp to minAltitude. So a camera
+		// that ended up at or under the surface reappears pinned to it at the closest possible
+		// zoom, which means re-orienting by hand after every toggle.
+		//
+		// A fraction of the planet radius, not a distance. referenceAltitude was far too low
+		// to orient from - 10 units spans 11.5 units of ground at a 60 degree FOV - and a
+		// fixed 40 was only a third of a radius, still a close-up. Expressed as a fraction it
+		// frames the globe identically at every planet size with nothing to keep in step.
+		float comfortable = Mathf.Clamp(modeSwitchAltitudeFraction * SurfaceRadius, minAltitude, maxAltitude);
+		float current = transform.position.magnitude - SurfaceRadius;
+		if (current < comfortable) { SetAltitudeAboveSurface(comfortable); }
+
 	}
 
 	/// <summary>

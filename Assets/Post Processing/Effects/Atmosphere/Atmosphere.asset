@@ -17,26 +17,33 @@ MonoBehaviour:
   drawSkyShader: {fileID: 4800000, guid: dd70d41ac71f0c44aaab0b3fe94c047e, type: 3}
   sunColTest: {r: 0, g: 0, b: 0, a: 0}
   light: {fileID: 0}
-  bodyRadius: 149.5
+  bodyRadius: 150
   atmosphereThickness: 110
   atmosphereShader: {fileID: 4800000, guid: 8108d0319e05d334593582429a931fb0, type: 3}
   testParams: {x: 1.7, y: 2.74, z: 2.7, w: 81.29}
-  numAerialScatteringSteps: 20
-  wavelengthsRGB: {x: 639.5, y: 526, z: 441.8}
-  wavelengthScale: 748.5
-  rayleighDensityAvg: 0.086
-  mieDensityAvg: 0.08
-  mieCoefficient: 0.38
-  mieAbsorption: 0.11
-  ozonePeakDensityAltitude: 0.12
-  ozoneDensityFalloff: 3.7
-  ozoneStrength: 0.4
-  ozoneAbsorption: {x: -3, y: 3.12, z: 0.02}
-  sunDiscSize: 1.15
+  aerialStepsPerSlice: 6
+  wavelengthsRGB: {x: 680, y: 550, z: 440}
+  wavelengthScale: 593.483
+  rayleighDensityAvg: 0.08
+  mieDensityAvg: 0.012
+  mieCoefficient: 0.3996
+  mieAbsorption: 0.44
+  mieAsymmetry: 0.8
+  densityMultiplier: 3
+  sunIlluminance: 12.566371
+  ozonePeakDensityAltitude: 0.25
+  ozoneDensityFalloff: 6.66667
+  ozoneStrength: 1
+  ozoneAbsorption: {x: 0.65, y: 1.881, z: 0.085}
+  sunDiscSize: 0.2667
   sunDiscBlurA: 32.95
   sunDiscBlurB: 3.1
   transmittanceLUTCompute: {fileID: 7200000, guid: cca6f912a2bba8340ba53132e1b235a1, type: 3}
-  transmittanceLUTSize: {x: 128, y: 64}
+  transmittanceLUTSize: {x: 256, y: 64}
+  multipleScatteringLUTCompute: {fileID: 7200000, guid: 7a3f1c92be40d5b4a9e6c81f2d370465, type: 3}
+  multipleScatteringLUTSize: {x: 32, y: 32}
+  multipleScatteringStrength: 1
+  groundAlbedo: 0.1
   aerialPerspectiveLUTCompute: {fileID: 7200000, guid: 5261cb094de7cb64189738546d046b7d, type: 3}
   aerialPerspectiveLUTSize: 32
   aerialPerspectiveStrength: 0.529
@@ -44,14 +51,15 @@ MonoBehaviour:
   skyRenderCompute: {fileID: 7200000, guid: 768e75c0bfe7f084daefc455ceb6b5ac, type: 3}
   skyRenderSize: {x: 128, y: 256}
   skyTransmittanceWeight: 0.429
-  intensity: 1.31
+  intensity: 1.602
   contrast: 1.45
-  whitePoint: 1
+  whitePoint: 2.5
   ditherStrength: 4
   blueNoise: {fileID: 2800000, guid: f94aa116956069842b6a2820258a64f0, type: 3}
   filterMode: 1
   rayleighCoefficients: {x: 1.876744, y: 4.1003814, z: 8.238811}
   transmittanceLUT: {fileID: 0}
+  multipleScatteringLUT: {fileID: 0}
   aerialPerspectiveLuminance: {fileID: 0}
   aerialPerspectiveTransmittance: {fileID: 0}
   sky: {fileID: 0}

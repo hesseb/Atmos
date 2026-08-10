@@ -1128,3 +1128,511 @@ decomposition, the fog painting over the sky, the stripped-counter false pass, a
 tone-map pedestal — but none of their numbers should be quoted.
 
 Findings go in this file for later rather than being acted on as if final.
+
+---
+
+## Atmosphere: aligning with Hillaire 2020
+
+### The "hardcoded to 1" is the Rayleigh *phase*, and why removing it looks broken
+`AtmosphereCommon.hlsl:158` sets `rayleighPhaseValue = 1`, with the correct call commented out
+on 157. A normalised phase averages 1/4π over the sphere, so this **inflates Rayleigh
+in-scatter by 4π ≈ 12.57×**. Re-enable it and the sky drops by that factor — which is exactly
+why it appears to be load-bearing.
+
+It cannot be compensated in σ. In-scatter is *linear* in σ_s but transmittance is *exponential*
+in σ_t, so scaling σ by 4π takes blue vertical optical depth from 0.75 to 9.4 and the planet
+disappears behind fog. **σ is structurally excluded.** The missing term is solar illuminance,
+which the implementation does not have at all — absolute scale is absorbed by a display-side
+`intensity` and a free `wavelengthScale`.
+
+Corroborating: Mie *does* get its correct phase, so Rayleigh is over-weighted relative to Mie
+by 12.57×, and `mieCoefficient` was raised to 0.38 to compete.
+
+### Measured facts, verified rather than assumed
+| quantity | value | reference |
+|---|---|---|
+| vertical optical depth (R,G,B) | 0.173, 0.420, 0.748 | Earth 0.046, 0.109, 0.265 — **2.8–3.9× too thick** |
+| `getSunTransmittance` sampling bias | optical depth **13.9% low** | right-Riemann; midpoint would be 0.5% |
+| minimum extinction over the column | **1.86e-05** | not 0.02 |
+| `max(1e-4, σ)` clamp fires from | **h01 = 0.856**, top 14% | red first, blue from 0.95 |
+| ozone positivity headroom | breaks at `ozoneStrength ≥ 0.69` | currently 0.4 — only 1.7× |
+| tone map usable band | [0.1185, 0.6449], factor **5.44** | at `whitePoint = 1` Reinhard is an exact identity |
+
+### Correction: stage 0f was not a strict no-op
+I committed the stable-integral change describing the clamp as inactive at shipped values,
+on the basis that minimum extinction was ~0.02. **It is 1.86e-05.** The clamp was already
+firing across the top 14% of the atmosphere and understating in-scatter there by up to 5×.
+
+The change is therefore a real behaviour change, confined to a region whose density is ~1e-5
+of sea level — which is why the sky looked identical. The claim should have been "no visible
+change", not "provably a no-op", and the distinction matters because the whole point of stage
+0 was that its steps were verifiable as inert.
+
+Two other numbers from the design analysis also failed checking and are corrected above: the
+minimum extinction, and the ozone headroom (0.69, not 1.15).
+
+### Validation harness
+`Testbed → Atmosphere → Validate` — a menu item rather than NUnit, matching the existing stats
+self-test, because a test asmdef cannot reference the predefined `Assembly-CSharp`.
+
+The split matters: `AtmosphereReference.cs` is a **C# mirror** of the shader's density, phase
+and tone-map functions, so properties can be checked at 10,000 sample points without a GPU.
+A mirror can diverge from what it mirrors, and exactly one check closes that gap — the
+transmittance LUT readback compares the shader's own output against this file's quadrature.
+If those two disagree, the mirror is stale and every other check is suspect.
+
+The LUT check is deliberately compared against **two** references: the exact closed form, and
+the 40-step right-Riemann sum the shader actually computes. Matching the Riemann value proves
+the shader implements the model; the gap to the closed form *is* the sampling bias, quantified.
+
+### First validation run — the harness found its own bug, and the shader passed
+Every predicted value came back within rounding, and the check that matters most passed
+cleanly: **the LUT readback agrees with the C# mirror to 6.3e-06**, which is what establishes
+that the mirror is a faithful transcription and therefore that the other checks mean something.
+
+Confirmed against the shipped atmosphere:
+
+| | measured |
+|---|---|
+| vertical optical depth | (0.173, 0.420, 0.748) — **3.73 / 3.87 / 2.82× Earth's** |
+| sampling bias | optical depth **13.83% low** |
+| ozone headroom | negative extinction at `ozoneStrength ≥ 0.70`, currently 0.40 |
+| tone map band | [0.1185, 0.6449], factor **5.44** |
+| sun disc | **4.31×** in angle, **18.59×** in solid angle |
+| phase normalisation | Rayleigh and Cornette–Shanks both integrate to 1 within 3.4e-08 |
+| Cornette–Shanks at g=0 vs Rayleigh | identical to **0** |
+
+The single FAIL was mine. `VerticalOpticalDepth` accumulated 200,000 terms of ~4e-3 into a
+**float** running total that reaches ~78, so every addition truncated in the same direction and
+the sum came out systematically low — 0.70812 against the closed form's 0.70853, forty times
+the tolerance. Reproduced the exact figure by simulating float32 accumulation, then fixed by
+accumulating in double. A useful reminder that a validation harness needs validating too: had
+the tolerance been looser this would have silently passed and quietly poisoned every optical
+depth number in the report.
+
+Two display bugs the run exposed: the minimum extinction printed as `0.0000` under `F4` when
+the value that matters is 1.9e-05, and the sun's reference angle rendered as `0,2667` from a
+raw interpolation — the sv-SE decimal comma leaking into the report despite this project having
+been bitten by that before.
+
+### Bake stamp implemented
+The staleness hazard recorded earlier now has a detector. `SkyBakeStamp` (a ScriptableObject
+in `Resources`) records, per baked asset, a hash of the scene values it was derived from;
+`BenchmarkEnvironment.Validate` recomputes from the live scene and emits `BAKE_STALE:<asset>`
+into `run.json`'s warnings, next to the numbers the staleness invalidates.
+
+Two design points worth keeping:
+
+- **Only scene-derived values enter the hash.** The bakers' own constants — altitude, azimuth,
+  step counts, resolutions — are recorded in readable form for diagnosis but deliberately
+  excluded, because they change only by editing the baker, which is visible in a diff, whereas
+  a scene parameter changes by dragging a slider and leaves no trace at all.
+- **Each asset declares its recipe**, so the check knows what it depends on rather than
+  inferring it. `SkyGradient.exr` is `ToneMap` — it is inverse-mapped against the tone-map
+  constants and stales when those move even if no atmosphere parameter did. `SkyGradientBaked`
+  and `SkyCubemap` are `Atmosphere` — they store raw radiance, so the tone map is applied at
+  runtime and does *not* stale them. Getting that backwards would have made the stamp fire on
+  the wrong changes and stay quiet on the right ones.
+
+A first attempt reconstructed each entry's inputs by parsing the stored text and guessing which
+parts came from where. That was clever and brittle; the recipe enum replaced it.
+
+### Stage 1a caught two problems, both worth keeping
+`Testbed → Atmosphere → Validate` reported the LUT zenith at (0.9987, 0.9967, 0.9942) against
+an expected (0.8642, 0.6943, 0.5251) — optical depth **110.4–112.2× too small**, with the
+blue/red ratio still 4.47 against the coefficients' 4.39.
+
+The colour being right while the magnitude was out by exactly `atmosphereThickness` is the
+signature of **old shader code running against new uniforms**: the previous march divided every
+step by the thickness, and the new coefficients already are per world unit, so the division
+happened twice.
+
+> **Unity does not track `.hlsl` includes as import dependencies for `.compute` files.**
+> Editing `AtmosphereCommon.hlsl` left all four computes running the previous code. Touching
+> the `.compute` files forces the reimport; a note to that effect now sits in each of them,
+> because the failure mode is a plausible-looking sky rather than an error.
+
+Separately, the run produced `Property (TransmittanceLUT) at kernel index (0) is not set` —
+**a real regression from stage 0b.** Compute shader texture bindings do not survive a domain
+reload, and nothing restored them: the per-frame re-init that 0b removed had been silently
+re-binding everything every editor frame. Removing the per-frame *dispatch* was worth doing;
+removing the per-frame *rebind* was not.
+
+Split into `BindComputeResources()`, called unconditionally on every `SetProperties` because
+binds are cheap, with render-texture creation and the transmittance dispatch left behind the
+dirty flag. That keeps 0b's benefit without its regression.
+
+Worth noting what this says about the harness: neither problem was visible in the image at a
+glance, and both were caught by a numeric check against a closed form within minutes of being
+introduced.
+
+### Stage 1b: geometry
+Four fixes, all with visible consequences.
+
+**Ground intersection in `raymarch`.** Nothing clipped the march at the planet, so a downward
+ray integrated the full atmosphere chord *through the planet's interior* — and because altitude
+is clamped at zero, those interior samples were evaluated at **sea-level density**. The planet
+was not an occluder but a solid block of maximum scattering. The earth-shadow test hid most of
+it by zeroing the sun term, which is why it never looked obviously wrong.
+
+The altitude clamp stays, but is now defensive rather than load-bearing: `getSunTransmittance`
+still follows Bruneton's convention of ignoring the ground and leaving occlusion to the
+caller's shadow test, and without the clamp those samples would take a negative altitude into
+`exp(-h/H)` and the density would explode rather than vanish.
+
+**Midpoint sampling in `getSunTransmittance`.** It advanced before sampling — a right-Riemann
+sum, so every sample landed where density was already below the interval average. Predicted
+effect: quadrature error in blue **13.88% → 0.354%** at the same 40 steps, sun transmittance
+dropping **9.6%** in blue. The sky should darken slightly and warm.
+
+**Aerial perspective ray length.** The slice's far distance is measured from the camera but the
+march starts at the atmosphere boundary, so the distance covered getting there has to come off.
+Invisible from inside the atmosphere where the two origins coincide — but the testbed camera
+reaches altitude 250, radius 400 against an atmosphere top of 259.5, so it spends real time
+outside, where the far endpoint over-extended by up to a whole atmosphere thickness.
+
+**`bodyRadius` 149.5 → 150**, matching `TerrainHeightSettings.worldRadius`. The atmosphere's
+ground sphere sat half a unit *inside* the terrain, so every altitude was biased and the
+ray-planet test could miss ground the depth buffer saw.
+
+This is also the first real exercise of the bake stamp: changing `bodyRadius` should make all
+three baked assets report `BAKE_STALE`.
+
+### Stage 1c: Hillaire's physical constants
+The unit mapping is fixed by declaring the atmosphere column to be Earth's 100 km:
+**1 world unit = 0.90909 km**. Chosen on the column rather than the planet because the terrain
+globe is pinned at radius 150, so the planet cannot also be Earth-sized. The honest trade:
+every scale height, ozone altitude and optical depth becomes directly comparable to a
+published value, while **curvature stays wrong** — thickness/radius 0.733 against Earth's
+0.0157.
+
+A pleasing traceability result fell out. Hillaire's β_R is **exactly a λ⁻⁴ family through
+(680, 550, 440) nm** — the implied `wavelengthScale` agrees to 0.002% across all three
+channels — so his constants drop straight into the existing `(scale/λ)⁴` machinery, which is
+also what the report's "σ ∝ 1/λ⁴" statement describes. No new plumbing, and the numbers are
+citable rather than fitted.
+
+| | before | after | source |
+|---|---|---|---|
+| λ | (639.5, 526, 441.8) | (680, 550, 440) nm | Hillaire |
+| wavelengthScale | 748.5 | 593.483 | derived, not fitted |
+| Rayleigh scale height | 9.46 u = 8.6 km | 8.80 u = **8.0 km** | report §2.1 |
+| Mie scale height | 8.80 u = 8.0 km | 1.32 u = **1.2 km** | report §2.1 |
+| ozone peak / half-width | 13.2 / 29.7 u | 27.5 / 16.5 u = **25 / 15 km** | report §2.1 |
+| ozone red absorption | **−3** (adds energy) | +0.65 | Hillaire |
+| scale height ratio | 1.075 : 1 | **6.67 : 1** | physical |
+
+The scale heights and the ozone tent were **already committed on paper** in report §2.1, so
+adopting Hillaire's coefficients is not an invention — it is the only coefficient set
+consistent with the density profiles the report has already published.
+
+Predicted: vertical optical depth (0.173, 0.420, 0.748) → **(0.0662, 0.1468, 0.2761)**, and
+LUT zenith (0.8416, 0.6577, 0.4746) → **(0.9359, 0.8635, 0.7587)**. Much more transparent.
+
+**Expected sampling problem.** With H_Mie at 1.32 units the 256-step uniform march is
+marginal and in places inadequate:
+
+| view | units per step | samples per Mie scale height |
+|---|---|---|
+| zenith from ground | 0.43 | 3.1 |
+| horizon from ground | 0.83 | 1.6 |
+| through, from altitude 220 | 1.66 | **0.8** |
+
+So high-altitude and horizon views may band or shimmer. That is 1d — non-uniform stepping —
+and the requirement is itself an RQ3 finding: *physical scale heights force non-uniform
+sampling*. Left separate deliberately so the visual change from the constants can be judged on
+its own before the sampling changes underneath it.
+
+---
+
+## Why the physical constants cost the sunsets — a geometry result, not a tuning one
+
+Stage 1c landed exactly as predicted (optical depth now 1.04–1.43× Earth's, down from
+2.8–3.9×; LUT zenith 0.9376/0.8653/0.7607). The sky is bluer and sunrises and sunsets are much
+less warm until the sun is nearly on the horizon. Two separate causes, and the second is the
+important one.
+
+**The bluer cast is the negative ozone leaving.** Red's vertical ozone optical depth was
+**−0.0274** — a *negative* optical depth is a gain, so the ozone term was amplifying red. With
+it at a physical +0.0097, manufactured warmth disappears and the balance shifts blue.
+
+**The weak sunsets are the planet being too small, and no coefficient can fix it.** A red
+sunset requires blue to be extinguished along a long slant path. The amplification of the
+horizon path over the zenith path (Chapman, 90°) is `sqrt(pi*R/2H)`:
+
+| | radius | horizon air mass | blue optical depth at horizon | blue transmitted |
+|---|---|---|---|---|
+| Earth | 6371 km | **35.4×** | 9.37 | 0.00009 — blue is gone |
+| this testbed | 136 km | **5.2×** | 1.43 | 0.24 — blue still dominant |
+
+Slant paths are **6.8× shorter** than Earth's. At the horizon this atmosphere still transmits
+a quarter of its blue, so the sun cannot redden until it is geometrically very low.
+
+### This reframes the inherited implementation
+The two deviations that looked most like carelessness were **compensations for exactly this**:
+
+- coefficients ~3× Earth's — pushing zenith optical depth up so the short slant path still
+  extinguishes something
+- `ozoneAbsorption.x = -3` — manufacturing the red the geometry cannot produce
+
+Lague's tuning was internally coherent as an artistic response to a planet that cannot support
+Earth-calibrated constants. That is a much more interesting finding than "the constants were
+wrong", and it is RQ3-shaped: *what has to change when a physically based atmosphere model
+meets a world that is not Earth-sized.*
+
+### The trade, stated plainly
+On a small planet you can match Earth's **zenith** optical depth or its **horizon** optical
+depth, not both. Matching the horizon needs zenith optical depth ~1.80, i.e. **6.5×** Hillaire's
+— close to what the inherited implementation was doing. Matching the zenith is what the
+physical constants do, and it costs the sunset.
+
+Options, none taken yet:
+1. Keep physical constants, report the limitation. Current state.
+2. Earth-proportion the geometry — needs `atmosphereThickness` ~2.4 world units, which puts
+   every benchmark camera altitude (4–220 units, i.e. 170–9300 km under that mapping) in deep
+   space. Rejected earlier for exactly this reason.
+3. Calibrate coefficients to match Earth's horizon rather than its zenith, stated as a
+   deliberate adaptation with the trade recorded.
+
+**Deferred until after stages 2 and 3.** The Rayleigh phase is precisely what creates the
+angular structure of a sunset, and multiple scattering is what fills the twilight band — judging
+sunset appearance before either has landed would be premature.
+
+### To explore: a hybrid — grow the planet *and* adjust the parameters
+Rather than choosing between Earth-proportioned geometry (which puts every benchmark camera in
+space) and toy geometry with physical constants (which cannot make a sunset), meet in the
+middle: grow the planet part of the way and cover the remaining deficit with coefficients,
+stating both.
+
+**Two knobs, not one.** The terrain globe is pinned at radius 150 world units, so the planet's
+real size is set entirely by `k`, the kilometres per world unit. The second knob is
+`atmosphereThickness` in world units, which should be `100/k` to keep the column at Earth's
+100 km — the current setup gets this wrong by leaving the column 110 units thick regardless.
+
+| k (km/unit) | planet (km) | thickness (u) | H/R | horizon air mass | coefficients × Hillaire | altitude 12 u |
+|---|---|---|---|---|---|---|
+| 0.909 (now) | 136 | 110 | 0.733 | 5.2 | 6.8 | 11 km |
+| 2 | 300 | 50 | 0.333 | 7.7 | 4.6 | 24 km |
+| 3 | 450 | 33 | 0.222 | 9.4 | 3.8 | 36 km |
+| **5** | **750** | **20** | **0.133** | **12.1** | **2.9** | **60 km** |
+| 8 | 1200 | 12.5 | 0.083 | 15.3 | 2.3 | 96 km |
+| 12 | 1800 | 8.3 | 0.056 | 18.8 | 1.9 | 144 km — camera leaves the column |
+| 42.5 | 6375 | 2.4 | **0.0157** | 35.4 | **1.0** | 510 km — deep space |
+
+Air mass grows only as `sqrt(k)`, so the coefficient inflation needed to reach Earth's horizon
+optical depth falls as `1/sqrt(k)` — halving the fudge costs a 4× larger planet.
+
+**The binding constraint is the camera**, not the physics: at 12 world units it has to stay
+inside the column, which caps `k` near 8. Somewhere around **k = 3–5** looks like the sweet
+spot — an air mass of 9–12 against Earth's 35, coefficients only ~3–4× physical instead of
+6.8×, and the strategy view at a plausible 36–60 km.
+
+Worth noting what this would make the deviation list say: instead of "the coefficients are 3×
+too large", it becomes "the coefficients are 3× physical **because** the planet is 8× too
+small, and here is the curve relating the two". That is a far better RQ3 answer, and it turns
+the inherited implementation's fudge into a measured adaptation.
+
+Things to check before committing to it: terrain LOD thresholds and `TestbedCamera` altitude
+limits are tuned in world units and would need revisiting; the aerial perspective's
+`terrestrialClipDst` is derived from `bodyRadius`; and every camera bookmark and benchmark
+view is expressed in world-unit altitudes, so their *meaning* in kilometres changes even
+though the numbers do not.
+
+---
+
+## The 750 km planet: geometry first, density for the remainder
+
+The sunset finding above forced a choice, and this is it. `atmosphereThickness` **110 -> 20**
+world units, `heightMultiplier` **3 -> 1.76**, and one new named parameter,
+`densityMultiplier = 2.9159`.
+
+### Why the thickness is the lever
+The planet's size *in kilometres* is set entirely by the km-per-world-unit mapping, and that is
+fixed by declaring the column to be Earth's 100 km. Shrinking the column in world units grows
+the planet in kilometres while **nothing in world units moves** - terrain, LOD, the baked data,
+picking, labels and the ocean mesh are all untouched. Changing `bodyRadius` would have touched
+every one of them for the same effect.
+
+|  | before | after | Earth |
+|---|---|---|---|
+| km per world unit | 0.91 | **5.00** | - |
+| planet radius | 136 km | **750 km** | 6371 km |
+| Rayleigh scale height | 8.8 u | 1.6 u | - |
+| horizon air mass | 5.2 | **12.1** | 35.4 |
+| blue transmitted at horizon | 0.254 | **0.040** | 0.00009 |
+| coefficient fudge needed | 6.8x | **2.9x** | 1.0x |
+
+### The binding constraint was terrain, not the camera
+Mountains were 3 world units and the scale height is `0.08 x thickness`. Once the scale height
+falls below the peaks, mountains poke out of the atmosphere - which caps the thickness at ~37
+(a 400 km planet) unless the terrain shrinks too. Setting `heightMultiplier` to 1.76 makes peaks
+**1.10 scale heights**, exactly Earth's ratio, and unlocks the 750 km planet.
+
+### The remainder is one named number
+`densityMultiplier` scales every scattering and absorption coefficient together - i.e. this air
+is 2.92x denser than Earth's at the same composition and the same vertical structure. It is set
+so the **horizon** optical depth in blue matches Earth's, since that is the quantity a sunset is
+actually made of, and the validation harness now reports both plus the ratio.
+
+This is much better to defend than the alternative. The published constants stay published and
+visible; there is exactly one deviation, it has a name, a value, and a stated cause (a small
+planet has short slant paths), and it is *calibrated against a physical target* rather than
+dialled until it looked right.
+
+**And it lands almost exactly where Lague was.** Zenith blue optical depth is now **0.772**
+against his **0.709**. The inherited magic number was approximately correct for the geometry all
+along - what was missing was the reason, which is why it also needed a negative red ozone term
+to finish the job. That is the RQ3 finding in one sentence.
+
+### Consequences handled
+- Camera altitude and reference altitude 10 -> 2, bookmark 40 -> 7.3. **The camera has to come
+  down** or it sits above the air entirely: at the old altitude of 12 units it would be 7.5
+  scale heights up and the aerial perspective would vanish.
+- Benchmark pose altitudes scaled by 20/110 so each benchmark keeps its intent: altitude sweep
+  4->0.73 and 220->40, daycycle 12->2.18, framing 20->3.64, orbit 30->5.45, smoke 25->4.55.
+  These are guesses at the *same shot* under the new scale, not re-picked shots.
+- All baked baseline assets are stale; the stamp now hashes `densityMultiplier` too.
+- Tone mapping will likely need retuning: vertical optical depth nearly triples, so the sky is
+  deeper and more saturated.
+
+### Still open
+Horizon air mass is 12.1 against Earth's 35.4, so this is not Earth and the density multiplier
+is carrying a factor of 2.9. Going further means shorter mountains again - `heightMultiplier`
+1.1 would allow a 1200 km planet at 2.3x - and a smaller visible fraction of the globe. Left
+until there is a picture to judge.
+
+### Real planet scaling on a key, x1 / x4 / x16
+
+The atmosphere-thickness trick was replaced with the honest dial: `planetScale` uniformly scales
+the `World` root, and with it `worldRadius`, `bodyRadius`, the LOD distance threshold, the camera
+far clip and max altitude. The atmosphere's scale height stays fixed in world units, so R/H - the
+only thing horizon air mass depends on - grows with the planet.
+
+**It is free because the terrain is not generated at play time.** `TerrainGenerator` is an offline
+bake tool; `LodMeshLoader` deserialises pre-baked meshes at startup. So no duplicate geometry is
+needed and no regeneration happens - and both scales are the *same* terrain, which makes the
+comparison controlled in a way two separate bakes would not be.
+
+| preset | radius | air mass | horizon | content in view |
+|---|---|---|---|---|
+| `planet-x1` | 136 km | 5.2 | 54.8 u | 54.8 |
+| `planet-x4` | 545 km | 10.4 | 109.5 u | **27.4** |
+| `planet-x16` | 2182 km | 20.7 | 219.1 u | **13.7** |
+| Earth | 6371 km | 35.4 | - | - |
+
+Air mass grows as sqrt(k) while terrain grows as k, so **visible content falls as 1/sqrt(k)**.
+That is the whole practicality argument in one line, and it is now a keypress.
+
+Everything planet-scale sits under `World` - terrain, outlines, ocean, city lights, world lookup.
+The Solar System is deliberately outside it, so the sun, moon and stars do not scale.
+
+**Caveat to state in the report.** A uniform transform scales the *relief* too, so at x4 mountains
+are 12 world units rather than 3 against an unchanged 8.8-unit scale height. A real planet four
+times larger would not have four times taller mountains, so this exaggerates how far peaks stand
+out of the haze. Correcting it means re-baking the terrain at a different `worldRadius` with the
+same `heightMultiplier`, which the offline generator can do at the cost of a second copy of the
+73 MB mesh data. Not done: the exaggeration overstates a real effect rather than inventing one.
+
+### Reverted to the 136 km planet, with both scales on a key
+
+Playing the 750 km world settled the question: it is impractical. You see too little of the
+globe without zooming a long way out, and mountains at 3 world units are 1.88 Rayleigh scale
+heights there, so peaks stand clear of the haze layer.
+
+So the **136 km planet is the default again**, with the shortfall carried by `densityMultiplier
+= 6.84` rather than 2.92. Both scales are now `WorldScalePreset` assets under
+`Assets/Data/WorldScales`, cycled live with **F7** by `WorldScaleController`:
+
+| preset | thickness | air mass | zenith T | horizon tau | horizon T | camera |
+|---|---|---|---|---|---|---|
+| `practical-136km` | 110 u | 5.2 | 0.452 | 4.11 | 0.016 | altitude 10 |
+| `physical-750km` | 20 u | 12.1 | 0.452 | **9.64** | **0.00007** | altitude 4 |
+| Earth | - | 35.4 | 0.767 | 9.37 | 0.00009 | - |
+
+**Both run the same `densityMultiplier` of 3.0, so the only variable is geometry.** The sky
+overhead is identical between them; the limb is what changes, and the limb is the sunset. That
+is a controlled comparison rather than two separately tuned looks, and it isolates exactly what
+the planet's proportions contribute.
+
+**What a preset does NOT change is the planet.** `bodyRadius` is 150 world units in both and the
+terrain is byte-identical - which is precisely why this can be swapped on a key with no mesh
+rebuild. What moves is `atmosphereThickness`, so the scale height goes 8.8 -> 1.6 units and R/H
+goes 17 -> 94. That ratio is the only thing horizon air mass depends on, so the physics is real,
+but the kilometre labels ("136 km", "750 km") are a convention laid on top of it - 1 unit =
+100/thickness km - and not a change in geometry. Making the *planet* genuinely larger, so more
+terrain is visible at a flatter horizon, means `worldRadius` and a terrain regeneration. That is
+a different lever from air mass and has not been touched.
+
+An earlier version of these presets set the small one to 6.84, the value that matches Earth's
+horizon exactly. It reads as fuzzy: the zenith transmits 0.16 against Earth's 0.77, and Mie is
+scaled by the same factor so the forward glow smears the sun disc. That is the trade stated in
+one observation - on a small planet you can match Earth's zenith or Earth's horizon, not both -
+and 3.0 is the stated compromise.
+
+Every change goes through a `RestoreScope`, disposed on preset change and on disable, because
+`AtmosphereEffect` is a ScriptableObject and anything written to it in the editor reaches disk.
+
+`heightMultiplier` is deliberately **not** in the presets: changing it means regenerating the
+terrain meshes, which a keypress should not do. The consequence - mountains standing out of the
+haze at the larger scale - is left visible, since it is part of what makes that scale
+impractical.
+
+The tone map is per preset. It matters less now that both share a density, since vertical
+optical depth is the same in each, but the two differ in how much light the limb returns.
+
+**For the report.** This is a concrete RQ3 answer rather than a failure: an Earth-calibrated
+physically based atmosphere and a strategy-game camera want incompatible planet sizes, the trade
+between them is a measurable curve (air mass grows as sqrt of radius, so the coefficient fudge
+falls as 1/sqrt), and the practical resolution is to keep the playable geometry and name the
+compensation instead of hiding it in six constants.
+
+---
+
+## Session summary: Hillaire alignment + world scale
+
+All five planned stages landed, plus a runtime world-scale system that was not in the original
+plan and turned out to be the more interesting result.
+
+**Physics (stages 1-5).** Absolute-altitude density profiles and physical constants; the Rayleigh
+phase restored with an explicit `sunIlluminance`; Hillaire's multiple-scattering LUT; Bruneton's
+transmittance parameterisation at 256x64; and the aerial perspective marched once per ray rather
+than once per slice. Along the way: midpoint sampling in `raymarch` (the mirror of a bias already
+fixed in `getSunTransmittance`), a numerically stable `integralFactor`, ground clipping, and the
+half-texel write/read mismatch in both 2D LUTs.
+
+**World scale.** `planetScale` on a preset uniformly rescales the planet by baking the radius
+into the mesh vertices - x1 / x4 / x16 on F7, with relief, outlines, city lights, labels, camera
+speeds, culling distances and the moon all following. The atmosphere's scale height stays fixed
+in world units, so R/H and therefore horizon air mass grow with the planet, which is the whole
+point.
+
+### Bugs found in the process, worth remembering
+- **Static batching bakes renderer bounds in world space at combine time.** Scaling a parent
+  transform therefore leaves chunks culled at their old positions. Baking the scale into vertices
+  avoids the problem entirely.
+- **`layerCullDistances` culls per layer by distance regardless of the frustum**, and
+  `RenderSettingsController` applies it in Awake - so anything set later is overwritten. This,
+  not the far clip, was the terrain disappearing.
+- **`LinearEyeDepth * viewLength` is a radial distance, and viewLength is exactly 1 at screen
+  centre.** Testing it against the far plane makes the sky/geometry decision a coin flip in a
+  disc at the middle of the screen. Test eye depth instead.
+- **The moon orbits at 811 units against a 600-unit cull distance**, so the shipped scene never
+  draws it. It is unfinished and renders as a grey disc; widening the cull to reach it exposes it.
+- Unity does not track `.hlsl` includes as import dependencies for `.compute`.
+- CRLF files silently defeat LF-patterned scripted edits, with no error.
+
+### Open before the next milestone
+1. Re-run `Testbed -> Atmosphere -> Validate`. Geometry and density both moved after the last
+   clean report, and the sunset-geometry check is new.
+2. **Regenerate the three baked baseline assets.** They were baked at `densityMultiplier` 6.84
+   and it is now 3, so the stamp will report `BAKE_STALE` on any run - and `baseline-baked` is
+   supposed to be the physically based sky flattened, so a stale bake corrupts RQ1.
+3. Tone mapping is shared between presets at intensity 1.602 / whitePoint 2.5. Zenith
+   transmittance is 0.45 against Earth's 0.77, so it may want per-preset retuning.
+4. Benchmark poses are back at their authored altitudes but have not been re-judged against the
+   current atmosphere.
+
+### Still deferred, with reasons already recorded
+Non-uniform stepping, the SkyView LUT and sky-pass depth rejection all belong to the optimization
+phase; the cubemap variant's tone-map decision and the art-directed haze hybrid are parked; the
+report sections come with the report.

@@ -1,5 +1,16 @@
-﻿#pragma kernel CreateTransmittanceLUT
+#pragma kernel CreateTransmittanceLUT
 #include "../Shader Common/AtmosphereCommon.hlsl"
+
+// Header revision this file was last rebuilt against: 750 km planet + densityMultiplier.
+
+// Unity does not reliably rebuild a .compute when an included .hlsl changes - the include is
+// not tracked as an import dependency. If the atmosphere's output looks uniformly scaled or
+// otherwise stale after editing anything under Shader Common, reimport this file.
+//
+// That is not hypothetical: editing AtmosphereCommon.hlsl to work in absolute altitude left
+// this compute running the previous code against the new uniforms, which divided every
+// optical depth by the atmosphere thickness - a transmittance of 0.994 where it should have
+// been 0.525, with the colour ratios still perfectly correct.
 
 RWTexture2D<float3> TransmittanceLUT;
 SamplerState transmittance_linear_clamp_sampler;
@@ -10,15 +21,22 @@ uint height;
 [numthreads(8,8,1)]
 void CreateTransmittanceLUT (uint2 id : SV_DispatchThreadID)
 {
-	float2 uv = id / float2(width - 1, height - 1);
-	float elevation = planetRadius + atmosphereThickness * uv.y;
+	// Texel centres, not id/(size-1). The sampler reads texel centre u*N - 0.5, so writing at
+	// id/(N-1) made write and read agree only at u = 0.5. lutUnitToSubUv is the other half of
+	// this pair; transmittanceLutParams undoes it.
+	float2 uv = (id + 0.5) / float2(width, height);
 
-	float3 inPoint = float3(0, elevation, 0);
+	// Through the shared inverse mapping, so what is written here and what
+	// sampleTransmittanceLUT reads can never disagree.
+	float radius, cosZenith;
+	transmittanceLutParams(uv, radius, cosZenith);
 
-	float y = -2 * uv.x + 1;
-	float x = sin(acos(y));
-	float3 dir = float3(x, y, 0);
-	
+	float3 inPoint = float3(0, radius, 0);
+
+	// sqrt(1 - c^2) is sin(acos(c)) without the round trip through two transcendentals.
+	float sinZenith = sqrt(saturate(1 - cosZenith * cosZenith));
+	float3 dir = float3(sinZenith, cosZenith, 0);
+
 	float3 transmittance = getSunTransmittance(inPoint, dir);
 
 	TransmittanceLUT[id.xy] = transmittance;

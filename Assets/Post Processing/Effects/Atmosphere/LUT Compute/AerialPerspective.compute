@@ -2,6 +2,17 @@
 #include "../Shader Common/AtmosphereCommon.hlsl"
 #include "../Shader Common/RaymarchCommon.hlsl"
 
+// Header revision this file was last rebuilt against: per-ray aerial depth axis.
+
+// Unity does not reliably rebuild a .compute when an included .hlsl changes - the include is
+// not tracked as an import dependency. If the atmosphere's output looks uniformly scaled or
+// otherwise stale after editing anything under Shader Common, reimport this file.
+//
+// That is not hypothetical: editing AtmosphereCommon.hlsl to work in absolute altitude left
+// this compute running the previous code against the new uniforms, which divided every
+// optical depth by the atmosphere thickness - a transmittance of 0.994 where it should have
+// been 0.525, with the colour ratios still perfectly correct.
+
 RWTexture3D<float4> AerialPerspectiveLuminance;
 RWTexture3D<float4> AerialPerspectiveTransmittance;
 sampler2D TransmittanceLUT;
@@ -9,37 +20,92 @@ sampler2D TransmittanceLUT;
 uint size;
 float nearClip;
 float farClip;
-int numScatteringSteps;
+int stepsPerSlice;
 
-[numthreads(8,8,8)]
+// One thread per (x, y), walking the depth slices in order, instead of one thread per voxel
+// re-marching from the camera.
+//
+// The old kernel dispatched size^3 threads and gave each a march of `numScatteringSteps` from
+// the atmosphere boundary out to its own slice - so the work was O(N^2) in slice count, and 20
+// steps had to cover up to the whole 150-unit clip distance. That is 7.5 units per step against
+// a Mie scale height of 1.32, which the harness measures as -47.3% error in Mie optical depth:
+// the haze layer was being resolved to within a factor of two.
+//
+// Marching once and writing the running totals as each slice goes by is both cheaper and far
+// more accurate: 32 slices x 6 steps = 192 steps against 640, at 0.78 units per step instead of
+// 7.5. Roughly a third of the work for a far smaller error.
+//
+// The second gain is structural rather than numerical. Slices were previously independent
+// discretisations of *different* integrals, so consecutive slices disagreed by more than their
+// own quadrature error and the accumulated fog was not guaranteed monotonic in depth. Now every
+// slice is a prefix of a single march, so luminance is non-decreasing and transmittance
+// non-increasing by construction - an exact property, and one the harness can assert.
+[numthreads(8, 8, 1)]
 void CSMain (uint3 id : SV_DispatchThreadID)
 {
-	if (id.x >= size || id.y >= size || id.z >= size) { return; }
+	if (id.x >= size || id.y >= size) { return; }
 
 	float2 uv = id.xy / (size - 1.0);
-	float depthT = id.z / (size - 1.0);
 
 	float3 rayDir = calculateViewDir(uv);
-	float3 rayPos = camPos + rayDir * nearClip;
 
-	float2 atmosphereHitInfo = raySphere(0, atmosphereRadius, rayPos, rayDir);
+	// camPos, not camPos + rayDir * nearClip. The composite shader does its ray-sphere test from
+	// _WorldSpaceCameraPos, and the depth axis is now defined relative to that intersection, so
+	// the two origins have to be identical or every slice lands at a slightly wrong distance.
+	float2 atmosphereHitInfo = raySphere(0, atmosphereRadius, camPos, rayDir);
 	float dstToAtmosphere = atmosphereHitInfo.x;
 	float dstThroughAtmosphere = atmosphereHitInfo.y;
-	
-	float3 col = 0;
-	float3 transmittance = 1;
-	
-	if (dstThroughAtmosphere > 0) {
-		float3 inPoint = rayPos + rayDir * dstToAtmosphere;
-		float rayLength = min(dstThroughAtmosphere, (terrestrialClipDst - nearClip) * depthT);
-		ScatteringResult result = raymarch(inPoint, rayDir, rayLength, numScatteringSteps, TransmittanceLUT, 0); // dont include earth shadow (causes issues due to low texture size)
-		col = result.luminance;
-		transmittance = result.transmittance;
+
+	float3 inPoint = camPos + rayDir * dstToAtmosphere;
+
+	// Clip at the ground once, up front, rather than inside each slice's march. raymarch() does
+	// this internally, but raymarchSegment() deliberately does not: a later segment starting
+	// beyond the surface would otherwise re-derive a ground distance relative to its own origin.
+	float maxLength = dstThroughAtmosphere;
+	float dstToGround = rayIntersectSphere(inPoint, rayDir, planetRadius);
+	if (dstToGround > 0) { maxLength = min(maxLength, dstToGround); }
+
+	ScatteringState state;
+	state.luminance = 0;
+	state.transmittance = 1;
+
+	float marched = 0;
+
+	for (uint z = 0; z < size; z++) {
+		// (z + 0.5) / size, not z / (size - 1).
+		//
+		// The composite shader samples this texture with tex3Dlod at a raw depthT, which lands
+		// at voxel coordinate depthT * size - 0.5. Writing voxel z as though it held the value
+		// for z / (size - 1) made the two agree only at depthT = 0.5, and differ by half a voxel
+		// at the ends - roughly 2.4 world units, applied as a systematic depth offset in the fog.
+		//
+		// Writing at texel centres makes the mapping exact at every voxel.
+		float depthT = (z + 0.5) / size;
+
+		// The depth axis spans the air in front of THIS ray - `maxLength`, the atmosphere
+		// chord already clipped at the ground - rather than a fixed distance from the camera.
+		//
+		// Two fixed-range versions failed for opposite reasons. A far distance of bodyRadius put
+		// the entire visible scene inside five of the thirty-two slices at low altitude; a
+		// quadratic, camera-dependent range fixed that end and still left four slices from orbit,
+		// because it concentrates samples near the camera and from out there the air is all far
+		// away. Depth varies radially when looking at a sphere, so either way the shortage read
+		// as concentric banding across the planet.
+		//
+		// Normalising per ray removes the failure mode instead of moving it: every ray gets all
+		// thirty-two slices across exactly the air it passes through, at any altitude.
+		float target = depthT * maxLength;
+
+		if (dstThroughAtmosphere > 0 && target > marched) {
+			// dont include earth shadow (causes issues due to low texture size)
+			raymarchSegment(state, inPoint + rayDir * marched, rayDir, target - marched,
+				stepsPerSlice, TransmittanceLUT, 0);
+			marched = target;
+		}
+
+		float avgTransmittance = dot(state.transmittance, 1 / 3.0);
+
+		AerialPerspectiveLuminance[uint3(id.xy, z)] = float4(state.luminance, avgTransmittance);
+		AerialPerspectiveTransmittance[uint3(id.xy, z)] = float4(state.transmittance, depthT);
 	}
-	
-
-	float avgTransmittance = dot(transmittance, 1/3.0);
-
-	AerialPerspectiveLuminance[id] = float4(col, avgTransmittance);
-	AerialPerspectiveTransmittance[id] = float4(transmittance, depthT);//
 }

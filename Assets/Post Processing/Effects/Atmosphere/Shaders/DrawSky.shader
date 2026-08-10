@@ -17,6 +17,9 @@ Shader "Hidden/DrawSky"
 
 			#include "UnityCG.cginc"
 			#include "../Shader Common/DrawAtmosphereCommon.hlsl"
+			// Brings planetRadius / atmosphereThickness / atmosphereRadius and the one
+			// definition of the transmittance LUT's parameterisation.
+			#include "../Shader Common/TransmittanceCommon.hlsl"
 
 			struct appdata
 			{
@@ -46,23 +49,12 @@ Shader "Hidden/DrawSky"
 			sampler2D Sky;
 
 			sampler2D TransmittanceLUT;
-			float planetRadius;
-			float atmosphereThickness;
 			float skyTransmittanceWeight;
 
 			// Sun disc settings
 			float sunDiscSize;
 			float sunDiscBlurA;
 			float sunDiscBlurB;
-
-			float3 sampleSunTransmittanceLUT(float3 pos, float3 dir) {
-				float dstFromCentre = length(pos);
-				float height = dstFromCentre - planetRadius;
-				float height01 = saturate(height / atmosphereThickness);
-
-				float uvX = 1 - (dot(pos / dstFromCentre, dir) * 0.5 + 0.5);
-				return tex2Dlod(TransmittanceLUT, float4(uvX, height01, 0, 0)).rgb;
-			}
 
 			// Thanks to https://www.shadertoy.com/view/slSXRW
 			float3 sunDiscWithBloom(float3 rayDir, float3 sunDir) {
@@ -91,7 +83,7 @@ Shader "Hidden/DrawSky"
 				float3 skyLum = tex2D(Sky, float2(i.uv.x, 1-i.uv.y)).rgb;
 #endif
 				float3 sunDisc = sunDiscWithBloom(viewDir, dirToSun);
-				float3 transmittance = sampleSunTransmittanceLUT(_WorldSpaceCameraPos, viewDir);
+				float3 transmittance = sampleTransmittanceLUT(TransmittanceLUT, _WorldSpaceCameraPos, viewDir);
 				skyLum += sunDisc * transmittance;
 				
 				skyLum = toneMap(skyLum);
