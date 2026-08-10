@@ -1,4 +1,4 @@
-// Header revision this file was last rebuilt against: stage 5 (resumable march segments).
+// Header revision this file was last rebuilt against: stage 4 (Bruneton transmittance mapping).
 
 // Bakes the physically based sky into the baseline's 2D gradient LUT.
 //
