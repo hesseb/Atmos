@@ -59,6 +59,36 @@ static class AtmosphereReference
 			+ OzoneAbsorption(a) * (ozoneDensity / a.atmosphereThickness);
 	}
 
+	/// <summary>
+	/// Mie extinction alone, scattering plus absorption.
+	///
+	/// Needed on its own because Mie is only ~4% of blue extinction, so any error in it is
+	/// almost invisible in a total-blue figure - and Mie is the species with the small scale
+	/// height, hence the one a step count actually fails to resolve.
+	/// </summary>
+	public static float MieExtinction(AtmosphereEffect a, float height)
+	{
+		float h = Mathf.Clamp(height, 0f, a.atmosphereThickness);
+		float density = Mathf.Exp(-h / (a.mieDensityAvg * a.atmosphereThickness));
+		return (a.mieCoefficient + a.mieAbsorption) * density / a.atmosphereThickness;
+	}
+
+	/// <summary>Mie-only vertical optical depth. `leftRiemann` reproduces the pre-midpoint
+	/// sampling, so the two can be reported side by side.</summary>
+	public static double MieVerticalOpticalDepth(AtmosphereEffect a, int steps, bool leftRiemann = false)
+	{
+		double total = 0;
+		double dh = a.atmosphereThickness / (double)steps;
+
+		for (int i = 0; i < steps; i++)
+		{
+			float h = (float)((leftRiemann ? i : i + 0.5) * dh);
+			total += MieExtinction(a, h) * dh;
+		}
+
+		return total;
+	}
+
 	/// <summary>Rayleigh extinction alone, for cross-checking against the beta*H closed form.</summary>
 	public static Vector3 RayleighExtinction(AtmosphereEffect a, float height)
 	{
