@@ -1,3 +1,5 @@
+// Header revision this file was last rebuilt against: stage 2 (Rayleigh phase + sunIlluminance).
+
 // Bakes the physically based sky into the baseline's 2D gradient LUT.
 //
 // Deliberately includes AtmosphereCommon.hlsl and calls the same raymarch() the runtime sky

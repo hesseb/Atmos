@@ -42,11 +42,12 @@ static class AtmosphereValidation
 		report.Append("# Atmosphere validation\n\n");
 		AppendParameters(report, atmosphere);
 
-		failures += CheckPhaseNormalisation(report);
+		failures += CheckPhaseNormalisation(report, atmosphere);
 		failures += CheckWavelengthLaw(report, atmosphere);
 		failures += CheckExtinctionPositive(report, atmosphere);
 		failures += CheckOpticalDepth(report, atmosphere);
 		failures += CheckToneMapBand(report, atmosphere);
+		failures += CheckIlluminanceBookkeeping(report, atmosphere);
 		failures += CheckSunDisc(report, atmosphere);
 		failures += CheckTransmittanceLUT(report, atmosphere);
 
@@ -103,12 +104,14 @@ static class AtmosphereValidation
 	/// The third assertion is free and validates both at once: Cornette-Shanks at g = 0
 	/// reduces algebraically to the Rayleigh phase.
 	/// </summary>
-	static int CheckPhaseNormalisation(StringBuilder report)
+	static int CheckPhaseNormalisation(StringBuilder report, AtmosphereEffect a)
 	{
 		report.Append("## Phase normalisation\n\n");
 
 		double rayleigh = IntegrateOverSphere(mu => AtmosphereReference.RayleighPhase(mu));
-		double mie = IntegrateOverSphere(mu => AtmosphereReference.MiePhase(mu, 0.8f));
+		// The configured g, not a hardcoded 0.8 - the shader's asymmetry is authorable now, and a
+		// harness that checks a different value than the shader uses is checking nothing.
+		double mie = IntegrateOverSphere(mu => AtmosphereReference.MiePhase(mu, a.mieAsymmetry));
 
 		double worstReduction = 0;
 		for (int i = 0; i <= 200; i++)
@@ -120,7 +123,7 @@ static class AtmosphereValidation
 
 		int failures = 0;
 		failures += Assert(report, "Rayleigh integrates to 1", rayleigh, 1.0, 1e-6);
-		failures += Assert(report, "Cornette-Shanks (g=0.8) integrates to 1", mie, 1.0, 1e-4);
+		failures += Assert(report, $"Cornette-Shanks (g={F(a.mieAsymmetry)}) integrates to 1", mie, 1.0, 1e-4);
 		failures += Assert(report, "Cornette-Shanks at g=0 equals Rayleigh", worstReduction, 0.0, 1e-7);
 		return failures;
 	}
@@ -256,6 +259,38 @@ static class AtmosphereValidation
 		return black > 0 && white > black
 			? Pass(report, "tone map band is well formed")
 			: Fail(report, "tone map band is degenerate");
+	}
+
+	/// <summary>
+	/// The Stage 2 bookkeeping, stated as an assertion rather than left in a comment.
+	///
+	/// The old code used `rayleighPhaseValue = 1`. A normalised phase averages 1/(4*PI), so what
+	/// now stands in that slot is `sunIlluminance * <P_R>` - and at E = 4*PI that is exactly 1,
+	/// leaving Rayleigh's sphere-average untouched while giving it angular structure it had none
+	/// of before.
+	///
+	/// The same E multiplies Mie, which already had its phase, so Mie rises by E. That is the
+	/// correction rather than a side effect: Rayleigh was over-weighted against Mie by that
+	/// factor, which is why mieCoefficient had to be inflated to compete with it.
+	/// </summary>
+	static int CheckIlluminanceBookkeeping(StringBuilder report, AtmosphereEffect a)
+	{
+		report.Append("
+## Illuminance bookkeeping
+
+");
+
+		double meanPhase = IntegrateOverSphere(mu => AtmosphereReference.RayleighPhase(mu)) / (4.0 * System.Math.PI);
+		double effective = a.sunIlluminance * meanPhase;
+
+		report.Append($"- mean Rayleigh phase over the sphere {F((float)meanPhase)}, i.e. 1/4pi
+")
+			.Append($"- E x mean phase = {F((float)effective)}, against the 1 the hardcoded phase used
+")
+			.Append($"- Mie keeps its own phase, so it gains E = {F(a.sunIlluminance)}x against Rayleigh
+");
+
+		return Assert(report, "E x mean Rayleigh phase reproduces the old unit weight", effective, 1.0, 1e-4);
 	}
 
 	static int CheckSunDisc(StringBuilder report, AtmosphereEffect a)

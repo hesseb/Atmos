@@ -38,6 +38,20 @@ public class AtmosphereEffect : PostProcessingEffect
 	public float mieCoefficient;
 	// Strength of mie absorption
 	public float mieAbsorption;
+	/// <summary>
+	/// Asymmetry of the Cornette-Shanks phase function. 0 is isotropic (and reduces exactly to
+	/// the Rayleigh phase); higher values scatter more sharply forward. Was hardcoded at 0.8.
+	/// </summary>
+	[Range(0, 0.99f)] public float mieAsymmetry = 0.8f;
+
+	[Header("Illumination")]
+	/// <summary>
+	/// Illuminance arriving at the top of the atmosphere. 4*PI is the value at which the
+	/// normalised Rayleigh phase reproduces the average in-scatter the old hardcoded
+	/// `rayleighPhaseValue = 1` produced, so it is the natural starting point rather than a
+	/// physical measurement - the units here are not yet tied to SI radiometry.
+	/// </summary>
+	public float sunIlluminance = 4 * Mathf.PI;
 
 	[Header("Ozone")]
 	//Altitude [0, 1] at which ozone density is at the greatest
@@ -275,6 +289,12 @@ public class AtmosphereEffect : PostProcessingEffect
 		values.floats.Add(("mieScaleHeight", mieDensityAvg * thickness));
 		values.floats.Add(("mieCoefficient", mieCoefficient / thickness));
 		values.floats.Add(("mieAbsorption", mieAbsorption / thickness));
+		values.floats.Add(("mieAsymmetry", mieAsymmetry));
+
+		// Dimensionless, so no thickness conversion - it multiplies in-scatter, never optical
+		// depth. That asymmetry is the whole reason it can fix the phase without disturbing
+		// transmittance, which no change to a scattering coefficient could have done.
+		values.floats.Add(("sunIlluminance", sunIlluminance));
 
 		// Ozone values. The tent was `1 - |peak01 - h01| * falloff` in normalised altitude, so
 		// its half-width in world units is thickness / falloff.

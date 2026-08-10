@@ -28,11 +28,13 @@ MonoBehaviour:
   mieDensityAvg: 0.012
   mieCoefficient: 0.3996
   mieAbsorption: 0.44
+  mieAsymmetry: 0.8
+  sunIlluminance: 12.566371
   ozonePeakDensityAltitude: 0.25
   ozoneDensityFalloff: 6.66667
   ozoneStrength: 1
   ozoneAbsorption: {x: 0.65, y: 1.881, z: 0.085}
-  sunDiscSize: 1.15
+  sunDiscSize: 0.2667
   sunDiscBlurA: 32.95
   sunDiscBlurB: 3.1
   transmittanceLUTCompute: {fileID: 7200000, guid: cca6f912a2bba8340ba53132e1b235a1, type: 3}
