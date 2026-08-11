@@ -130,6 +130,19 @@ float cloudTypeBias;
 /// floor of the shell, which is where they all sat before this existed.
 float cloudBaseVariation;
 
+/// How much of the height gradient acts on COVERAGE rather than on density.
+///
+/// 0 is Schneider's arrangement, where the gradient multiplies the shape noise and the coverage
+/// threshold is applied afterwards. That has a sharp consequence: the result is nonzero only where
+/// shapeNoise > (1 - coverage) / gradient, and shape noise cannot exceed 1, so the whole layer
+/// vanishes the instant the gradient drops below 1 - coverage. At coverage 0.5 that is halfway down
+/// the ramp, at the same height everywhere - the layer does not fade out, it stops, in a flat plane.
+///
+/// Moving the gradient onto coverage instead lowers the threshold progressively, so the highest
+/// noise peaks survive longest and the edge breaks up into thinning, scattered cloud rather than
+/// ending at a surface.
+float cloudEdgeSoftness;
+
 /// What precipitation does. Rain-bearing cloud is thicker, taller and hangs lower, so one field
 /// drives all three rather than three unrelated ones scattering across the globe.
 float cloudPrecipDensity;
@@ -151,9 +164,11 @@ float3 cloudDetailWind;
 /// occupies the middle with room to billow; cumulonimbus reaches nearly the whole shell.
 float cloudHeightGradient(float h, float type)
 {
-	float stratus = saturate(cloudRemap(h, 0.00, 0.05, 0, 1)) * saturate(cloudRemap(h, 0.12, 0.22, 1, 0));
-	float cumulus = saturate(cloudRemap(h, 0.00, 0.18, 0, 1)) * saturate(cloudRemap(h, 0.55, 0.85, 1, 0));
-	float cumulonimbus = saturate(cloudRemap(h, 0.00, 0.10, 0, 1)) * saturate(cloudRemap(h, 0.85, 1.00, 1, 0));
+	// smoothstep rather than a linear remap: a linear ramp meets its plateau at a corner, and that
+	// corner is a visible crease along the top and bottom of the layer. Same extents, no crease.
+	float stratus = smoothstep(0.00, 0.05, h) * (1 - smoothstep(0.12, 0.22, h));
+	float cumulus = smoothstep(0.00, 0.18, h) * (1 - smoothstep(0.55, 0.85, h));
+	float cumulonimbus = smoothstep(0.00, 0.10, h) * (1 - smoothstep(0.85, 1.00, h));
 
 	// Tent weights so type sweeps stratus -> cumulus -> cumulonimbus across [0,1] with only two
 	// profiles ever active at once.
@@ -233,11 +248,18 @@ float sampleCloudDensity(float3 pos, bool cheap, float stepSize)
 
 	// R is already Perlin-Worley; pulling its floor down to the Worley FBM is what gives the base
 	// rounded lumps instead of smooth blobs.
-	float base = saturate(cloudRemap(shape.r, worleyFbm - 1.0, 1.0, 0.0, 1.0)) * gradient;
+	// The height gradient is split between the two terms - see cloudEdgeSoftness. At 0 all of it
+	// multiplies the density, which is Schneider's arrangement and ends the layer in a plane; at 1
+	// all of it scales the coverage, which thins the edge into scattered cloud instead.
+	float densityGradient = lerp(gradient, 1.0, cloudEdgeSoftness);
+	float coverageGradient = lerp(1.0, gradient, cloudEdgeSoftness);
+	float effectiveCoverage = saturate(coverage * coverageGradient);
+
+	float base = saturate(cloudRemap(shape.r, worleyFbm - 1.0, 1.0, 0.0, 1.0)) * densityGradient;
 
 	// Coverage carves the field rather than scaling it: more coverage lowers the threshold the base
 	// has to clear, so cloud grows outward from where it already is instead of fading up uniformly.
-	float density = cloudRemap(base, 1.0 - coverage, 1.0, 0.0, 1.0) * coverage;
+	float density = cloudRemap(base, 1.0 - effectiveCoverage, 1.0, 0.0, 1.0) * effectiveCoverage;
 	if (density <= 0) { return 0; }
 
 	// Rain-bearing cloud is thicker. Applied to both the cheap and full paths so the light march

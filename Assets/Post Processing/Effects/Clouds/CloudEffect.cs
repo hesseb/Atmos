@@ -113,6 +113,12 @@ namespace Clouds
 			"floor of the shell, which is where they all sat before this existed.")]
 		[Range(0f, 0.6f)] public float baseVariation = 0.3f;
 
+		[Tooltip("How much of the height gradient acts on coverage rather than density. 0 is " +
+			"Schneider's arrangement, where the layer stops at a flat plane once the gradient falls " +
+			"below 1 - coverage - halfway down the ramp at coverage 0.5. Higher thins the top and " +
+			"bottom into scattered cloud instead of ending them at a surface.")]
+		[Range(0f, 1f)] public float edgeSoftness = 0.7f;
+
 		[Header("Precipitation")]
 		[Tooltip("Rain-bearing cloud is thicker, taller and hangs lower. One field drives all three, " +
 			"so a storm region reads as a storm rather than as three unrelated patterns.")]
@@ -551,6 +557,7 @@ namespace Clouds
 			compute.SetFloat("cloudShapeResolution", shapeNoise != null ? shapeNoise.width : 128);
 			compute.SetFloat("cloudDetailResolution", detailNoise != null ? detailNoise.width : 32);
 			compute.SetFloat("cloudBaseVariation", baseVariation);
+			compute.SetFloat("cloudEdgeSoftness", edgeSoftness);
 			compute.SetFloat("cloudPrecipDensity", precipDensity);
 			compute.SetFloat("cloudPrecipTypePush", precipTypePush);
 			compute.SetFloat("cloudPrecipBaseDrop", precipBaseDrop);
@@ -628,6 +635,7 @@ namespace Clouds
 			material.SetFloat("cloudShapeResolution", shapeNoise != null ? shapeNoise.width : 128);
 			material.SetFloat("cloudDetailResolution", detailNoise != null ? detailNoise.width : 32);
 			material.SetFloat("cloudBaseVariation", baseVariation);
+			material.SetFloat("cloudEdgeSoftness", edgeSoftness);
 			material.SetFloat("cloudPrecipDensity", precipDensity);
 			material.SetFloat("cloudPrecipTypePush", precipTypePush);
 			material.SetFloat("cloudPrecipBaseDrop", precipBaseDrop);
