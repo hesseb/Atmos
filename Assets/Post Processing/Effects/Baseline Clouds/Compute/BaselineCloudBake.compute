@@ -218,7 +218,17 @@ void CaptureVolumetric(uint3 id : SV_DispatchThreadID)
 Texture2D<float4> Source;
 float normalStrength;
 
-/// Fills in RG from the height already in B.
+/// Fills in RG from the DENSITY already in A.
+///
+/// From density rather than from the height in B, which is the obvious choice and the wrong one.
+/// Height is zero in clear sky and around 0.76 inside cloud, so it steps at every cloud edge:
+/// measured on a real capture, 7.2% of its slopes were cliffs against density's 0.27%. Those
+/// cliffs then dominate the gradient, and raising the strength only pins them to horizontal while
+/// leaving the interior flat - the mean stalled at 0.27 however hard it was pushed.
+///
+/// Density fades continuously at an edge, so it describes the cloud's own lumpiness, and it is
+/// also what the authored path derives its normal from. B stays free to carry the true cloud top
+/// for parallax.
 ///
 /// A separate pass because a kernel cannot read its neighbours out of the texture it is writing -
 /// they may already have been overwritten.
@@ -234,8 +244,15 @@ void ComputeNormals(uint3 id : SV_DispatchThreadID)
 	uint2 n = uint2(id.x, min(id.y + 1, size.y - 1));
 	uint2 s = uint2(id.x, max((int)id.y - 1, 0));
 
-	float dEast = Source[e].b - Source[w].b;
-	float dNorth = Source[n].b - Source[s].b;
+	float dEast = Source[e].a - Source[w].a;
+	float dNorth = Source[n].a - Source[s].a;
+
+	// A per-texel difference shrinks as resolution rises, so the relief would otherwise depend on
+	// the output size - the same fault the authored path had. Calibrated at 2048 and scaled from
+	// there, so changing the resolution does not change how the layer looks.
+	float resolutionScale = outputSize.x / 2048.0;
+	dEast *= resolutionScale;
+	dNorth *= resolutionScale;
 
 	// Normalised, not clamped, for the reason the authored path documents: a clamp encodes every
 	// steep slope identically and loses the difference between a swell and an edge.

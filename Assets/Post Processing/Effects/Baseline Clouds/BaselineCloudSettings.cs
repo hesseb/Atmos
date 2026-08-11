@@ -96,9 +96,10 @@ namespace Clouds
 			"baseline shades.")]
 		[Range(0.001f, 0.5f)] public float captureThreshold = 0.02f;
 
-		[Tooltip("Relief strength for the captured layers. Separate from the authored ones because " +
-			"its height comes from a march rather than from an analytic gradient.")]
-		[Range(0f, 8f)] public float captureNormalStrength = 2f;
+		[Tooltip("Relief strength for the captured layers. Larger than the authored equivalent " +
+			"because that one divides by an analytic gradient while this differences a texture, so " +
+			"the two are not in the same units. Calibrated at 2048 and compensated for resolution.")]
+		[Range(0f, 32f)] public float captureNormalStrength = 14f;
 
 		[Header("Output")]
 		public string outputFolder = "Assets/Data/Baseline Clouds";
