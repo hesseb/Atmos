@@ -34,4 +34,8 @@ MonoBehaviour:
     seedOffset: 91.3
     reliefStrength: 1.5
   rangeGain: 2.3
+  captureSteps: 96
+  captureAbsorption: 1.5
+  captureThreshold: 0.02
+  captureNormalStrength: 14
   outputFolder: Assets/Data/Baseline Clouds
