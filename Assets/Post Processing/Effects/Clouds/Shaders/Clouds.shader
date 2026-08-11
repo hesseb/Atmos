@@ -46,7 +46,6 @@ Shader "Hidden/Clouds"
 				return output;
 			}
 
-			sampler2D _MainTex;
 			sampler2D _CameraDepthTexture;
 
 			// ---- march ----------------------------------------------------------------------
@@ -163,10 +162,12 @@ Shader "Hidden/Clouds"
 				return beer * lerp(1.0, powder, cloudPowderStrength);
 			}
 
+			/// Returns the cloud on its own: rgb is what it adds, a is how much of the scene behind
+			/// it survives. Kept separate from the background so this pass can run at a lower
+			/// resolution than the frame and be upsampled by the composite pass below - which is
+			/// the whole of the Half cost mode.
 			float4 frag(v2f i) : SV_Target
 			{
-				float3 background = tex2D(_MainTex, i.uv).rgb;
-
 				float3 rayOrigin = _WorldSpaceCameraPos;
 				float viewLength = length(i.viewVector);
 				float3 rayDir = i.viewVector / viewLength;
@@ -174,14 +175,14 @@ Shader "Hidden/Clouds"
 				float start, end;
 				if (!cloudShellSegment(rayOrigin, rayDir, start, end))
 				{
-					return float4(background, 1);
+					return float4(0, 0, 0, 1);
 				}
 
 				// Scene geometry ends the march. Terrain rises above the sphere the shell is built
 				// on, so depth - not a ground intersection - is what actually occludes cloud.
 				float sceneDepth = LinearEyeDepth(SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, i.uv)) * viewLength;
 				end = min(end, sceneDepth);
-				if (end <= start) { return float4(background, 1); }
+				if (end <= start) { return float4(0, 0, 0, 1); }
 
 				float segment = end - start;
 				int steps = clamp((int)(segment / max(1e-4, cloudStepSize)), cloudMinSteps, cloudMaxSteps);
@@ -255,8 +256,109 @@ Shader "Hidden/Clouds"
 					if (transmittance < 0.01) { break; }
 				}
 
-				float3 col = background * transmittance + luminance;
-				return float4(col, 1);
+				return float4(luminance, transmittance);
+			}
+			ENDCG
+		}
+
+		// Composite. Blends the cloud pass over the frame, upsampling it when it was rendered at a
+		// lower resolution than the frame.
+		Pass
+		{
+			CGPROGRAM
+			#pragma vertex vert
+			#pragma fragment frag
+
+			#include "UnityCG.cginc"
+
+			struct appdata
+			{
+				float4 vertex : POSITION;
+				float4 uv : TEXCOORD0;
+			};
+
+			struct v2f
+			{
+				float4 pos : SV_POSITION;
+				float2 uv : TEXCOORD0;
+			};
+
+			v2f vert(appdata v)
+			{
+				v2f output;
+				output.pos = UnityObjectToClipPos(v.vertex);
+				output.uv = v.uv;
+				return output;
+			}
+
+			sampler2D _MainTex;
+			sampler2D _CloudTex;
+			sampler2D _CameraDepthTexture;
+
+			/// xy = cloud pass resolution, zw = its texel size.
+			float4 _CloudTexSize;
+			/// 1 when the cloud pass ran at full resolution, so the bilateral path is skipped.
+			float _CloudUpsample;
+			/// How hard to reject a neighbour across a depth discontinuity. Higher keeps silhouettes
+			/// crisper and lets more of the low-resolution stair-stepping through.
+			float _CloudDepthRejection;
+
+			float sampleEyeDepth(float2 uv)
+			{
+				return LinearEyeDepth(tex2Dlod(_CameraDepthTexture, float4(uv, 0, 0)).r);
+			}
+
+			/// Depth-aware upsample.
+			///
+			/// A plain bilinear stretch of a half-resolution march bleeds cloud across every
+			/// silhouette, because the four neighbours it blends may sit on opposite sides of a
+			/// depth discontinuity - a mountain ridge against sky reads as a halo. Weighting each
+			/// neighbour by how well its depth matches this pixel's rejects the ones that belong to
+			/// different geometry.
+			///
+			/// The neighbours' depths are read from the full-resolution depth buffer at the
+			/// low-resolution texel centres, which is exactly the depth each of those marches used -
+			/// so no second depth target is needed.
+			float4 upsampleCloud(float2 uv)
+			{
+				if (_CloudUpsample <= 1.0) { return tex2Dlod(_CloudTex, float4(uv, 0, 0)); }
+
+				float2 coord = uv * _CloudTexSize.xy - 0.5;
+				float2 base = floor(coord);
+				float2 f = coord - base;
+
+				float centreDepth = sampleEyeDepth(uv);
+
+				float4 sum = 0;
+				float weightSum = 0;
+
+				[unroll]
+				for (int y = 0; y < 2; y++)
+				{
+					[unroll]
+					for (int x = 0; x < 2; x++)
+					{
+						float2 tapUv = (base + float2(x, y) + 0.5) * _CloudTexSize.zw;
+						float bilinear = (x ? f.x : 1 - f.x) * (y ? f.y : 1 - f.y);
+						float depthDelta = abs(sampleEyeDepth(tapUv) - centreDepth);
+						float weight = bilinear / (1 + depthDelta * _CloudDepthRejection);
+
+						sum += tex2Dlod(_CloudTex, float4(tapUv, 0, 0)) * weight;
+						weightSum += weight;
+					}
+				}
+
+				// Every neighbour can be rejected at once on a thin feature, so fall back to the
+				// nearest tap rather than dividing by zero.
+				if (weightSum < 1e-4) { return tex2Dlod(_CloudTex, float4(uv, 0, 0)); }
+				return sum / weightSum;
+			}
+
+			float4 frag(v2f i) : SV_Target
+			{
+				float3 background = tex2D(_MainTex, i.uv).rgb;
+				float4 cloud = upsampleCloud(i.uv);
+				return float4(background * cloud.a + cloud.rgb, 1);
 			}
 			ENDCG
 		}
