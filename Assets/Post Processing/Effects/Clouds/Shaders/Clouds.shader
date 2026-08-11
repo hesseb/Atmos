@@ -57,6 +57,8 @@ Shader "Hidden/Clouds"
 			float cloudStepSize;
 			float cloudStepGrowth;
 			int cloudMaxSteps;
+			/// 0 off, 1 step size, 2 step count, 3 shell segment length, 4 raw density.
+			int cloudDebugMode;
 			float cloudJitterStrength;
 			float cloudExtinction;
 
@@ -184,40 +186,43 @@ Shader "Hidden/Clouds"
 				end = min(end, sceneDepth);
 				if (end <= start) { return float4(0, 0, 0, 1); }
 
+				float segment = end - start;
+
+				// Step count from the segment, so the march ALWAYS covers the whole of it.
+				//
+				// A distance-keyed step was tried here and reverted: keying to distance decouples
+				// the sampling rate from view direction, which is right, but it also means the
+				// march can exhaust its step budget before crossing the shell, and far cloud is
+				// then cut off at a hard edge - trading one discontinuity for a worse one. Covering
+				// the segment is the property worth keeping; the mip selected from the step length
+				// is what makes the varying rate tolerable.
+				int steps = min(cloudMaxSteps, max(8, (int)(segment / max(1e-4, cloudStepSize))));
+				float stepSize = segment / steps;
+
 				// Blue-noise start offset, so undersampling breaks up into noise rather than into
 				// the concentric banding a fixed phase produces on a spherical shell.
-				float jitter = getBlueNoise(i.uv).r * cloudJitterStrength * cloudStepSize;
+				float jitter = getBlueNoise(i.uv).r * cloudJitterStrength * stepSize;
+
+				if (cloudDebugMode == 1) { return float4(stepSize.xxx * 2, 0); }
+				if (cloudDebugMode == 2) { return float4((steps / (float)cloudMaxSteps).xxx, 0); }
+				if (cloudDebugMode == 3) { return float4((segment / 100.0).xxx, 0); }
 
 				float phase = cloudPhase(dot(rayDir, cloudSunDir));
 
 				float transmittance = 1;
 				float3 luminance = 0;
-				float t = start + jitter;
+				float rawDensity = 0;
 
 				[loop]
-				for (int s = 0; s < cloudMaxSteps; s++)
+				for (int s = 0; s < steps; s++)
 				{
+					float t = start + (s + 0.5) * stepSize + jitter;
 					if (t >= end) { break; }
 
-					// Step length keyed to DISTANCE FROM THE CAMERA, not to the length of the
-					// segment being traversed.
-					//
-					// Dividing the segment by a capped step count couples the two: the shell needs
-					// more than the cap just to cross vertically, so every ray ends up clamped and
-					// the step becomes proportional to the segment. The same world point was then
-					// sampled at 0.05 units looking down and 0.71 looking along the horizon - a
-					// fourteenfold difference in sampling rate, and therefore in density, decided
-					// by nothing but which way the camera faced. Cloud appeared and disappeared as
-					// that ratio changed.
-					//
-					// Keyed to distance, a point is sampled the same way whichever direction it is
-					// viewed from, and closing on it is a smooth mip transition rather than a jump.
-					float stepSize = cloudStepSize * (1 + t * cloudStepGrowth);
-					stepSize = min(stepSize, end - t);
-
-					float3 pos = rayOrigin + rayDir * (t + stepSize * 0.5);
+					float3 pos = rayOrigin + rayDir * t;
 					float density = sampleCloudDensity(pos, false, stepSize);
-					if (density <= 0) { t += stepSize; continue; }
+					rawDensity += max(0, density) * stepSize;
+					if (density <= 0) { continue; }
 
 					// The sun's colour at THIS point's altitude, not at sea level below it - which
 					// is what keeps a cloud top bright and gold while the land beneath has gone red.
@@ -267,8 +272,9 @@ Shader "Hidden/Clouds"
 					transmittance *= stepTransmittance;
 
 					if (transmittance < 0.01) { break; }
-					t += stepSize;
 				}
+
+				if (cloudDebugMode == 4) { return float4((rawDensity * 0.2).xxx, 0); }
 
 				return float4(luminance, transmittance);
 			}

@@ -28,6 +28,15 @@ namespace Clouds
 			Half,
 		}
 
+		public enum DebugMode
+		{
+			Off = 0,
+			StepSize = 1,
+			StepCount = 2,
+			Segment = 3,
+			Density = 4,
+		}
+
 		[Header("Baked volumes")]
 		public Texture3D shapeNoise;
 		public Texture3D detailNoise;
@@ -97,6 +106,12 @@ namespace Clouds
 		[Range(0f, 2f)] public float stepGrowth = 0.5f;
 
 		[Range(16, 512)] public int maxSteps = 192;
+
+		[Tooltip("Diagnostic overlay for the march itself, drawn instead of the clouds. Step Size " +
+			"and Step Count show how the sampling rate varies across the frame; Segment shows the " +
+			"length of shell each ray crosses; Density shows accumulated density before any " +
+			"lighting. If an artefact tracks one of these, that is where it comes from.")]
+		public DebugMode debugMode = DebugMode.Off;
 		[Range(0f, 2f)] public float jitterStrength = 1f;
 		[Range(0.1f, 20f)] public float extinction = 4f;
 
@@ -449,6 +464,7 @@ namespace Clouds
 
 			material.SetFloat("cloudStepSize", stepSize);
 			material.SetFloat("cloudStepGrowth", stepGrowth);
+			material.SetInt("cloudDebugMode", (int)debugMode);
 			material.SetInt("cloudMaxSteps", maxSteps);
 			material.SetFloat("cloudJitterStrength", jitterStrength);
 			material.SetFloat("cloudExtinction", extinction);
