@@ -77,8 +77,8 @@ namespace Clouds
 		[Tooltip("Cloud base above sea level, world units. At the scene's scale one unit is about " +
 			"0.91 km, so the low cloud band that THESIS.md makes RQ1's rubric - below 2000 m - is " +
 			"under 2.2 units.")]
-		public float cloudBottomAltitude = 0.55f;
-		public float cloudTopAltitude = 2.2f;
+		public float cloudBottomAltitude = 1f;
+		public float cloudTopAltitude = 10f;
 
 		[Header("Density")]
 		[Range(0.001f, 0.5f)] public float shapeScale = 0.06f;

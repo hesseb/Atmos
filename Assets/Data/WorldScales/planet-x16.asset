@@ -20,7 +20,7 @@ MonoBehaviour:
   intensity: 1.602
   contrast: 1.45
   whitePoint: 2.5
-  altitude: 10
-  referenceAltitude: 10
+  altitude: 20
+  referenceAltitude: 20
   panSpeed: 0.35
   flySpeed: 20

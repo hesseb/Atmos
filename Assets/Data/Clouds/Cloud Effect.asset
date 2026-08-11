@@ -29,9 +29,9 @@ MonoBehaviour:
   precipitationScale: 3.5
   precipitationBias: -0.1
   weatherWindSpeed: 0.004
-  bodyRadius: 152.1
-  cloudBottomAltitude: 0.04
-  cloudTopAltitude: 6.71
+  bodyRadius: 150
+  cloudBottomAltitude: 1
+  cloudTopAltitude: 10
   shapeScale: 0.038
   detailScale: 0.09
   detailWeight: 0.312
