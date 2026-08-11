@@ -24,6 +24,9 @@
 // from raw sky radiance has to go through the same transform to sit at the same exposure as the
 // sky one pixel away.
 #include "Assets/Post Processing/Effects/Atmosphere/Shader Common/DrawAtmosphereCommon.hlsl"
+// For pointToUV, used by the cloud shadow lookup. Both consumers already include it, but relying on
+// their include order to satisfy this header would be a trap for the next one.
+#include "Assets/Scripts/Shader Common/GeoMath.hlsl"
 
 // Deliberately absent: AtmosphereCommon.hlsl. It is the only declaration of the global `dirToSun`,
 // and including it here would shadow the local sun direction of every forward shader that includes
@@ -65,6 +68,24 @@ float3 seaLevelPosition(float3 sphereNormal) {
 float3 sampleLightColour(float3 sphereNormal, float3 lightDir) {
 	if (!hasPhysicalAtmosphere()) { return 1; }
 	return sampleTransmittanceLUT(TransmittanceLUT, seaLevelPosition(sphereNormal), lightDir);
+}
+
+/// Sunlight reaching the globe after passing through the cloud shell, as a multiplier. 1 where
+/// there is no cloud overhead, and 1 outright when clouds are off.
+///
+/// Published by CloudEffect from Camera.onPreCull, so it is current by the time forward opaque
+/// runs. Equirectangular and indexed the same way as everything else on this globe, which is why it
+/// costs one tap and no new plumbing.
+///
+/// Deliberately NOT folded into sampleLightColour: that function is also called with the moon's
+/// direction, and this map is baked for the sun. The call sites apply it to their sun terms only.
+sampler2D CloudShadowMap;
+float cloudShadowStrength;
+
+float cloudShadow(float3 sphereNormal) {
+	if (cloudShadowStrength <= 0) { return 1; }
+	float shadow = tex2D(CloudShadowMap, pointToUV(sphereNormal)).r;
+	return lerp(1, shadow, cloudShadowStrength);
 }
 
 /// The same, but at the position given rather than at sea level beneath it.

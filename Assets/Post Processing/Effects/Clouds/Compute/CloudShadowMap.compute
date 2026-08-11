@@ -1,0 +1,65 @@
+#pragma kernel CSCloudShadow
+
+#include "Assets/Scripts/Shader Common/GeoMath.hlsl"
+#include "Assets/Post Processing/Effects/Clouds/Shader Common/CloudCommon.hlsl"
+
+// How much sunlight reaches each point on the globe after passing through the cloud shell.
+//
+// Equirectangular and indexed by pointToUV, like the weather map and the city light field. That
+// choice does a lot of work: it is view-independent, so it needs no shadow frustum and no cascade
+// and does not change when the camera moves; it is scale-invariant under F7; and both surface
+// shaders already compute pointToUV(pointOnUnitSphere), so consuming it costs them one tap and no
+// new plumbing.
+//
+// Uses the same CloudCommon density model as the march, so the shadow can never disagree with the
+// cloud casting it - which is exactly the failure a second copy of the density function would
+// produce, and it would look like a plausible offset rather than an obvious fault.
+
+RWTexture2D<float4> Result;
+
+float2 shadowMapSize;
+float3 shadowSunDir;
+int shadowSteps;
+float shadowAbsorption;
+
+[numthreads(8, 8, 1)]
+void CSCloudShadow(uint3 id : SV_DispatchThreadID)
+{
+	uint2 size = (uint2)shadowMapSize;
+	if (id.x >= size.x || id.y >= size.y) { return; }
+
+	float2 uv = (id.xy + 0.5) / shadowMapSize;
+	float3 sphereNormal = uvToPointOnSphere(uv);
+
+	// Nothing to shadow once the sun is below the local horizon, and marching anyway would send the
+	// ray down through the planet and pick up cloud on the far side.
+	if (dot(sphereNormal, shadowSunDir) <= 0)
+	{
+		Result[id.xy] = 1;
+		return;
+	}
+
+	// Start at the cloud base rather than at sea level: there is no cloud below it by construction,
+	// so the segment between would only be empty steps.
+	float3 origin = sphereNormal * cloudInnerRadius;
+
+	float start, end;
+	if (!cloudShellSegment(origin, shadowSunDir, start, end))
+	{
+		Result[id.xy] = 1;
+		return;
+	}
+
+	float stepSize = (end - start) / max(1, shadowSteps);
+	float opticalDepth = 0;
+
+	for (int i = 0; i < shadowSteps; i++)
+	{
+		float3 pos = origin + shadowSunDir * (start + (i + 0.5) * stepSize);
+		// `cheap`: no detail erosion. A shadow cast onto terrain from a kilometre up carries none
+		// of that frequency anyway, and it is the more expensive half of the density function.
+		opticalDepth += max(0, sampleCloudDensity(pos, true)) * stepSize;
+	}
+
+	Result[id.xy] = exp(-opticalDepth * shadowAbsorption);
+}

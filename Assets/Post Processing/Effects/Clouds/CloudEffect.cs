@@ -124,7 +124,20 @@ namespace Clouds
 		[Range(0f, 0.99f)] public float phaseBackward = 0.2f;
 		[Range(0f, 1f)] public float phaseBlend = 0.5f;
 
+		[Header("Shadows on the ground")]
+		public ComputeShader shadowCompute;
+		[Tooltip("Equirectangular, so it needs no shadow frustum and does not change with the " +
+			"camera. Modest resolution is enough: a shadow cast from a kilometre up carries no " +
+			"high-frequency detail anyway.")]
+		public Vector2Int shadowMapSize = new Vector2Int(512, 256);
+		[Range(2, 32)] public int shadowSteps = 10;
+		[Range(0.1f, 8f)] public float shadowAbsorption = 1.2f;
+		[Tooltip("0 disables cloud shadows entirely, which is also what happens when this effect is " +
+			"disabled - so a clouds-off benchmark profile gets an unshadowed ground for free.")]
+		[Range(0f, 1f)] public float shadowStrength = 0.85f;
+
 		RenderTexture weatherMap;
+		RenderTexture shadowMap;
 
 		// Elapsed time, accumulated rather than read from Time.time, so the benchmark's fixed
 		// captureDeltaTime advances the weather at the same rate a real frame would.
@@ -136,9 +149,50 @@ namespace Clouds
 
 		public RenderTexture WeatherMap => weatherMap;
 
+		public override void OnEnable()
+		{
+			base.OnEnable();
+			// Both maps are generated at pre-cull, not in OnRenderImage, because the terrain and
+			// ocean sample the shadow map during forward opaque - which has already happened by the
+			// time a post-process runs. Generating it there would shadow the ground with last
+			// frame's clouds. AtmosphereEffect registers its LUT dispatches the same way.
+			Camera.onPreCull -= RenderMaps;
+			Camera.onPreCull += RenderMaps;
+		}
+
 		public override void OnDestroy()
 		{
+			Camera.onPreCull -= RenderMaps;
 			ReleaseWeatherMap();
+			ReleaseShadowMap();
+		}
+
+		void ReleaseShadowMap()
+		{
+			if (shadowMap != null)
+			{
+				shadowMap.Release();
+				DestroyImmediate(shadowMap);
+				shadowMap = null;
+			}
+		}
+
+		/// <summary>Weather and shadow maps, before anything opaque draws.</summary>
+		void RenderMaps(Camera renderingCamera)
+		{
+			if (cam != null && renderingCamera != cam) { return; }
+
+			if (!enabled || shapeNoise == null || detailNoise == null || weatherCompute == null)
+			{
+				// Tell the surface shaders there is nothing overhead, so the ground is unshadowed
+				// whenever the clouds are off. This is what makes a clouds-off benchmark profile
+				// correct without the profile having to know anything about shadows.
+				Shader.SetGlobalFloat("cloudShadowStrength", 0f);
+				return;
+			}
+
+			RenderWeatherMap();
+			RenderShadowMap();
 		}
 
 		void ReleaseWeatherMap()
@@ -161,7 +215,6 @@ namespace Clouds
 				return;
 			}
 
-			RenderWeatherMap();
 			SetProperties();
 			Graphics.Blit(source, target, material);
 		}
@@ -208,6 +261,95 @@ namespace Clouds
 			weatherCompute.Dispatch(kernel, Mathf.CeilToInt(width / 8f), Mathf.CeilToInt(height / 8f), 1);
 		}
 
+		float InnerRadius => bodyRadius + cloudBottomAltitude;
+		float OuterRadius => bodyRadius + Mathf.Max(cloudBottomAltitude + 0.01f, cloudTopAltitude);
+
+		Vector3 ShapeWind
+		{
+			get
+			{
+				Vector3 dir = shapeWindDirection.sqrMagnitude > 1e-6f ? shapeWindDirection.normalized : Vector3.right;
+				return dir * (elapsed * shapeWindSpeed);
+			}
+		}
+
+		Vector3 DetailWind
+		{
+			get
+			{
+				Vector3 dir = shapeWindDirection.sqrMagnitude > 1e-6f ? shapeWindDirection.normalized : Vector3.right;
+				return dir * (elapsed * detailWindSpeed);
+			}
+		}
+
+		/// <summary>
+		/// The density model's parameters, bound to a compute. The material overload below sets the
+		/// same names - they have to stay in step, because the shadow pass and the march share one
+		/// density function and a divergence would read as clouds not matching their own shadows.
+		/// </summary>
+		void BindDensity(ComputeShader compute, int kernel)
+		{
+			compute.SetTexture(kernel, "CloudShapeNoise", shapeNoise);
+			compute.SetTexture(kernel, "CloudDetailNoise", detailNoise);
+			compute.SetTexture(kernel, "CloudWeatherMapTex", weatherMap);
+
+			compute.SetFloat("cloudInnerRadius", InnerRadius);
+			compute.SetFloat("cloudOuterRadius", OuterRadius);
+			compute.SetFloat("cloudShapeScale", shapeScale);
+			compute.SetFloat("cloudDetailScale", detailScale);
+			compute.SetFloat("cloudDetailWeight", detailWeight);
+			compute.SetFloat("cloudDensityMultiplier", densityMultiplier);
+			compute.SetFloat("cloudCoverageMultiplier", coverageMultiplier);
+			compute.SetFloat("cloudTypeBias", typeOffset);
+			compute.SetVector("cloudShapeWind", ShapeWind);
+			compute.SetVector("cloudDetailWind", DetailWind);
+		}
+
+		void RenderShadowMap()
+		{
+			if (shadowCompute == null || shadowStrength <= 0f)
+			{
+				Shader.SetGlobalFloat("cloudShadowStrength", 0f);
+				return;
+			}
+
+			int width = Mathf.Max(8, shadowMapSize.x);
+			int height = Mathf.Max(8, shadowMapSize.y);
+
+			if (shadowMap == null || !shadowMap.IsCreated() ||
+				shadowMap.width != width || shadowMap.height != height)
+			{
+				ReleaseShadowMap();
+				// RGBA8 rather than R8: random write to a single-channel 8-bit target is not
+				// universally supported, and half a megabyte is not worth the compatibility risk.
+				shadowMap = new RenderTexture(width, height, 0, GraphicsFormat.R8G8B8A8_UNorm)
+				{
+					enableRandomWrite = true,
+					wrapModeU = TextureWrapMode.Repeat,   // longitude wraps
+					wrapModeV = TextureWrapMode.Clamp,    // latitude does not
+					filterMode = FilterMode.Bilinear,
+					name = "Cloud Shadow Map"
+				};
+				shadowMap.Create();
+			}
+
+			ResolveSun();
+			Vector3 sunDir = sunLight != null ? -sunLight.transform.forward : Vector3.up;
+
+			int kernel = shadowCompute.FindKernel("CSCloudShadow");
+			BindDensity(shadowCompute, kernel);
+			shadowCompute.SetTexture(kernel, "Result", shadowMap);
+			shadowCompute.SetVector("shadowMapSize", new Vector2(width, height));
+			shadowCompute.SetVector("shadowSunDir", sunDir);
+			shadowCompute.SetInt("shadowSteps", shadowSteps);
+			shadowCompute.SetFloat("shadowAbsorption", shadowAbsorption);
+
+			shadowCompute.Dispatch(kernel, Mathf.CeilToInt(width / 8f), Mathf.CeilToInt(height / 8f), 1);
+
+			Shader.SetGlobalTexture("CloudShadowMap", shadowMap);
+			Shader.SetGlobalFloat("cloudShadowStrength", shadowStrength);
+		}
+
 		void ResolveSun()
 		{
 			if (sunLight != null) { return; }
@@ -221,8 +363,8 @@ namespace Clouds
 			material.SetTexture("CloudDetailNoise", detailNoise);
 			material.SetTexture("CloudWeatherMapTex", weatherMap);
 
-			material.SetFloat("cloudInnerRadius", bodyRadius + cloudBottomAltitude);
-			material.SetFloat("cloudOuterRadius", bodyRadius + Mathf.Max(cloudBottomAltitude + 0.01f, cloudTopAltitude));
+			material.SetFloat("cloudInnerRadius", InnerRadius);
+			material.SetFloat("cloudOuterRadius", OuterRadius);
 
 			material.SetFloat("cloudShapeScale", shapeScale);
 			material.SetFloat("cloudDetailScale", detailScale);
@@ -231,11 +373,10 @@ namespace Clouds
 			material.SetFloat("cloudCoverageMultiplier", coverageMultiplier);
 			material.SetFloat("cloudTypeBias", typeOffset);
 
-			Vector3 wind = shapeWindDirection.sqrMagnitude > 1e-6f ? shapeWindDirection.normalized : Vector3.right;
 			// The volumes drift faster than the weather field: the weather map is the slow-moving
 			// system, the noise is the air moving through it.
-			material.SetVector("cloudShapeWind", wind * (elapsed * shapeWindSpeed));
-			material.SetVector("cloudDetailWind", wind * (elapsed * detailWindSpeed));
+			material.SetVector("cloudShapeWind", ShapeWind);
+			material.SetVector("cloudDetailWind", DetailWind);
 
 			material.SetFloat("cloudStepSize", stepSize);
 			material.SetInt("cloudMinSteps", minSteps);

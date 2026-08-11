@@ -166,7 +166,11 @@ Shader "Custom/Terrain"
 				//
 				// Returns white when there is no physically based atmosphere bound, so the baseline
 				// sky modes get back exactly the arithmetic this shader had before.
-				float3 sunColour = sampleLightColour(pointOnUnitSphere, sunDir);
+				// Cloud shadow multiplies the sun's colour, so it reaches the diffuse term and the
+				// lake specular together and needs no other change in this shader. Applied here and
+				// not inside sampleLightColour because that is also called with the moon's
+				// direction, and the shadow map is baked for the sun.
+				float3 sunColour = sampleLightColour(pointOnUnitSphere, sunDir) * cloudShadow(pointOnUnitSphere);
 	
 				float3 viewDir = normalize(i.worldPos - _WorldSpaceCameraPos.xyz);
 
