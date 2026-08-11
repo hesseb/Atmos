@@ -203,6 +203,11 @@ namespace Clouds
 		// it cannot hold a scene reference.
 		Light sunLight;
 
+		// Same reason, found once rather than every frame. The clouds drift on the scene's clock so
+		// that pausing time with P freezes them too - otherwise a parameter cannot be judged
+		// without the thing it is being judged on moving under it.
+		SolarSystem.SolarSystemManager solarSystem;
+
 		public RenderTexture WeatherMap => weatherMap;
 
 		public override void OnEnable()
@@ -320,7 +325,13 @@ namespace Clouds
 				weatherMap.Create();
 			}
 
-			elapsed += Time.deltaTime;
+			// Advanced on the scene's clock, not the wall clock: paused means paused, and scrubbing
+			// time forward at 64x carries the weather with it rather than leaving it crawling.
+			// Falls back to real time if there is no solar system in the scene.
+			if (solarSystem == null) { solarSystem = FindFirstObjectByType<SolarSystem.SolarSystemManager>(); }
+			float timeScale = solarSystem == null ? 1f : (solarSystem.animate ? solarSystem.timeMultiplier : 0f);
+
+			elapsed += Time.deltaTime * timeScale;
 			float weatherOffset = elapsed * weatherWindSpeed;
 
 			int kernel = weatherCompute.FindKernel("CSWeatherMap");
