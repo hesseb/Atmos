@@ -1,0 +1,49 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5db6ba36a5e28bf4d8d5056e037b7b12, type: 3}
+  m_Name: Cloud Effect
+  m_EditorClassIdentifier: Assembly-CSharp::Clouds.CloudEffect
+  enabled: 1
+  shader: {fileID: 0}
+  shapeNoise: {fileID: 0}
+  detailNoise: {fileID: 0}
+  weatherCompute: {fileID: 0}
+  weatherMapSize: {x: 512, y: 256}
+  weatherOctaves: 5
+  weatherLacunarity: 2
+  weatherGain: 0.5
+  coverageScale: 2.2
+  coverageBias: 0
+  coverageContrast: 1.3
+  typeScale: 1.1
+  typeBias: 0
+  precipitationScale: 3.5
+  precipitationBias: -0.1
+  weatherWindSpeed: 0.004
+  bodyRadius: 150
+  cloudBottomAltitude: 0.55
+  cloudTopAltitude: 2.2
+  shapeScale: 0.06
+  detailScale: 0.5
+  detailWeight: 0.35
+  densityMultiplier: 1.5
+  coverageMultiplier: 1
+  typeOffset: 0
+  shapeWindDirection: {x: 1, y: 0.1, z: 0.2}
+  shapeWindSpeed: 0.02
+  detailWindSpeed: 0.05
+  stepSize: 0.05
+  minSteps: 24
+  maxSteps: 128
+  jitterStrength: 1
+  extinction: 4
+  flatColour: {r: 1, g: 1, b: 1, a: 1}

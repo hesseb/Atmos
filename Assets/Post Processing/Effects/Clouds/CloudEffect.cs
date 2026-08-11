@@ -82,16 +82,49 @@ namespace Clouds
 		[Range(0f, 2f)] public float jitterStrength = 1f;
 		[Range(0.1f, 20f)] public float extinction = 4f;
 
-		[Header("Stage 3 stand-in")]
-		[Tooltip("Flat cloud colour until stage 4 replaces it with sun transmittance, a light march, " +
-			"Beer-Powder, phase and sky ambient.")]
-		public Color flatColour = Color.white;
+		[Header("Lighting")]
+		[Tooltip("Scales the direct sun term. The sun's COLOUR is physical - it comes from the " +
+			"atmosphere's transmittance LUT at each sample's own altitude - but its absolute level " +
+			"is authored, because the march works in display space alongside an already tone-mapped " +
+			"background rather than in radiance.")]
+		[Range(0f, 8f)] public float sunIntensity = 1.4f;
+
+		[Tooltip("Scales skylight on the clouds, from the same sky-view LUT the ocean and land use. " +
+			"At low sun this does more of the work than the direct term - it is what puts the " +
+			"sunset on the undersides.")]
+		[Range(0f, 4f)] public float ambientIntensity = 1f;
+
+		[Tooltip("Stands in for skylight when there is no physically based atmosphere bound, so the " +
+			"clouds are still lit in the baseline and ablation profiles rather than going black.")]
+		public Color ambientFallback = new Color(0.4f, 0.45f, 0.55f);
+
+		[Header("Light march")]
+		[Tooltip("How far toward the sun the light march reaches, in world units. Around one shell " +
+			"thickness is usually right - beyond that it is sampling air.")]
+		[Range(0.1f, 8f)] public float lightMarchLength = 1.6f;
+		[Range(0.1f, 8f)] public float lightAbsorption = 1.1f;
+		[Tooltip("How far the light march spreads into a cone. A straight line makes every cloud " +
+			"self-shadow like a slab; the cone is what lets light wrap around a billow.")]
+		[Range(0f, 1f)] public float coneSpread = 0.25f;
+		[Tooltip("Beer-Powder. Plain Beer makes cloud edges read as cut-outs; this restores the dark " +
+			"edge that comes from light having to scatter into a thin volume before it can leave. " +
+			"The reference project omits it entirely.")]
+		[Range(0f, 1f)] public float powderStrength = 0.7f;
+
+		[Header("Phase")]
+		[Range(0f, 0.99f)] public float phaseForward = 0.8f;
+		[Range(0f, 0.99f)] public float phaseBackward = 0.3f;
+		[Range(0f, 1f)] public float phaseBlend = 0.5f;
 
 		RenderTexture weatherMap;
 
 		// Elapsed time, accumulated rather than read from Time.time, so the benchmark's fixed
 		// captureDeltaTime advances the weather at the same rate a real frame would.
 		float elapsed;
+
+		// Resolved by tag, the same way AtmosphereEffect finds it - this is a ScriptableObject, so
+		// it cannot hold a scene reference.
+		Light sunLight;
 
 		public RenderTexture WeatherMap => weatherMap;
 
@@ -167,6 +200,13 @@ namespace Clouds
 			weatherCompute.Dispatch(kernel, Mathf.CeilToInt(width / 8f), Mathf.CeilToInt(height / 8f), 1);
 		}
 
+		void ResolveSun()
+		{
+			if (sunLight != null) { return; }
+			GameObject sunObject = GameObject.FindGameObjectWithTag("Sun");
+			sunLight = sunObject != null ? sunObject.GetComponent<Light>() : null;
+		}
+
 		void SetProperties()
 		{
 			material.SetTexture("CloudShapeNoise", shapeNoise);
@@ -194,7 +234,26 @@ namespace Clouds
 			material.SetInt("cloudMaxSteps", Mathf.Max(minSteps, maxSteps));
 			material.SetFloat("cloudJitterStrength", jitterStrength);
 			material.SetFloat("cloudExtinction", extinction);
-			material.SetColor("cloudFlatColour", flatColour);
+
+			ResolveSun();
+			// -forward, matching how every other consumer in the project derives the sun direction.
+			Vector3 sunDir = sunLight != null ? -sunLight.transform.forward : Vector3.up;
+			Color sunColour = sunLight != null ? sunLight.color : Color.white;
+
+			material.SetVector("cloudSunDir", sunDir);
+			material.SetVector("cloudSunColour", new Vector4(sunColour.r, sunColour.g, sunColour.b, 1));
+			material.SetFloat("cloudSunIntensity", sunIntensity);
+			material.SetFloat("cloudAmbientIntensity", ambientIntensity);
+			material.SetVector("cloudAmbientFallback", new Vector4(ambientFallback.r, ambientFallback.g, ambientFallback.b, 1));
+
+			material.SetFloat("cloudLightMarchLength", lightMarchLength);
+			material.SetFloat("cloudLightAbsorption", lightAbsorption);
+			material.SetFloat("cloudConeSpread", coneSpread);
+			material.SetFloat("cloudPowderStrength", powderStrength);
+
+			material.SetFloat("cloudPhaseForward", phaseForward);
+			material.SetFloat("cloudPhaseBackward", phaseBackward);
+			material.SetFloat("cloudPhaseBlend", phaseBlend);
 		}
 	}
 }

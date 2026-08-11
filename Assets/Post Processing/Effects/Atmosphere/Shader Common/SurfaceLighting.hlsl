@@ -67,6 +67,19 @@ float3 sampleLightColour(float3 sphereNormal, float3 lightDir) {
 	return sampleTransmittanceLUT(TransmittanceLUT, seaLevelPosition(sphereNormal), lightDir);
 }
 
+/// The same, but at the position given rather than at sea level beneath it.
+///
+/// For volumes rather than surfaces. A cloud sits at altitude and that is the whole point: its top
+/// sees the sun through measurably less air than the ground below it does, which is what makes a
+/// cloud top stay bright while its base and the land around it have already gone red.
+///
+/// Surfaces must NOT use this - see seaLevelPosition for why sampling at the fragment's own radius
+/// blacks their sun out at sunset.
+float3 sampleLightColourAt(float3 pos, float3 lightDir) {
+	if (!hasPhysicalAtmosphere()) { return 1; }
+	return sampleTransmittanceLUT(TransmittanceLUT, pos, lightDir);
+}
+
 /// Sky radiance arriving from `dir` at a surface whose local up is `up`, tone-mapped to sit at the
 /// same exposure as the sky the sky pass wrote into the colour buffer.
 ///
