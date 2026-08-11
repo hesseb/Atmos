@@ -35,6 +35,8 @@ namespace Clouds
 			StepCount = 2,
 			Segment = 3,
 			Density = 4,
+			StartDistance = 5,
+			CameraRegion = 6,
 		}
 
 		[Header("Baked volumes")]

@@ -57,7 +57,8 @@ Shader "Hidden/Clouds"
 			float cloudStepSize;
 			float cloudStepGrowth;
 			int cloudMaxSteps;
-			/// 0 off, 1 step size, 2 step count, 3 shell segment length, 4 raw density.
+			/// 0 off, 1 step size, 2 step count, 3 segment length, 4 raw density, 5 start distance,
+			/// 6 which branch of cloudShellSegment the camera is in.
 			int cloudDebugMode;
 			float cloudJitterStrength;
 			float cloudExtinction;
@@ -202,6 +203,22 @@ Shader "Hidden/Clouds"
 				// Blue-noise start offset, so undersampling breaks up into noise rather than into
 				// the concentric banding a fixed phase produces on a spherical shell.
 				float jitter = getBlueNoise(i.uv).r * cloudJitterStrength * stepSize;
+
+				// Where the march begins. This is the quantity that jumps if the shell branch is at
+				// fault: above the layer a shallow ray does not reach the tops for a long way, so
+				// start is large; from inside, the same ray starts at zero.
+				if (cloudDebugMode == 5) { return float4((start / 50.0).xxx, 0); }
+
+				// Which region the camera is in - red above the shell, green inside, blue below.
+				// If the pop coincides with a colour change here, it is the boundary crossing; if
+				// the colour is constant across it, the cause is elsewhere entirely.
+				if (cloudDebugMode == 6)
+				{
+					float camRadius = length(rayOrigin);
+					if (camRadius > cloudOuterRadius) { return float4(1, 0, 0, 0); }
+					if (camRadius > cloudInnerRadius) { return float4(0, 1, 0, 0); }
+					return float4(0, 0, 1, 0);
+				}
 
 				if (cloudDebugMode == 1) { return float4(stepSize.xxx * 2, 0); }
 				if (cloudDebugMode == 2) { return float4((steps / (float)cloudMaxSteps).xxx, 0); }
