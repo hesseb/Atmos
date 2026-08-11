@@ -38,6 +38,14 @@ static class RendererProfiles
 
 		AtmosphereEffect atmosphere = FindEffect<AtmosphereEffect>();
 		AerialPerspectiveSimple aerial = FindEffect<AerialPerspectiveSimple>();
+		Clouds.CloudEffect clouds = FindEffect<Clouds.CloudEffect>();
+
+		if (clouds == null)
+		{
+			Debug.LogWarning("[Benchmark] no CloudEffect asset found - the cloud profiles will be " +
+				"skipped, and the sky profiles will not state a cloud toggle, so whatever the " +
+				"previous pass left enabled will survive into them.");
+		}
 
 		if (atmosphere == null)
 		{
@@ -53,27 +61,27 @@ static class RendererProfiles
 
 		Save(Build("pbr", "Physically based: raymarched sky plus scattering-LUT aerial perspective.",
 			atmosphere, atmosphereOn: true, aerial, aerialOn: false,
-			PostProcessRendererProfile.SkyOverride.Off));
+			clouds, PostProcessRendererProfile.SkyOverride.Off));
 
 		Save(Build("baseline-gradient", "Cheap sky from a hand-authored gradient LUT, plus " +
 			"exponential distance fog. The baseline the report's RQ2 is phrased against.",
 			atmosphere, atmosphereOn: false, aerial, aerialOn: true,
-			PostProcessRendererProfile.SkyOverride.Gradient));
+			clouds, PostProcessRendererProfile.SkyOverride.Gradient));
 
 		Save(Build("baseline-baked", "Same shader and same cost as baseline-gradient, but the " +
 			"LUT is baked off the physically based renderer. Isolates authoring from cost.",
 			atmosphere, atmosphereOn: false, aerial, aerialOn: true,
-			PostProcessRendererProfile.SkyOverride.GradientBaked));
+			clouds, PostProcessRendererProfile.SkyOverride.GradientBaked));
 
 		Save(Build("baseline-cubemap", "Cheapest sky: a single static cubemap that cannot " +
 			"respond to the sun moving. The literal reading of 'textured skybox'.",
 			atmosphere, atmosphereOn: false, aerial, aerialOn: true,
-			PostProcessRendererProfile.SkyOverride.Cubemap));
+			clouds, PostProcessRendererProfile.SkyOverride.Cubemap));
 
 		Save(Build("nullsky", "Control: the sky pass with a passthrough fragment and no aerial " +
 			"perspective. Subtract from noatmo to price the sky pass structure itself.",
 			atmosphere, atmosphereOn: false, aerial, aerialOn: false,
-			PostProcessRendererProfile.SkyOverride.Null));
+			clouds, PostProcessRendererProfile.SkyOverride.Null));
 
 		// The structural twin of the baselines: same two passes, same draw call count, no sky
 		// shading. Without it, `baseline - nullsky` silently bundles the whole aerial
@@ -82,16 +90,42 @@ static class RendererProfiles
 			"cheap aerial perspective. Structurally identical to the baselines, so subtracting " +
 			"it isolates the sky shading alone.",
 			atmosphere, atmosphereOn: false, aerial, aerialOn: true,
-			PostProcessRendererProfile.SkyOverride.Null));
+			clouds, PostProcessRendererProfile.SkyOverride.Null));
 
 		Save(Build("noatmo", "Control: no sky pass at all, and no aerial perspective. This is " +
 			"an ablation rather than a baseline - it renders a black sky.",
 			atmosphere, atmosphereOn: false, aerial, aerialOn: false,
-			PostProcessRendererProfile.SkyOverride.Off));
+			clouds, PostProcessRendererProfile.SkyOverride.Off));
+
+		// The cloud series. All three sit on the physically based sky so the only thing varying
+		// between them is the cost strategy, and `pbr` above - which has clouds off - is the
+		// control they are subtracted from. Without it the cloud cost cannot be separated from
+		// the sky's.
+		if (clouds != null)
+		{
+			Save(Build("clouds-full", "Volumetric clouds marching every pixel every frame. The " +
+				"upper bound, and the reference image the cheaper modes are judged against.",
+				atmosphere, atmosphereOn: true, aerial, aerialOn: false,
+				clouds, PostProcessRendererProfile.SkyOverride.Off,
+				cloudsOn: true, cloudMode: PostProcessRendererProfile.CloudOverride.Full));
+
+			Save(Build("clouds-half", "Volumetric clouds marching a quarter of the pixels, " +
+				"upsampled with a depth-aware filter. Same march, lower resolution.",
+				atmosphere, atmosphereOn: true, aerial, aerialOn: false,
+				clouds, PostProcessRendererProfile.SkyOverride.Off,
+				cloudsOn: true, cloudMode: PostProcessRendererProfile.CloudOverride.Half));
+
+			Save(Build("clouds-temporal", "Volumetric clouds at full resolution with a quarter of " +
+				"the pixels marched per frame and the rest reprojected. Cheapest, and the only " +
+				"one carrying frame-to-frame state.",
+				atmosphere, atmosphereOn: true, aerial, aerialOn: false,
+				clouds, PostProcessRendererProfile.SkyOverride.Off,
+				cloudsOn: true, cloudMode: PostProcessRendererProfile.CloudOverride.Temporal));
+		}
 
 		AssetDatabase.SaveAssets();
 		AssetDatabase.Refresh();
-		Debug.Log($"[Benchmark] wrote 6 renderer profiles to {Folder}\n" +
+		Debug.Log($"[Benchmark] wrote {(clouds != null ? 10 : 7)} renderer profiles to {Folder}\n" +
 			"  Assign them to the BenchmarkRunner's Profiles array in the order you want the " +
 			"summary's baseline column to be - the first entry is what deltas are measured from.");
 	}
@@ -99,12 +133,15 @@ static class RendererProfiles
 	static PostProcessRendererProfile Build(string id, string description,
 		AtmosphereEffect atmosphere, bool atmosphereOn,
 		AerialPerspectiveSimple aerial, bool aerialOn,
-		PostProcessRendererProfile.SkyOverride sky)
+		Clouds.CloudEffect clouds, PostProcessRendererProfile.SkyOverride sky,
+		bool cloudsOn = false,
+		PostProcessRendererProfile.CloudOverride cloudMode = PostProcessRendererProfile.CloudOverride.LeaveAlone)
 	{
 		var profile = ScriptableObject.CreateInstance<PostProcessRendererProfile>();
 		profile.id = id;
 		profile.description = description;
 		profile.sky = sky;
+		profile.clouds = cloudMode;
 		profile.objects = new PostProcessRendererProfile.ObjectToggle[0];
 
 		// Both effects are listed on every profile, including where the value matches the
@@ -117,6 +154,14 @@ static class RendererProfiles
 		if (aerial != null)
 		{
 			effects.Add(new PostProcessRendererProfile.EffectToggle { effect = aerial, enabled = aerialOn });
+		}
+
+		// Listed on every profile, not only the cloud ones. An omitted toggle inherits whatever the
+		// previous pass left behind, so a sky profile that did not mention clouds would silently
+		// measure the sky with whichever clouds the pass before it happened to enable.
+		if (clouds != null)
+		{
+			effects.Add(new PostProcessRendererProfile.EffectToggle { effect = clouds, enabled = cloudsOn });
 		}
 
 		profile.effects = effects.ToArray();
