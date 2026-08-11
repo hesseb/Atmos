@@ -37,7 +37,7 @@ MonoBehaviour:
   detailWeight: 0.35
   densityMultiplier: 1.5
   coverageMultiplier: 1
-  typeOffset: -0.217
+  typeOffset: -0.152
   shapeWindDirection: {x: 1, y: 0.1, z: 0.2}
   shapeWindSpeed: 0.02
   detailWindSpeed: 0.05
@@ -48,11 +48,17 @@ MonoBehaviour:
   extinction: 4
   sunIntensity: 1.4
   ambientIntensity: 1
+  ambientHorizon: 0.6
   ambientFallback: {r: 0.4, g: 0.45, b: 0.55, a: 1}
   lightMarchLength: 1.6
-  lightAbsorption: 1.1
+  lightAbsorption: 2.5
   coneSpread: 0.25
-  powderStrength: 0.7
+  powderStrength: 0.25
   phaseForward: 0.8
   phaseBackward: 0.3
   phaseBlend: 0.5
+  shadowCompute: {fileID: 7200000, guid: 7e32ea3e1f7e5774a905538e6cd29a45, type: 3}
+  shadowMapSize: {x: 512, y: 256}
+  shadowSteps: 10
+  shadowAbsorption: 1.2
+  shadowStrength: 0.85

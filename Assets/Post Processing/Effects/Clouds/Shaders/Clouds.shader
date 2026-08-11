@@ -140,16 +140,26 @@ Shader "Hidden/Clouds"
 				return totalDensity;
 			}
 
-			/// Beer-Powder. Plain Beer alone makes cloud edges read as cut-outs, because the thin
-			/// parts that should be brightest are exactly the parts it lightens least. The powder
-			/// term reintroduces the dark edge that comes from light having to scatter into a thin
-			/// volume before it can leave it. The reference project omits this entirely and floors
-			/// its transmittance with a darkness threshold instead.
+			/// Beer with a powder term for the dark edge that comes from light having to scatter
+			/// into a thin volume before it can leave it. The reference project omits this entirely
+			/// and floors its transmittance with a darkness threshold instead.
+			///
+			/// The powder factor is NON-MONOTONIC in optical depth, and that has to be kept in
+			/// check. It rises from zero, so at full strength it is darkest exactly where the light
+			/// is least obstructed - the top of a cloud, which has nothing between it and the sun.
+			/// At the strength this started with, the product peaked around depth 0.35 and the top
+			/// of a cloud came out 0.74x the brightness of its own base: the shading was inverted,
+			/// and clouds looked as dark from above as from below however high the sun was.
+			///
+			/// Beer has to dominate for the top-to-base gradient to point the right way. Measured
+			/// over a real column - top at depth 0, base at 0.63 - the defaults now give the top
+			/// 3.7x the base. Raising powder strength flattens that back out, and past about 0.45 it
+			/// inverts again.
 			float cloudBeerPowder(float opticalDepth)
 			{
 				float beer = exp(-opticalDepth * cloudLightAbsorption);
 				float powder = 1 - exp(-opticalDepth * cloudLightAbsorption * 2);
-				return 2.0 * beer * lerp(1.0, powder, cloudPowderStrength);
+				return beer * lerp(1.0, powder, cloudPowderStrength);
 			}
 
 			float4 frag(v2f i) : SV_Target

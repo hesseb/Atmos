@@ -107,14 +107,16 @@ namespace Clouds
 		[Tooltip("How far toward the sun the light march reaches, in world units. Around one shell " +
 			"thickness is usually right - beyond that it is sampling air.")]
 		[Range(0.1f, 8f)] public float lightMarchLength = 1.6f;
-		[Range(0.1f, 8f)] public float lightAbsorption = 1.1f;
+		[Range(0.1f, 8f)] public float lightAbsorption = 2.5f;
 		[Tooltip("How far the light march spreads into a cone. A straight line makes every cloud " +
 			"self-shadow like a slab; the cone is what lets light wrap around a billow.")]
 		[Range(0f, 1f)] public float coneSpread = 0.25f;
-		[Tooltip("Beer-Powder. Plain Beer makes cloud edges read as cut-outs; this restores the dark " +
-			"edge that comes from light having to scatter into a thin volume before it can leave. " +
-			"The reference project omits it entirely.")]
-		[Range(0f, 1f)] public float powderStrength = 0.7f;
+		[Tooltip("The dark edge that comes from light having to scatter into a thin volume before it " +
+			"can leave. Keep it low: the powder factor rises from zero with optical depth, so at high " +
+			"strength it darkens the cloud TOP most - the part with nothing between it and the sun - " +
+			"and inverts the top-to-base shading. Past about 0.45 the tops go darker than the bases. " +
+			"The reference project omits this term entirely.")]
+		[Range(0f, 1f)] public float powderStrength = 0.25f;
 
 		[Header("Phase")]
 		[Tooltip("Forward lobe. Softer than the reference project's 0.8, because that value 's " +
