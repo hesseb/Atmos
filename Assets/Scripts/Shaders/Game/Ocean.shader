@@ -327,7 +327,10 @@ Shader "Custom/Ocean"
 				// the atmosphere actually being present. SurfaceLighting.hlsl owns both decisions and
 				// explains why neither is optional; it falls back to white, so the glint comes out
 				// uncoloured rather than black in the baseline modes.
-				float3 sunTransmittance = sampleLightColour(sphereNormal, sunDir);
+				// Cloud shadow on the glint. Applied here rather than inside sampleLightColour
+				// because that is also called with the moon's direction below, and the shadow map is
+				// baked for the sun.
+				float3 sunTransmittance = sampleLightColour(sphereNormal, sunDir) * cloudShadow(sphereNormal);
 				// _LightColor0 is Sun.cs's gradient approximation, keyed on dot(camera, sun) - a single
 				// colour for the whole globe. In physically based mode the transmittance lookup answers
 				// the same question per pixel, and the terrain now uses it too, so keeping the gradient
@@ -348,7 +351,9 @@ Shader "Custom/Ocean"
 				// night on its own, physically, rather than through the old flat rim hack.
 				float nightT = saturate(dot(sphereNormal,-sunDir)); // 0 at sunrise/sunset to 1 at midnight
 				shadows = lerp(shadows, 0, smoothstep(0.2,0.3,nightT));
-				float sunVisibility = lerp(1, shadows, _ShadowStrength);
+				// The same shadow on the diffuse path. sunVisibility is already the sun's
+				// visibility term, so cloud cover composes into it directly.
+				float sunVisibility = lerp(1, shadows, _ShadowStrength) * cloudShadow(sphereNormal);
 
 				// ---- The water body: direct sunlight plus skylight ----
 				//
