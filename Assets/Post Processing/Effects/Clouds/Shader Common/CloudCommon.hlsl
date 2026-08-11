@@ -126,6 +126,10 @@ float cloudDensityMultiplier;
 float cloudCoverageMultiplier;
 float cloudTypeBias;
 
+/// Texels per axis in each volume, so a march step can be converted into a mip level.
+float cloudShapeResolution;
+float cloudDetailResolution;
+
 float3 cloudShapeWind;
 float3 cloudDetailWind;
 
@@ -156,11 +160,30 @@ float3 sampleCloudWeather(float3 pos)
 	return CloudWeatherMapTex.SampleLevel(samplerCloudWeatherMapTex, uv, 0).rgb;
 }
 
+/// Mip level at which a volume should be read, given how far the march moves between samples.
+///
+/// Point-sampling a noise volume at steps wider than its features does not merely lose detail, it
+/// makes the density DEPEND ON THE STEP SIZE - and the step size varies with view angle, because
+/// the step count is capped while the traversed segment is not. A grazing ray through this shell
+/// steps roughly fourteen times further than a vertical one, far enough to skip whole detail
+/// features, so cloud appeared to pop into existence as the camera closed and the step shrank.
+///
+/// Reading a mip whose texels are as wide as the step makes each sample an average of what it
+/// would otherwise have jumped over, which is what mips are for and what Schneider uses for
+/// distant samples. The result is stable under camera motion rather than merely more detailed.
+float cloudLod(float stepSize, float scale, float resolution)
+{
+	// A volume tiles every 1/scale world units across `resolution` texels, so one texel spans
+	// 1/(scale*resolution) world units.
+	return max(0, log2(max(1, stepSize * scale * resolution)));
+}
+
 /// Cloud density at a world position.
 ///
 /// `cheap` skips the detail erosion, which is the expensive half - used by the light march, where
-/// the extra fidelity is invisible.
-float sampleCloudDensity(float3 pos, bool cheap)
+/// the extra fidelity is invisible. `stepSize` is how far the caller moves between samples, and
+/// selects the mip - see cloudLod.
+float sampleCloudDensity(float3 pos, bool cheap, float stepSize)
 {
 	float h = cloudHeightFraction(pos);
 	if (h <= 0 || h >= 1) { return 0; }
@@ -175,7 +198,8 @@ float sampleCloudDensity(float3 pos, bool cheap)
 	if (gradient <= 0) { return 0; }
 
 	float4 shape = CloudShapeNoise.SampleLevel(
-		samplerCloudShapeNoise, pos * cloudShapeScale + cloudShapeWind, 0);
+		samplerCloudShapeNoise, pos * cloudShapeScale + cloudShapeWind,
+		cloudLod(stepSize, cloudShapeScale, cloudShapeResolution));
 
 	// Worley FBM from G/B/A, weights halving with frequency.
 	float worleyFbm = shape.g * 0.625 + shape.b * 0.25 + shape.a * 0.125;
@@ -191,7 +215,8 @@ float sampleCloudDensity(float3 pos, bool cheap)
 	if (cheap) { return density * cloudDensityMultiplier; }
 
 	float3 detail = CloudDetailNoise.SampleLevel(
-		samplerCloudDetailNoise, pos * cloudDetailScale + cloudDetailWind, 0).rgb;
+		samplerCloudDetailNoise, pos * cloudDetailScale + cloudDetailWind,
+		cloudLod(stepSize, cloudDetailScale, cloudDetailResolution)).rgb;
 	float detailFbm = detail.r * 0.625 + detail.g * 0.25 + detail.b * 0.125;
 
 	// Erosion inverts with height: wispy and torn at the base, billowy at the top. That asymmetry

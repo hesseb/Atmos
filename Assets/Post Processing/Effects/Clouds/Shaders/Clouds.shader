@@ -134,7 +134,7 @@ Shader "Hidden/Clouds"
 					samplePos += cloudConeKernel[i] * (cloudConeSpread * stepSize * (i + 1));
 					// `cheap`: the light march skips detail erosion, where the extra fidelity is
 					// invisible but the cost is the larger half of the density function.
-					totalDensity += max(0, sampleCloudDensity(samplePos, true)) * stepSize;
+					totalDensity += max(0, sampleCloudDensity(samplePos, true, stepSize)) * stepSize;
 				}
 
 				return totalDensity;
@@ -203,7 +203,7 @@ Shader "Hidden/Clouds"
 					if (t >= end) { break; }
 
 					float3 pos = rayOrigin + rayDir * t;
-					float density = sampleCloudDensity(pos, false);
+					float density = sampleCloudDensity(pos, false, stepSize);
 					if (density <= 0) { continue; }
 
 					// The sun's colour at THIS point's altitude, not at sea level below it - which

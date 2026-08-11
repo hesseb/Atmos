@@ -359,6 +359,8 @@ namespace Clouds
 			compute.SetFloat("cloudDensityMultiplier", densityMultiplier);
 			compute.SetFloat("cloudCoverageMultiplier", coverageMultiplier);
 			compute.SetFloat("cloudTypeBias", typeOffset);
+			compute.SetFloat("cloudShapeResolution", shapeNoise != null ? shapeNoise.width : 128);
+			compute.SetFloat("cloudDetailResolution", detailNoise != null ? detailNoise.width : 32);
 			compute.SetVector("cloudShapeWind", ShapeWind);
 			compute.SetVector("cloudDetailWind", DetailWind);
 		}
@@ -430,6 +432,8 @@ namespace Clouds
 			material.SetFloat("cloudDensityMultiplier", densityMultiplier);
 			material.SetFloat("cloudCoverageMultiplier", coverageMultiplier);
 			material.SetFloat("cloudTypeBias", typeOffset);
+			material.SetFloat("cloudShapeResolution", shapeNoise != null ? shapeNoise.width : 128);
+			material.SetFloat("cloudDetailResolution", detailNoise != null ? detailNoise.width : 32);
 
 			// The volumes drift faster than the weather field: the weather map is the slow-moving
 			// system, the noise is the air moving through it.

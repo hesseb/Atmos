@@ -58,7 +58,7 @@ void CSCloudShadow(uint3 id : SV_DispatchThreadID)
 		float3 pos = origin + shadowSunDir * (start + (i + 0.5) * stepSize);
 		// `cheap`: no detail erosion. A shadow cast onto terrain from a kilometre up carries none
 		// of that frequency anyway, and it is the more expensive half of the density function.
-		opticalDepth += max(0, sampleCloudDensity(pos, true)) * stepSize;
+		opticalDepth += max(0, sampleCloudDensity(pos, true, stepSize)) * stepSize;
 	}
 
 	Result[id.xy] = exp(-opticalDepth * shadowAbsorption);
