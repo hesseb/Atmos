@@ -65,6 +65,7 @@ Shader "Hidden/Clouds"
 			float3 cloudSunDir;
 			float3 cloudSunColour;
 			float cloudSunIntensity;
+			float cloudSunTransmittanceWeight;
 			float cloudAmbientIntensity;
 			float cloudAmbientHorizon;
 			float3 cloudAmbientFallback;
@@ -208,7 +209,15 @@ Shader "Hidden/Clouds"
 					// is what keeps a cloud top bright and gold while the land beneath has gone red.
 					// Falls back to white when there is no physically based atmosphere bound, so the
 					// clouds keep working in the baseline and ablation profiles.
-					float3 sunColour = sampleLightColourAt(pos, cloudSunDir) * cloudSunColour;
+					//
+					// Weighted rather than taken whole. This atmosphere is optically much thicker
+					// than Earth's - zenith transmittance 0.45 against 0.77 - which is a deliberate
+					// compensation for a 136 km planet, but it means even a midday sun arrives at a
+					// cloud top already dimmed to 45% and reddened. Lerping toward white keeps the
+					// colour physical while letting the level be authored. Same reasoning, and the
+					// same shape, as the ocean glint's transmittance weight.
+					float3 sunTransmittance = sampleLightColourAt(pos, cloudSunDir);
+					float3 sunColour = lerp(1.0, sunTransmittance, cloudSunTransmittanceWeight) * cloudSunColour;
 
 					float energy = cloudBeerPowder(cloudLightMarch(pos));
 
