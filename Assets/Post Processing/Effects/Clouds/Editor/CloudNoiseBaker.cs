@@ -294,35 +294,46 @@ namespace Clouds
 		/// <summary>
 		/// Reads the volume back and writes it as a Texture3D asset.
 		///
-		/// A single readback rather than the reference's slice-by-slice compute plus ReadPixels -
-		/// same result, far less machinery. RGBA32 matches Schneider's own 8-bit volumes and keeps
-		/// the shape volume at 8 MB rather than 16.
+		/// RGBA32 matches Schneider's own 8-bit volumes and keeps the shape volume at 8 MB rather
+		/// than 16.
 		/// </summary>
 		static void Save(RenderTexture volume, int resolution, string path)
 		{
-			// The explicit x/y/z extents matter: the short Request(src, mip, format) overload reads a
-			// single depth slice of a 3D texture, not the volume, so the readback comes back
-			// 1/resolution of the size SetPixelData needs and throws.
-			AsyncGPUReadbackRequest request = AsyncGPUReadback.Request(
-				volume, 0,
-				0, resolution,
-				0, resolution,
-				0, resolution,
-				TextureFormat.RGBA32);
-			request.WaitForCompletion();
+			// One request per depth slice.
+			//
+			// AsyncGPUReadback will not return a whole 3D RenderTexture in one call: the short
+			// Request(src, mip, format) overload reads slice zero, and the long overload's `depth`
+			// argument is ignored for a RenderTexture source - both come back at exactly
+			// resolution*resolution*4 bytes. Asking for one slice at a time is the only shape that
+			// actually reads the volume. The reference project sidesteps the same limitation with a
+			// dedicated slicing compute shader; this needs no extra shader, just the loop.
+			int sliceBytes = resolution * resolution * 4;
+			var data = new byte[sliceBytes * resolution];
 
-			if (request.hasError)
+			for (int z = 0; z < resolution; z++)
 			{
-				Debug.LogError($"Cloud noise readback failed for {path}");
-				return;
-			}
+				EditorUtility.DisplayProgressBar(
+					$"Saving {System.IO.Path.GetFileNameWithoutExtension(path)}",
+					$"Slice {z + 1} of {resolution}", z / (float)resolution);
 
-			var data = request.GetData<byte>();
-			long expected = (long)resolution * resolution * resolution * 4;
-			if (data.Length != expected)
-			{
-				Debug.LogError($"Cloud noise readback returned {data.Length} bytes, expected {expected} for {resolution}^3 RGBA32");
-				return;
+				AsyncGPUReadbackRequest request = AsyncGPUReadback.Request(
+					volume, 0, 0, resolution, 0, resolution, z, 1, TextureFormat.RGBA32);
+				request.WaitForCompletion();
+
+				if (request.hasError)
+				{
+					Debug.LogError($"Cloud noise readback failed at slice {z} for {path}");
+					return;
+				}
+
+				Unity.Collections.NativeArray<byte> slice = request.GetData<byte>();
+				if (slice.Length != sliceBytes)
+				{
+					Debug.LogError($"Slice {z} returned {slice.Length} bytes, expected {sliceBytes}");
+					return;
+				}
+
+				Unity.Collections.NativeArray<byte>.Copy(slice, 0, data, z * sliceBytes, sliceBytes);
 			}
 
 			var texture = new Texture3D(resolution, resolution, resolution, TextureFormat.RGBA32, false)
