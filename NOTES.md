@@ -1837,3 +1837,117 @@ Everything listed in the two previous summaries still stands. Nothing new blocks
 - The streak reach is fixed, so a very distant city produces no streak however bright it is.
 - All three terms are authored rather than physical, and belong in the report beside `_AmbientNight`
   and `_NightAmbient` as declared approximations.
+
+---
+
+## Session summary: volumetric clouds (milestone 6)
+
+Schneider's method (Guerrilla, *Horizon Zero Dawn*) on a spherical shell: baked Perlin-Worley and
+Worley volumes, a procedural weather map on the globe, a raymarch through the shell, lighting from
+the same LUTs the ocean and land already use, shadows cast onto the ground, and three switchable
+cost strategies.
+
+**The report does not contain the method.** Section 2.2 of the background has Clouds / Shape /
+Rendering as empty headings, Schneider appears once inside a TODO, and references.bib has no
+Schneider entry - only an uncited, author-less Guerrilla URL. The implementation follows the
+*published* method; the plan file carries a writing spec for what 2.2 must say for it to be
+traceable, and THESIS.md already tracked the gap.
+
+### What was built
+
+- **Noise volumes**, baked offline from a settings asset with a slice viewer. Shape 128^3 RGBA
+  (R Perlin-Worley, GBA Worley FBM), detail 32^3 RGB. The Worley half ports from the reference
+  project including its seamless-tiling scheme; the Perlin half does not exist there at all.
+- **Weather map**, 512x256 equirectangular, coverage / precipitation / cloud type, evaluated in 3D
+  *at the point on the sphere* rather than in 2D over the UV rectangle - which is what stops
+  features squashing toward the poles and leaves no seam at the antimeridian.
+- **The march**, on a shell rather than the reference's AABB, with step count derived from the
+  traversed segment.
+- **Lighting**: sun colour from the transmittance LUT at each sample's own altitude, cone-sampled
+  light march, Beer-Powder, two-lobe HG plus a silver-lining lobe, sky ambient sampled toward the
+  sunlit horizon as well as the zenith, moonlight on the same machinery, and a declared
+  non-physical night floor.
+- **Cloud shadows**, an equirectangular map marching the same density function the view ray does,
+  consumed by Terrain.shader and Ocean.shader through one tap in SurfaceLighting.hlsl.
+- **Three cost modes** over one march: Full, Half (depth-aware upsample), Temporal (quarter of the
+  pixels per frame, rest reprojected). Benchmark profiles for each, plus `pbr` with clouds off as
+  the control they subtract from.
+
+### The bug that mattered
+
+**A ray crosses the cloud shell twice, not once.** Leaving the base downward does not end it: the
+planet curves away, so the ray sinks below the base, reaches a lowest point, and climbs back
+through it further along. Looking toward the horizon from in or under the deck, most of what is
+visible is that second crossing.
+
+The march stopped at the first inner-sphere hit. Symptom was a hard seam across the view with cloud
+above and nothing below, all the way to the horizon, and a whole layer appearing at once when
+descending through the base.
+
+The shell is now the outer sphere's chord **minus** the inner sphere's, which yields up to two spans
+and needs no cases for where the camera is - above, inside and below all fall out of the same
+subtraction. The three hand-written branches it replaced looked correct and read correctly; they
+failed only on the one case that is hard to picture.
+
+### Bugs found in the process, worth remembering
+
+- **AsyncGPUReadback will not return a whole 3D RenderTexture.** The short overload reads slice
+  zero and the long overload's `depth` argument is ignored for a RenderTexture source - both come
+  back at exactly resolution^2 * 4 bytes. One request per slice is the only shape that works.
+- **An FBM normalised by the sum of its amplitudes does not reach that sum.** Octaves rarely peak
+  together: measured, six octaves at gain 0.5 spanned only +/-0.45, so the Perlin could never pull
+  the remap down to the Worley floor and the billowy base degenerated into a near-constant lift.
+- **A normalised phase function's *values* are around 1/(4*pi).** Multiplying the direct term by
+  them unscaled darkened it 10x to 50x - which read as "clouds are dark at sunset" and could not be
+  recovered by any intensity slider. Scaling by 4*pi only changes the units.
+- **Beer-Powder is non-monotonic in optical depth.** The powder factor rises from zero, so at high
+  strength the product peaks around depth 0.35 and the cloud TOP - the part with nothing between it
+  and the sun - lands on the dark side. Measured: the top came out 0.74x its own base. Past about
+  0.45 powder strength it inverts. Beer has to dominate.
+- **Ambient at parity with the direct term reads as grey**, whatever the two are individually. A
+  1.6x top-to-base gradient is not a lighting model, it is a flat wash.
+- **A weight that lerps toward white cannot represent "no light".** The sun's transmittance weight
+  floored the direct term at 1 - weight, and transmittance is exactly zero once the sun is below
+  the horizon - so the sun never set on the clouds, and multiplied by Sun.cs's gradient (deep
+  orange at night) they were lit as though at sunset. Lerping toward the transmittance's own
+  luminance dies with it, because zero has no hue to preserve.
+- **Choosing a mip from the step length is right for the view march and wrong for the light march.**
+  The light march's step is necessarily long - it crosses a cloud in six samples - so it asked for a
+  volume blurred to roughly a twentieth of its resolution, at which a cloud has no inside and no
+  outside. Self-shadowing vanished and the phase function was left deciding brightness alone, so a
+  backlit cloud outshone the same cloud front-lit. The two purposes need two numbers.
+- **The silver lining is a separate lobe combined with max(), not a blend.** Two lobes cannot
+  produce it; it was missing outright rather than mistuned, and softening the forward lobe earlier
+  had removed the last trace of it.
+- **Unity writes its in-memory asset values back over edits made to the file on disk.** Two
+  successive fixes appeared to do nothing because the running material kept the old values. Tuning
+  changes to a live asset belong in the Inspector, not in the file.
+
+### Process, worth recording
+
+The pop-in took four attempts. The first three - step-size coupling, mip selection, distance-keyed
+stepping - were each based on a real, measurable finding, and none was the cause; one made distant
+cloud worse and was reverted. What located it was the observation that it tracked camera *height*,
+and then a debug swatch showing which shell region the camera was in.
+
+The lesson is not that the measurements were wrong but that they were not *discriminating*. After
+the first failed fix the next move should have been a measurement that could separate causes, rather
+than a second plausible fix. Also: a diagnostic that replaces the whole frame with a flat colour
+shows nothing, because the artefact it is meant to explain is no longer on screen.
+
+### Open before the next milestone
+
+Everything in the previous summaries still stands, except the benchmark camera poses, which are
+valid again now that the camera altitude is back at 10.
+
+- **Aerial perspective on clouds is not implemented.** Doing it properly needs either a copy of the
+  aerial LUT's per-ray depth normalisation - duplicated logic that would silently diverge from
+  Atmosphere.shader - or a transmittance ratio needing separate handling for downward rays. Left
+  undone rather than guessed at. Distant clouds do not pick up haze.
+- **No baseline cloud renderer yet**, so RQ1 and RQ2 have nothing to compare the volumetric path
+  against. That is the next milestone.
+- Only the low band is reachable, so three of the ten genera in THESIS.md 3.5 cannot be produced.
+- Cloud shadows are a single transmittance per surface point: no softening with distance, no shafts.
+- Clouds do not light the ground. A bright overcast should raise ambient beneath it; it does not.
+- The temporal mode ghosts behind fast camera motion. Expected, and a legitimate RQ2 result rather
+  than a defect, but it should be stated as one.
