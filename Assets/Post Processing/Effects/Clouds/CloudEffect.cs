@@ -112,8 +112,6 @@ namespace Clouds
 		[Range(0f, 3f)] public float coverageMultiplier = 1f;
 		[Range(-0.5f, 0.5f)] public float typeOffset = 0f;
 
-		[Tooltip("How much of the shell the cloud base can be lifted by. 0 puts every cloud on the " +
-			"floor of the shell, which is where they all sat before this existed.")]
 		[Tooltip("How far the cloud band is lifted and lowered across the globe, as a fraction of " +
 			"the shell. This is what makes some clouds reach higher than others.")]
 		[Range(0f, 0.6f)] public float baseVariation = 0.3f;
