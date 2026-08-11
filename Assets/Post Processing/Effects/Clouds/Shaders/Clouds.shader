@@ -55,7 +55,7 @@ Shader "Hidden/Clouds"
 			// instead hardcodes a step of 11 world units, which at this planet's scale would step
 			// over the entire cloud layer six times in one step.
 			float cloudStepSize;
-			int cloudMinSteps;
+			float cloudStepGrowth;
 			int cloudMaxSteps;
 			float cloudJitterStrength;
 			float cloudExtinction;
@@ -184,27 +184,40 @@ Shader "Hidden/Clouds"
 				end = min(end, sceneDepth);
 				if (end <= start) { return float4(0, 0, 0, 1); }
 
-				float segment = end - start;
-				int steps = clamp((int)(segment / max(1e-4, cloudStepSize)), cloudMinSteps, cloudMaxSteps);
-				float stepSize = segment / steps;
-
 				// Blue-noise start offset, so undersampling breaks up into noise rather than into
 				// the concentric banding a fixed phase produces on a spherical shell.
-				float jitter = getBlueNoise(i.uv).r * cloudJitterStrength * stepSize;
+				float jitter = getBlueNoise(i.uv).r * cloudJitterStrength * cloudStepSize;
 
 				float phase = cloudPhase(dot(rayDir, cloudSunDir));
 
 				float transmittance = 1;
 				float3 luminance = 0;
+				float t = start + jitter;
 
-				for (int s = 0; s < steps; s++)
+				[loop]
+				for (int s = 0; s < cloudMaxSteps; s++)
 				{
-					float t = start + (s + 0.5) * stepSize + jitter;
 					if (t >= end) { break; }
 
-					float3 pos = rayOrigin + rayDir * t;
+					// Step length keyed to DISTANCE FROM THE CAMERA, not to the length of the
+					// segment being traversed.
+					//
+					// Dividing the segment by a capped step count couples the two: the shell needs
+					// more than the cap just to cross vertically, so every ray ends up clamped and
+					// the step becomes proportional to the segment. The same world point was then
+					// sampled at 0.05 units looking down and 0.71 looking along the horizon - a
+					// fourteenfold difference in sampling rate, and therefore in density, decided
+					// by nothing but which way the camera faced. Cloud appeared and disappeared as
+					// that ratio changed.
+					//
+					// Keyed to distance, a point is sampled the same way whichever direction it is
+					// viewed from, and closing on it is a smooth mip transition rather than a jump.
+					float stepSize = cloudStepSize * (1 + t * cloudStepGrowth);
+					stepSize = min(stepSize, end - t);
+
+					float3 pos = rayOrigin + rayDir * (t + stepSize * 0.5);
 					float density = sampleCloudDensity(pos, false, stepSize);
-					if (density <= 0) { continue; }
+					if (density <= 0) { t += stepSize; continue; }
 
 					// The sun's colour at THIS point's altitude, not at sea level below it - which
 					// is what keeps a cloud top bright and gold while the land beneath has gone red.
@@ -254,6 +267,7 @@ Shader "Hidden/Clouds"
 					transmittance *= stepTransmittance;
 
 					if (transmittance < 0.01) { break; }
+					t += stepSize;
 				}
 
 				return float4(luminance, transmittance);
