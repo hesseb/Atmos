@@ -84,6 +84,14 @@ Shader "Hidden/Clouds"
 			float cloudSilverIntensity;
 			float cloudSilverSpread;
 
+			// Published by SolarSystem.Moon, the same globals the ocean reads. A position rather
+			// than a direction: at 811 world units against a 150-unit planet the moon is not far
+			// enough away to be directional across the visible shell.
+			float4 moonPosition;
+			float4 moonLightColour;   // already scaled by phase, so a new moon contributes nothing
+			float cloudMoonIntensity;
+			float cloudMoonSilverIntensity;
+
 			/// Schneider's cone kernel: six fixed directions the light march spreads into, scaled by
 			/// step index so the samples describe a cone toward the sun rather than a line. A line
 			/// march makes every cloud self-shadow as if it were a slab; the cone is what lets light
@@ -123,14 +131,14 @@ Shader "Hidden/Clouds"
 			/// Normalised by its own peak so cloudSilverIntensity reads directly as "how many times
 			/// the isotropic value at the sun", instead of being an opaque scale on a function whose
 			/// peak runs into the hundreds.
-			float cloudPhase(float cosAngle)
+			float cloudPhase(float cosAngle, float silverIntensity)
 			{
 				float forward = cloudHg(cosAngle, cloudPhaseForward);
 				float backward = cloudHg(cosAngle, -cloudPhaseBackward);
 				float base = lerp(forward, backward, cloudPhaseBlend) * 4 * UNITY_PI;
 
 				float silverG = 0.99 - cloudSilverSpread;
-				float silver = cloudSilverIntensity * cloudHg(cosAngle, silverG) / max(1e-4, cloudHg(1, silverG));
+				float silver = silverIntensity * cloudHg(cosAngle, silverG) / max(1e-4, cloudHg(1, silverG));
 
 				return max(base, silver);
 			}
@@ -141,7 +149,7 @@ Shader "Hidden/Clouds"
 			/// uniform step count: a runtime bound would make cloudConeKernel[i] a dynamic index
 			/// into a static array, which the compiler either refuses or resolves expensively.
 			/// [unroll] over a literal makes every index compile-time constant.
-			float cloudLightMarch(float3 pos)
+			float cloudLightMarch(float3 pos, float3 lightDir)
 			{
 				const int lightSteps = 6;
 				float stepSize = cloudLightMarchLength / lightSteps;
@@ -150,7 +158,7 @@ Shader "Hidden/Clouds"
 				[unroll]
 				for (int i = 0; i < lightSteps; i++)
 				{
-					float3 samplePos = pos + cloudSunDir * ((i + 0.5) * stepSize);
+					float3 samplePos = pos + lightDir * ((i + 0.5) * stepSize);
 					samplePos += cloudConeKernel[i] * (cloudConeSpread * stepSize * (i + 1));
 					// `cheap`: the light march skips detail erosion, where the extra fidelity is
 					// invisible but the cost is the larger half of the density function.
@@ -254,7 +262,7 @@ Shader "Hidden/Clouds"
 					float sunLuminance = dot(sunTransmittance, float3(0.2126, 0.7152, 0.0722));
 					float3 sunColour = lerp(sunLuminance.xxx, sunTransmittance, cloudSunTransmittanceWeight) * cloudSunColour;
 
-					float energy = cloudBeerPowder(cloudLightMarch(pos), cosViewSun);
+					float energy = cloudBeerPowder(cloudLightMarch(pos, cloudSunDir), cosViewSun);
 
 					// Skylight, from the same LUT the ocean and the land use. This is what puts the
 					// sunset on the undersides, and at low sun it does more of the work than the
@@ -287,6 +295,31 @@ Shader "Hidden/Clouds"
 					ambient += cloudNightAmbient * smoothstep(0.0, 0.15, nightT);
 
 					float3 inScatter = sunColour * energy * phase * cloudSunIntensity + ambient;
+
+					// Moonlight, on the same machinery as the sun. Behind a branch on the moon's own
+					// published colour, which is already scaled by phase - so a new moon costs
+					// nothing, and neither does a moon that has set, and the branch is uniform
+					// across the frame rather than varying per pixel.
+					//
+					// The direction is computed per sample rather than taken as a constant: at 811
+					// units against a shell spanning tens of units it swings several degrees across
+					// the view, which is the scale a silver lining is drawn at.
+					if (dot(moonLightColour.rgb, 1) > 1e-4)
+					{
+						float3 moonDir = normalize(moonPosition.xyz - pos);
+						float cosViewMoon = dot(rayDir, moonDir);
+
+						// Same desaturation as the sun, and zero once the moon is below the horizon
+						// for the same reason: transmittance has no hue left to preserve there.
+						float3 moonT = sampleLightColourAt(pos, moonDir);
+						float moonLuminance = dot(moonT, float3(0.2126, 0.7152, 0.0722));
+						float3 moonColour = lerp(moonLuminance.xxx, moonT, cloudSunTransmittanceWeight) * moonLightColour.rgb;
+
+						float moonEnergy = cloudBeerPowder(cloudLightMarch(pos, moonDir), cosViewMoon);
+						float moonPhase = cloudPhase(cosViewMoon, cloudMoonSilverIntensity);
+
+						inScatter += moonColour * moonEnergy * moonPhase * cloudMoonIntensity;
+					}
 
 					// Analytic integration over the step rather than a rectangle rule: for a purely
 					// scattering medium the scattering and extinction coefficients cancel, leaving
@@ -328,7 +361,7 @@ Shader "Hidden/Clouds"
 				if (cloudDebugMode == 5) { return float4((nearSpan.x / 50.0).xxx, 0); }
 
 				float cosViewSun = dot(rayDir, cloudSunDir);
-				float phase = cloudPhase(cosViewSun);
+				float phase = cloudPhase(cosViewSun, cloudSilverIntensity);
 
 				float transmittance = 1;
 				float3 luminance = 0;
