@@ -1951,3 +1951,35 @@ valid again now that the camera altitude is back at 10.
 - Clouds do not light the ground. A bright overcast should raise ambient beneath it; it does not.
 - The temporal mode ghosts behind fast camera motion. Expected, and a legitimate RQ2 result rather
   than a defect, but it should be stated as one.
+
+### Addendum: making the weather actually vary
+
+Four fixes after the milestone closed, all found by looking at one complaint - the clouds were the
+same everywhere and the layer ended at a flat ceiling.
+
+- **The FBM range bug had recurred in the weather map.** Every field sat in the middle third of its
+  range: coverage 0.30-0.70, cloud type 0.28-0.71. For type that meant mean cumulus weight across
+  the globe of 0.90 with stratus and cumulonimbus unreachable *anywhere* - RQ1's rubric had nothing
+  to score, and no setting could have fixed it. This is the same defect found in the Perlin during
+  stage 1 and written into this file as a general lesson; writing the lesson down did not stop it
+  recurring twenty commits later in a different file. Worth checking every FBM in the project.
+- **A height gradient multiplied into density, then thresholded by coverage, ends the layer at a
+  surface.** The result is nonzero only where shapeNoise > (1 - coverage) / gradient, and shape
+  noise cannot exceed 1, so the whole layer vanishes the instant the gradient falls below
+  1 - coverage - at coverage 0.5 that is halfway down the ramp, at the same height everywhere.
+  Moving part of the gradient onto coverage instead thins the edge into scattered cloud. Schneider's
+  arrangement is the former; edge softness 0 recovers it exactly, which makes this a named,
+  measurable deviation rather than a tweak.
+- **Remapping [base, 1] onto [0, 1] pins the top.** The band compressed as its base rose, so cloud
+  tops stayed at the shell ceiling however much the base moved and every cloud reached exactly the
+  same height. The band has to translate, with a thickness of its own. Related: a variation field
+  whose features span 94 world units is not variation, it is a constant - the field has to be at the
+  scale the eye compares things at, which here is a few clouds, not a continent.
+- **The subtraction form of the shell removed a boundary case the branches had been handling.** The
+  shadow march starts on the inner sphere, where dot(o,o) - r^2 rounds to either sign; negative
+  reads as inside, collapsing the span and reporting no shadow, so half the map came out unshadowed
+  in a speckle that 190-fold magnification turned into blotches. The rewrite was still right - it
+  fixed the two-crossings bug and removed three branches - but replacing branches with a formula
+  moves the burden onto the caller to supply unambiguous inputs.
+
+Also removed `stepGrowth`, dead since the distance-keyed step was reverted.
