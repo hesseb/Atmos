@@ -1,0 +1,72 @@
+#pragma kernel CSWeatherMap
+
+#include "Assets/Scripts/Shader Common/GeoMath.hlsl"
+#include "Assets/Post Processing/Effects/Clouds/Shader Common/CloudNoiseCommon.hlsl"
+
+// Schneider's weather map, on a globe.
+//
+//   R  coverage      how much cloud there is here at all
+//   G  precipitation darkens and thickens the cloud; drives the rain-bearing genera
+//   B  cloud type    0 stratus -> 0.5 cumulus -> 1 cumulonimbus, selecting the height gradient
+//
+// Equirectangular, sampled with pointToUV, the same parameterisation the terrain, the ocean and the
+// city light field already use - so it needs no container and is invariant under the world scale.
+//
+// The noise is evaluated in 3D AT THE POINT ON THE SPHERE, not in 2D over the UV rectangle. That is
+// the difference between a weather system and a weather map: sampling 2D noise over an
+// equirectangular grid squashes every feature toward the poles and leaves a seam down the
+// antimeridian, whereas the sphere is a closed domain with no distortion and no edge to match up.
+
+RWTexture2D<float4> Result;
+
+float2 weatherMapSize;
+
+int octaves;
+float lacunarity;
+float gain;
+
+float coverageScale;
+float coverageBias;        // added before the contrast curve; the main "how cloudy is it" dial
+float coverageContrast;
+
+float typeScale;
+float typeBias;
+
+float precipitationScale;
+float precipitationBias;
+
+/// Advances the noise field so weather drifts. Applied as an offset in the sphere's own space
+/// rather than as a UV scroll, which would slide features along latitude lines and pull them apart
+/// near the poles.
+float3 windOffset;
+
+[numthreads(8, 8, 1)]
+void CSWeatherMap(uint3 id : SV_DispatchThreadID)
+{
+	uint2 size = (uint2)weatherMapSize;
+	if (id.x >= size.x || id.y >= size.y) { return; }
+
+	float2 uv = (id.xy + 0.5) / weatherMapSize;
+	float3 p = uvToPointOnSphere(uv);
+
+	// Coverage. Biased first, then put through a contrast curve, so the bias reads as "more or less
+	// cloud" and the contrast as "broken versus overcast" - two dials that do one thing each, which
+	// is what makes a parameter set authorable rather than merely adjustable.
+	float coverageNoise = cloudFbm(p * coverageScale + windOffset, octaves, lacunarity, gain);
+	float coverage = saturate(coverageNoise * 0.5 + 0.5 + coverageBias);
+	coverage = saturate(cloudRemap(coverage, 0.5 - 0.5 / max(0.01, coverageContrast),
+									0.5 + 0.5 / max(0.01, coverageContrast), 0, 1));
+
+	// Cloud type, on its own much larger scale and its own offset. Independent of coverage on
+	// purpose: a region can be heavily covered in flat stratus or lightly dotted with cumulus, and
+	// tying the two together would collapse the genera axis RQ1 scores.
+	float typeNoise = cloudFbm(p * typeScale + windOffset * 0.35 + 31.7, max(2, octaves - 2), lacunarity, gain);
+	float type = saturate(typeNoise * 0.5 + 0.5 + typeBias);
+
+	// Precipitation, correlated with coverage but not identical - rain sits inside the thicker
+	// parts of a system rather than being spread evenly across it.
+	float precipNoise = cloudFbm(p * precipitationScale + windOffset * 0.6 - 17.3, max(2, octaves - 1), lacunarity, gain);
+	float precipitation = saturate((precipNoise * 0.5 + 0.5 + precipitationBias) * coverage);
+
+	Result[id.xy] = float4(coverage, precipitation, type, 1);
+}

@@ -1,6 +1,10 @@
 #pragma kernel CSNoise
 #pragma kernel CSNormalize
 
+// For the tileable Perlin and cloudRemap, shared with the weather map so there is one hash rather
+// than two drifting copies.
+#include "Assets/Post Processing/Effects/Clouds/Shader Common/CloudNoiseCommon.hlsl"
+
 // Generates the two 3D noise volumes the cloud density model samples.
 //
 // Schneider (Guerrilla, "The Real-Time Volumetric Cloudscapes of Horizon Zero Dawn"):
@@ -110,76 +114,7 @@ float worley(StructuredBuffer<float3> points, int numCells, float3 samplePos)
 	return sqrt(minSqrDst);
 }
 
-/// Gradient at a lattice corner, wrapped to `period` so the lattice - and therefore the noise -
-/// repeats exactly. This wrap is the entire tiling mechanism for the Perlin half.
-float3 latticeGradient(int3 cell, int period)
-{
-	int3 c = ((cell % period) + period) % period;
-	float3 p = (float3)c;
-	float3 h = float3(
-		dot(p, float3(127.1, 311.7, 74.7)),
-		dot(p, float3(269.5, 183.3, 246.1)),
-		dot(p, float3(113.5, 271.9, 124.6)));
-	float3 g = -1.0 + 2.0 * frac(sin(h) * 43758.5453123);
-	// rsqrt with a floor rather than normalize: a hash landing on the zero vector would make
-	// normalize return NaN, and one NaN texel propagates through the whole march.
-	return g * rsqrt(max(1e-6, dot(g, g)));
-}
 
-/// Classic gradient noise with the quintic fade, returning roughly [-1, 1].
-float perlinTileable(float3 pos, int period)
-{
-	float3 p = pos * period;
-	int3 i0 = (int3)floor(p);
-	float3 f = p - floor(p);
-	float3 u = f * f * f * (f * (f * 6 - 15) + 10);
-
-	float n = 0;
-
-	[unroll]
-	for (int cx = 0; cx <= 1; cx++)
-	{
-		[unroll]
-		for (int cy = 0; cy <= 1; cy++)
-		{
-			[unroll]
-			for (int cz = 0; cz <= 1; cz++)
-			{
-				int3 corner = int3(cx, cy, cz);
-				float3 g = latticeGradient(i0 + corner, period);
-				float3 d = f - (float3)corner;
-				float weight = lerp(1 - u.x, u.x, cx) * lerp(1 - u.y, u.y, cy) * lerp(1 - u.z, u.z, cz);
-				n += dot(g, d) * weight;
-			}
-		}
-	}
-
-	return n;
-}
-
-float perlinFbmTileable(float3 pos, int period, int octaves, float gain)
-{
-	float sum = 0;
-	float amplitude = 1;
-	float norm = 0;
-	int freq = period;
-
-	for (int i = 0; i < octaves; i++)
-	{
-		sum += perlinTileable(pos, freq) * amplitude;
-		norm += amplitude;
-		amplitude *= gain;
-		freq *= 2;   // doubling the period keeps every octave tiling on the same lattice
-	}
-
-	return sum / max(1e-5, norm);
-}
-
-/// Schneider's remap, used throughout the density model as well.
-float remap(float v, float oldMin, float oldMax, float newMin, float newMax)
-{
-	return newMin + (v - oldMin) / max(1e-5, oldMax - oldMin) * (newMax - newMin);
-}
 
 [numthreads(numThreads, numThreads, numThreads)]
 void CSNoise(uint3 id : SV_DispatchThreadID)
@@ -207,9 +142,9 @@ void CSNoise(uint3 id : SV_DispatchThreadID)
 		// two. The result keeps Perlin's connected, billowy low frequencies while inheriting
 		// Worley's rounded lumps wherever the Perlin is dark - which is what makes a cumulus read
 		// as a cauliflower rather than as smoke.
-		float perlin = perlinFbmTileable(pos, perlinPeriod, perlinOctaves, perlinPersistence);
+		float perlin = cloudPerlinFbmTileable(pos, perlinPeriod, perlinOctaves, perlinPersistence);
 		perlin = saturate(perlin * perlinGain * 0.5 + 0.5);
-		noiseSum = remap(perlin, 0.0, 1.0, worleyFbm, 1.0);
+		noiseSum = cloudRemap(perlin, 0.0, 1.0, worleyFbm, 1.0);
 	}
 
 	// int, because there is no atomic min/max for float.
