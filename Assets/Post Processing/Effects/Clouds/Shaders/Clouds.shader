@@ -60,6 +60,14 @@ Shader "Hidden/Clouds"
 			/// 0 off, 3 shell length, 4 raw density, 5 start distance. Camera region is handled by
 			/// the composite pass instead, so that the clouds stay visible beside it.
 			int cloudDebugMode;
+
+			/// Temporal reprojection. Period 1 marches every pixel; 4 marches one in four, in a 2x2
+			/// pattern that cycles so every pixel is refreshed within four frames. The skip happens
+			/// before the march, which is where the saving comes from - a fragment shader cannot
+			/// decline to run, but it can decline to do the expensive part.
+			int cloudTemporalPeriod;
+			int cloudTemporalIndex;
+			float4 _CloudMarchSize;
 			float cloudJitterStrength;
 			float cloudExtinction;
 
@@ -356,6 +364,15 @@ Shader "Hidden/Clouds"
 			/// the whole of the Half cost mode.
 			float4 frag(v2f i) : SV_Target
 			{
+				// Alpha below zero marks a pixel this frame did not march, which the resolve pass
+				// reads as "no new data, keep the history".
+				if (cloudTemporalPeriod > 1)
+				{
+					int2 pixel = (int2)(i.uv * _CloudMarchSize.xy);
+					int slot = (pixel.x & 1) + ((pixel.y & 1) << 1);
+					if (slot != cloudTemporalIndex) { return float4(0, 0, 0, -1); }
+				}
+
 				float3 rayOrigin = _WorldSpaceCameraPos;
 				float viewLength = length(i.viewVector);
 				float3 rayDir = i.viewVector / viewLength;
@@ -390,6 +407,109 @@ Shader "Hidden/Clouds"
 				if (cloudDebugMode == 4) { return float4((rawDensity * 0.2).xxx, 0); }
 
 				return float4(luminance, transmittance);
+			}
+			ENDCG
+		}
+
+		// Temporal resolve. Fills the pixels this frame did not march from the previous frame's
+		// result, reprojected to account for camera motion.
+		Pass
+		{
+			CGPROGRAM
+			#pragma vertex vert
+			#pragma fragment frag
+
+			#include "UnityCG.cginc"
+
+			struct appdata { float4 vertex : POSITION; float4 uv : TEXCOORD0; };
+			struct v2f
+			{
+				float4 pos : SV_POSITION;
+				float2 uv : TEXCOORD0;
+				float3 viewVector : TEXCOORD1;
+			};
+
+			v2f vert(appdata v)
+			{
+				v2f o;
+				o.pos = UnityObjectToClipPos(v.vertex);
+				o.uv = v.uv;
+				float3 viewVector = mul(unity_CameraInvProjection, float4(v.uv.xy * 2 - 1, 0, -1));
+				o.viewVector = mul(unity_CameraToWorld, float4(viewVector, 0));
+				return o;
+			}
+
+			sampler2D _CloudTex;
+			sampler2D _CloudHistory;
+			float4 _CloudMarchSize;
+			float4x4 _CloudPrevViewProj;
+			float _CloudHistoryBlend;
+			float _CloudReprojectRadius;
+			float _CloudHistoryValid;
+
+			/// Where along this ray the clouds are, near enough for reprojection.
+			///
+			/// The march does not record a depth, and there is no spare channel to put one in. But
+			/// the clouds are confined to a shell of known radius, so intersecting a sphere at its
+			/// middle gives a good proxy - far better than the scene depth, which for a sky pixel is
+			/// the far plane and would reproject the cloud as though it were infinitely distant.
+			float cloudReprojectDistance(float3 rayOrigin, float3 rayDir)
+			{
+				float b = dot(rayOrigin, rayDir);
+				float c = dot(rayOrigin, rayOrigin) - _CloudReprojectRadius * _CloudReprojectRadius;
+				float d = b * b - c;
+				if (d < 0) { return _CloudReprojectRadius; }   // misses; any finite distance will do
+				float s = sqrt(d);
+				float near = -b - s;
+				float far = -b + s;
+				return near > 0 ? near : max(far, 1.0);
+			}
+
+			float4 frag(v2f i) : SV_Target
+			{
+				float4 current = tex2D(_CloudTex, i.uv);
+
+				if (_CloudHistoryValid < 0.5)
+				{
+					// First frame after a resize or a mode change: nothing to reproject onto, so
+					// take whatever was marched and let the pattern fill the rest in over the next
+					// few frames rather than showing a hole.
+					return float4(current.rgb, abs(current.a));
+				}
+
+				float3 rayOrigin = _WorldSpaceCameraPos;
+				float3 rayDir = normalize(i.viewVector);
+				float3 worldPos = rayOrigin + rayDir * cloudReprojectDistance(rayOrigin, rayDir);
+
+				float4 clip = mul(_CloudPrevViewProj, float4(worldPos, 1));
+				float2 prevUv = (clip.xy / max(1e-6, clip.w)) * 0.5 + 0.5;
+				bool onScreen = clip.w > 0 && all(prevUv > 0.0) && all(prevUv < 1.0);
+
+				float4 history = tex2D(_CloudHistory, prevUv);
+
+				if (current.a < 0)
+				{
+					// Not marched this frame. Reproject if the history has it; otherwise fall back
+					// to a marched neighbour, since a hole would read as a hard dot pattern.
+					if (onScreen) { return history; }
+
+					float2 texel = _CloudMarchSize.zw;
+					float4 best = float4(0, 0, 0, 1);
+					[unroll]
+					for (int k = 0; k < 4; k++)
+					{
+						float2 offset = float2(k == 0 ? 1 : (k == 1 ? -1 : 0), k == 2 ? 1 : (k == 3 ? -1 : 0));
+						float4 neighbour = tex2D(_CloudTex, i.uv + offset * texel);
+						if (neighbour.a >= 0) { best = neighbour; }
+					}
+					return best;
+				}
+
+				// Marched this frame. Blend toward it so the sequence converges rather than
+				// flickering between the pattern's four phases; drop the history entirely when it
+				// reprojected off screen, because there is nothing valid to converge toward.
+				if (!onScreen) { return current; }
+				return lerp(history, current, _CloudHistoryBlend);
 			}
 			ENDCG
 		}
