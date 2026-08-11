@@ -47,6 +47,21 @@ namespace Clouds
 				if (GUILayout.Button("Upper", GUILayout.Height(28))) { Bake(settings, upper: true); }
 			}
 
+			EditorGUILayout.Space();
+			EditorGUILayout.LabelField("Capture from the volumetric renderer", EditorStyles.boldLabel);
+			EditorGUILayout.HelpBox(
+				"Flattens the volumetric clouds into the same format. Not a shippable baseline - it " +
+				"needs the volumetric renderer to exist - but a control condition: the content is " +
+				"then identical, so any remaining visual difference is the technique rather than the " +
+				"art.\n\nStamped against the volumetric's parameters, so it reports BAKE_STALE if " +
+				"those move.",
+				MessageType.None);
+
+			if (GUILayout.Button("Capture Both Layers From Volumetric", GUILayout.Height(28)))
+			{
+				CaptureBoth(settings);
+			}
+
 			DrawPreview(settings);
 		}
 
@@ -112,6 +127,118 @@ namespace Clouds
 		}
 
 		// ------------------------------------------------------------------ bake
+
+		// ------------------------------------------------------------------ capture
+
+		static void CaptureBoth(BaselineCloudSettings settings)
+		{
+			var compute = AssetDatabase.LoadAssetAtPath<ComputeShader>(ComputePath);
+			if (compute == null) { return; }
+
+			CloudEffect volumetric = FindVolumetric();
+			if (volumetric == null)
+			{
+				Debug.LogError("[Baseline clouds] no CloudEffect asset found - there is nothing to " +
+					"capture. The captured layers are derived from the volumetric renderer.");
+				return;
+			}
+
+			Capture(compute, settings, volumetric, upper: false);
+			Capture(compute, settings, volumetric, upper: true);
+		}
+
+		static void Capture(ComputeShader compute, BaselineCloudSettings settings,
+			CloudEffect volumetric, bool upper)
+		{
+			int width = Mathf.Max(64, settings.resolution);
+			int height = Mathf.Max(32, width / 2);
+
+			RenderTexture captured = CreateTarget(width, height);
+			RenderTexture shaded = CreateTarget(width, height);
+
+			try
+			{
+				int captureKernel = compute.FindKernel("CaptureVolumetric");
+
+				if (!volumetric.ApplyDensityValuesTo(compute, captureKernel))
+				{
+					Debug.LogError("[Baseline clouds] the CloudEffect has no baked volumes or weather " +
+						"compute assigned, so its density model cannot be evaluated.");
+					return;
+				}
+
+				compute.SetTexture(captureKernel, "Result", captured);
+				compute.SetVector("outputSize", new Vector2(width, height));
+				compute.SetInt("captureSteps", settings.captureSteps);
+				compute.SetFloat("captureAbsorption", settings.captureAbsorption);
+				compute.SetFloat("captureThreshold", settings.captureThreshold);
+
+				// Each layer captures half the shell, so the two parallax against one another rather
+				// than being the same sheet drawn twice. Set AFTER ApplyDensityValuesTo, which binds
+				// the volumetric's own full-shell radii - these deliberately override them for the
+				// span of the march, and only for that.
+				float inner = volumetric.InnerRadius;
+				float outer = volumetric.OuterRadius;
+				float middle = Mathf.Lerp(inner, outer, 0.5f);
+				compute.SetFloat("captureFloor", upper ? middle : inner);
+				compute.SetFloat("captureCeiling", upper ? outer : middle);
+
+				int groupsX = Mathf.CeilToInt(width / 8f);
+				int groupsY = Mathf.CeilToInt(height / 8f);
+				compute.Dispatch(captureKernel, groupsX, groupsY, 1);
+
+				int normalKernel = compute.FindKernel("ComputeNormals");
+				compute.SetTexture(normalKernel, "Source", captured);
+				compute.SetTexture(normalKernel, "Result", shaded);
+				compute.SetFloat("normalStrength", settings.captureNormalStrength);
+				compute.Dispatch(normalKernel, groupsX, groupsY, 1);
+
+				Save(shaded, width, height, settings.BakedPath(upper));
+
+				SkyBakeStampWriter.Record(
+					settings.BakedPath(upper), SkyBakeStamp.Recipe.Clouds,
+					null, null,
+					new SkyBakeStamp.Inputs()
+						.Add("resolution", width)
+						.Add("captureSteps", settings.captureSteps)
+						.Add("captureAbsorption", settings.captureAbsorption)
+						.Add("upperLayer", upper ? 1 : 0),
+					volumetric);
+			}
+			finally
+			{
+				captured.Release();
+				Object.DestroyImmediate(captured);
+				shaded.Release();
+				Object.DestroyImmediate(shaded);
+			}
+		}
+
+		static CloudEffect FindVolumetric()
+		{
+			foreach (string guid in AssetDatabase.FindAssets("t:CloudEffect"))
+			{
+				var effect = AssetDatabase.LoadAssetAtPath<CloudEffect>(
+					AssetDatabase.GUIDToAssetPath(guid));
+				if (effect != null) { return effect; }
+			}
+			return null;
+		}
+
+		static RenderTexture CreateTarget(int width, int height)
+		{
+			var rt = new RenderTexture(width, height, 0, GraphicsFormat.R8G8B8A8_UNorm)
+			{
+				enableRandomWrite = true,
+				wrapModeU = TextureWrapMode.Repeat,
+				wrapModeV = TextureWrapMode.Clamp,
+				filterMode = FilterMode.Bilinear
+			};
+			rt.Create();
+			return rt;
+		}
+
+		// ------------------------------------------------------------------ authored
 
 		static void BakeBoth(BaselineCloudSettings settings)
 		{

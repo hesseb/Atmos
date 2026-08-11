@@ -84,6 +84,23 @@ namespace Clouds
 			"Perlin both need, and the default is measured the same way.")]
 		[Range(1f, 4f)] public float rangeGain = 2.3f;
 
+		[Header("Capture from the volumetric")]
+		[Tooltip("Steps down through the shell per texel. Offline, so there is little reason to be stingy.")]
+		[Range(8, 256)] public int captureSteps = 96;
+
+		[Tooltip("Converts the column's optical depth into the layer's opacity. Higher makes the " +
+			"captured clouds read as more solid.")]
+		[Range(0.1f, 8f)] public float captureAbsorption = 1.5f;
+
+		[Tooltip("Density above which a sample counts as the cloud top, which is the surface the " +
+			"baseline shades.")]
+		[Range(0.001f, 0.5f)] public float captureThreshold = 0.02f;
+
+		[Tooltip("Relief strength for the captured layers. Larger than the authored equivalent " +
+			"because that one divides by an analytic gradient while this differences a texture, so " +
+			"the two are not in the same units. Calibrated at 2048 and compensated for resolution.")]
+		[Range(0f, 32f)] public float captureNormalStrength = 14f;
+
 		[Header("Output")]
 		public string outputFolder = "Assets/Data/Baseline Clouds";
 

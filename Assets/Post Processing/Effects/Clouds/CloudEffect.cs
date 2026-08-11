@@ -523,8 +523,9 @@ namespace Clouds
 			weatherCompute.Dispatch(kernel, Mathf.CeilToInt(width / 8f), Mathf.CeilToInt(height / 8f), 1);
 		}
 
-		float InnerRadius => bodyRadius + cloudBottomAltitude;
-		float OuterRadius => bodyRadius + Mathf.Max(cloudBottomAltitude + 0.01f, cloudTopAltitude);
+		/// <summary>Public so the baseline's capture bake can march the same shell.</summary>
+		public float InnerRadius => bodyRadius + cloudBottomAltitude;
+		public float OuterRadius => bodyRadius + Mathf.Max(cloudBottomAltitude + 0.01f, cloudTopAltitude);
 
 		Vector3 ShapeWind
 		{
@@ -549,6 +550,26 @@ namespace Clouds
 		/// same names - they have to stay in step, because the shadow pass and the march share one
 		/// density function and a divergence would read as clouds not matching their own shadows.
 		/// </summary>
+		/// <summary>
+		/// Makes the density model available to another compute - the baseline's capture bake.
+		///
+		/// Public for the same reason AtmosphereEffect.ApplyAtmosphereValuesTo is: the capture is
+		/// only meaningful because it shares this state with the runtime renderer rather than
+		/// restating it. It also generates the weather map, which the density model reads and which
+		/// otherwise only exists once the effect has rendered a frame.
+		///
+		/// Returns false if the volumes or the weather compute are unassigned, in which case there
+		/// is nothing to capture.
+		/// </summary>
+		public bool ApplyDensityValuesTo(ComputeShader compute, int kernel)
+		{
+			if (shapeNoise == null || detailNoise == null || weatherCompute == null) { return false; }
+
+			RenderWeatherMap();
+			BindDensity(compute, kernel);
+			return true;
+		}
+
 		void BindDensity(ComputeShader compute, int kernel)
 		{
 			compute.SetTexture(kernel, "CloudShapeNoise", shapeNoise);

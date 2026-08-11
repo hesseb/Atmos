@@ -20,11 +20,12 @@ static class SkyBakeStampWriter
 	/// `bakeConstants` is recorded but not hashed - see the Recipe docs for why.
 	/// </summary>
 	public static void Record(string assetPath, SkyBakeStamp.Recipe recipe,
-		AtmosphereEffect atmosphere, BaselineSkyRenderer baseline, SkyBakeStamp.Inputs bakeConstants)
+		AtmosphereEffect atmosphere, BaselineSkyRenderer baseline, SkyBakeStamp.Inputs bakeConstants,
+		Clouds.CloudEffect clouds = null)
 	{
 		SkyBakeStamp stamp = LoadOrCreate();
 
-		SkyBakeStamp.Inputs scene = SkyBakeStamp.InputsFor(recipe, atmosphere, baseline);
+		SkyBakeStamp.Inputs scene = SkyBakeStamp.InputsFor(recipe, atmosphere, baseline, clouds);
 
 		var entry = new SkyBakeStamp.Entry
 		{
