@@ -31,8 +31,6 @@ namespace Clouds
 		public enum DebugMode
 		{
 			Off = 0,
-			StepSize = 1,
-			StepCount = 2,
 			Segment = 3,
 			Density = 4,
 			StartDistance = 5,

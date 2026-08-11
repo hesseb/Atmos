@@ -69,46 +69,46 @@ float2 cloudRaySphere(float radius, float3 rayOrigin, float3 rayDir)
 	return float2(near, far - near);
 }
 
-/// The span of this ray that lies inside the cloud shell.
+/// The spans of this ray that lie inside the cloud shell - there can be TWO of them.
 ///
-/// All three camera cases are handled explicitly rather than left to fall out, because a free-fly
-/// camera finds the broken one immediately and the failure - clouds vanishing or filling the screen
-/// as you cross a boundary - is not subtle.
-bool cloudShellSegment(float3 rayOrigin, float3 rayDir, out float start, out float end)
+/// A ray leaving the shell downward does not stay gone. The planet curves away beneath it, so it
+/// sinks below the cloud base, reaches a lowest point, and climbs back through the base further
+/// along. Looking toward the horizon from in or under the deck, most of what you see is that
+/// second span: the underside of the cloud stretching away past the dip.
+///
+/// Returning only the first span drops all of it, and leaves a hard seam across the view with
+/// cloud above and nothing below, all the way to the horizon.
+///
+/// Expressed as the outer sphere's chord minus the inner sphere's, which needs no cases for where
+/// the camera is: above the shell, inside it and below it all fall out of the same subtraction.
+/// An empty span comes back with end <= start and is skipped by the caller.
+bool cloudShellSegments(float3 rayOrigin, float3 rayDir, out float2 nearSpan, out float2 farSpan)
 {
-	start = 0;
-	end = 0;
+	nearSpan = 0;
+	farSpan = 0;
 
 	float2 outerHit = cloudRaySphere(cloudOuterRadius, rayOrigin, rayDir);
 	if (outerHit.y <= 0) { return false; }   // never reaches the shell at all
 
+	float outerStart = outerHit.x;
+	float outerEnd = outerHit.x + outerHit.y;
+
 	float2 innerHit = cloudRaySphere(cloudInnerRadius, rayOrigin, rayDir);
-	float radius = length(rayOrigin);
-
-	if (radius > cloudOuterRadius)
+	if (innerHit.y <= 0)
 	{
-		// Above the shell - the strategy viewpoint. Enter at the outer sphere, and leave either at
-		// the inner sphere or, for a ray that passes over the top of it, back out through the outer.
-		start = outerHit.x;
-		end = (innerHit.y > 0) ? innerHit.x : outerHit.x + outerHit.y;
-	}
-	else if (radius > cloudInnerRadius)
-	{
-		// Inside the shell. Start at the camera; leave at whichever sphere comes first.
-		start = 0;
-		end = (innerHit.y > 0 && innerHit.x > 0) ? innerHit.x : outerHit.y;
-	}
-	else
-	{
-		// Below the shell, looking up. Both hits have x == 0 because we are inside both spheres, so
-		// the shell begins where the inner sphere is exited.
-		start = innerHit.y;
-		end = outerHit.y;
+		// Never dips below the cloud base: one span, the whole outer chord.
+		nearSpan = float2(outerStart, outerEnd);
+		return true;
 	}
 
-	return end > start;
+	float innerStart = innerHit.x;
+	float innerEnd = innerHit.x + innerHit.y;
+
+	// Everything inside the outer sphere but outside the inner one.
+	nearSpan = float2(outerStart, min(outerEnd, innerStart));
+	farSpan = float2(max(outerStart, innerEnd), outerEnd);
+	return true;
 }
-
 /// Where in the shell this point sits, 0 at the cloud base and 1 at the top.
 float cloudHeightFraction(float3 pos)
 {
