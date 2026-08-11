@@ -43,6 +43,7 @@ MonoBehaviour:
   coverageMultiplier: 0.61
   typeOffset: -0.035
   baseVariation: 0.3
+  bandThickness: 0.65
   edgeSoftness: 1
   precipDensity: 1.2
   precipTypePush: 0.45
@@ -51,7 +52,6 @@ MonoBehaviour:
   shapeWindSpeed: 0.02
   detailWindSpeed: 0.05
   stepSize: 0.05
-  stepGrowth: 0.5
   maxSteps: 192
   debugMode: 0
   jitterStrength: 1
@@ -81,4 +81,5 @@ MonoBehaviour:
   shadowMapSize: {x: 512, y: 256}
   shadowSteps: 32
   shadowAbsorption: 1.52
+  shadowDetailScale: 4
   shadowStrength: 0.8
