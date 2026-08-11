@@ -94,6 +94,12 @@ void BakeAuthored(uint3 id : SV_DispatchThreadID)
 	// Surface normal from central differences of the height field, taken in ANGULAR space so the
 	// spacing is a true distance on the globe at every latitude. A finite difference in UV would
 	// shrink toward the poles and the relief would sharpen into a pinch there.
+	// "east" is nominal - under this project's pointToUV, cross(poleAxis, p) actually points toward
+	// decreasing longitude. That does not matter here, because this frame is used to bake the
+	// normal and the runtime rebuilds the identical expression to unpack it, so the naming is the
+	// only thing that is wrong. It matters a great deal to ComputeNormals below, which reaches the
+	// same frame by differencing texels and therefore has to negate. Do not "correct" this without
+	// negating that.
 	float3 poleAxis = float3(0, 1, 0);
 	float3 east = abs(p.y) > 0.9999 ? float3(1, 0, 0) : normalize(cross(poleAxis, p));
 	float3 north = cross(p, east);
@@ -244,7 +250,17 @@ void ComputeNormals(uint3 id : SV_DispatchThreadID)
 	uint2 n = uint2(id.x, min(id.y + 1, size.y - 1));
 	uint2 s = uint2(id.x, max((int)id.y - 1, 0));
 
-	float dEast = Source[e].a - Source[w].a;
+	// NEGATED, and it has to be. This kernel differences TEXELS, so its idea of east is "increasing
+	// u" - but the frame the authored path bakes into, and the one the runtime unpacks with, is
+	// geometric: cross(poleAxis, p). Under this project's pointToUV that cross product points
+	// toward DECREASING longitude, so the two conventions are mirror images.
+	//
+	// Measured on the previous capture, before this line was flipped: the authored layer's R
+	// channel correlated +0.91 with the density slope in u and the captured layer's correlated
+	// -0.89. Same field, relief lit from the opposite side - a plausible image rather than an
+	// obvious fault, and invisible without comparing the two. The north axis needs no such flip:
+	// increasing v is increasing latitude, which is the geometric north already (+0.96 / +0.89).
+	float dEast = Source[w].a - Source[e].a;
 	float dNorth = Source[n].a - Source[s].a;
 
 	// A per-texel difference shrinks as resolution rises, so the relief would otherwise depend on
