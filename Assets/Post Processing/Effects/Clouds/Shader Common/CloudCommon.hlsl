@@ -126,9 +126,17 @@ float cloudDensityMultiplier;
 float cloudCoverageMultiplier;
 float cloudTypeBias;
 
-/// How much of the shell the base can be lifted by, as a fraction of it. 0 puts every cloud on the
-/// floor of the shell, which is where they all sat before this existed.
+/// How much of the shell the cloud band can be lifted by, as a fraction of it.
 float cloudBaseVariation;
+
+/// How thick the cloud band is, as a fraction of the shell.
+///
+/// The band TRANSLATES up and down; it does not stretch to meet the shell ceiling. Mapping
+/// [baseOffset, 1] onto [0, 1] instead - which is what this did at first - compresses the band as
+/// the base rises, so the top stays pinned to the shell however much the base moves and every cloud
+/// reaches exactly the same height. That is the flattened-off look: not clouds that happen to agree,
+/// clouds that were made to.
+float cloudBandThickness;
 
 /// How much of the height gradient acts on COVERAGE rather than on density.
 ///
@@ -234,7 +242,7 @@ float sampleCloudDensity(float3 pos, bool cheap, float stepSize)
 	// Below the base this gives h = 0, and every gradient is zero there, so the region under the
 	// cloud empties out without a separate test.
 	float baseOffset = saturate(weather.a * cloudBaseVariation - precipitation * cloudPrecipBaseDrop);
-	float h = saturate((shellHeight - baseOffset) / max(0.05, 1 - baseOffset));
+	float h = saturate((shellHeight - baseOffset) / max(0.05, cloudBandThickness));
 
 	float gradient = cloudHeightGradient(h, type);
 	if (gradient <= 0) { return 0; }
