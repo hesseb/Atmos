@@ -88,8 +88,15 @@ namespace Clouds
 			"sampled properly. The reference project instead hardcodes a step of 11 world units, " +
 			"which here would step over the whole layer six times over in one step.")]
 		[Range(0.005f, 1f)] public float stepSize = 0.05f;
-		[Range(8, 256)] public int minSteps = 24;
-		[Range(16, 512)] public int maxSteps = 128;
+
+		[Tooltip("How fast the step grows with distance from the camera. Keying the step to distance " +
+			"rather than to the length of the traversed segment is what stops the same world point " +
+			"being sampled fourteen times more coarsely along the horizon than straight down - which " +
+			"made density depend on view direction, and made cloud appear as the camera closed. " +
+			"0 marches at a constant step and will run out of steps long before the horizon.")]
+		[Range(0f, 2f)] public float stepGrowth = 0.5f;
+
+		[Range(16, 512)] public int maxSteps = 192;
 		[Range(0f, 2f)] public float jitterStrength = 1f;
 		[Range(0.1f, 20f)] public float extinction = 4f;
 
@@ -441,8 +448,8 @@ namespace Clouds
 			material.SetVector("cloudDetailWind", DetailWind);
 
 			material.SetFloat("cloudStepSize", stepSize);
-			material.SetInt("cloudMinSteps", minSteps);
-			material.SetInt("cloudMaxSteps", Mathf.Max(minSteps, maxSteps));
+			material.SetFloat("cloudStepGrowth", stepGrowth);
+			material.SetInt("cloudMaxSteps", maxSteps);
 			material.SetFloat("cloudJitterStrength", jitterStrength);
 			material.SetFloat("cloudExtinction", extinction);
 
