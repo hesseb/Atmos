@@ -80,9 +80,12 @@ namespace Clouds
 		[Range(0.2f, 12f)] public float precipitationScale = 3.5f;
 		[Range(-0.5f, 0.5f)] public float precipitationBias = -0.1f;
 
-		[Tooltip("Feature size of the base-height field. Cloud type already moves the TOP of the " +
-			"layer; this is what moves the bottom, which is otherwise identical everywhere.")]
-		[Range(0.2f, 12f)] public float baseHeightScale = 1.6f;
+		[Tooltip("Feature size of the height field that lifts and lowers the cloud band. Low values " +
+			"vary it continentally, which reads as no variation at all when looking at one group of " +
+			"clouds; around 12-20 varies it across a few clouds, which is the scale the eye reads as " +
+			"some being taller than others. Past about 30 it falls below what a 512-wide map can " +
+			"resolve and turns to mush.")]
+		[Range(0.2f, 30f)] public float baseHeightScale = 16f;
 		[Range(-0.5f, 0.5f)] public float baseHeightBias = 0f;
 
 		[Tooltip("Speed the weather field drifts, in the sphere's own space rather than as a UV " +
@@ -111,7 +114,14 @@ namespace Clouds
 
 		[Tooltip("How much of the shell the cloud base can be lifted by. 0 puts every cloud on the " +
 			"floor of the shell, which is where they all sat before this existed.")]
+		[Tooltip("How far the cloud band is lifted and lowered across the globe, as a fraction of " +
+			"the shell. This is what makes some clouds reach higher than others.")]
 		[Range(0f, 0.6f)] public float baseVariation = 0.3f;
+
+		[Tooltip("Thickness of the cloud band, as a fraction of the shell. The band moves up and " +
+			"down within the shell rather than stretching to fill it - stretching is what pinned " +
+			"every cloud top to the same height. Base variation plus this should stay under 1.")]
+		[Range(0.1f, 1f)] public float bandThickness = 0.65f;
 
 		[Tooltip("How much of the height gradient acts on coverage rather than density. 0 is " +
 			"Schneider's arrangement, where the layer stops at a flat plane once the gradient falls " +
@@ -557,6 +567,7 @@ namespace Clouds
 			compute.SetFloat("cloudShapeResolution", shapeNoise != null ? shapeNoise.width : 128);
 			compute.SetFloat("cloudDetailResolution", detailNoise != null ? detailNoise.width : 32);
 			compute.SetFloat("cloudBaseVariation", baseVariation);
+			compute.SetFloat("cloudBandThickness", bandThickness);
 			compute.SetFloat("cloudEdgeSoftness", edgeSoftness);
 			compute.SetFloat("cloudPrecipDensity", precipDensity);
 			compute.SetFloat("cloudPrecipTypePush", precipTypePush);
@@ -635,6 +646,7 @@ namespace Clouds
 			material.SetFloat("cloudShapeResolution", shapeNoise != null ? shapeNoise.width : 128);
 			material.SetFloat("cloudDetailResolution", detailNoise != null ? detailNoise.width : 32);
 			material.SetFloat("cloudBaseVariation", baseVariation);
+			material.SetFloat("cloudBandThickness", bandThickness);
 			material.SetFloat("cloudEdgeSoftness", edgeSoftness);
 			material.SetFloat("cloudPrecipDensity", precipDensity);
 			material.SetFloat("cloudPrecipTypePush", precipTypePush);
