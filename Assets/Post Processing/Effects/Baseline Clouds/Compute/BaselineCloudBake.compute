@@ -1,0 +1,114 @@
+#pragma kernel BakeAuthored
+
+#include "Assets/Scripts/Shader Common/GeoMath.hlsl"
+#include "Assets/Post Processing/Effects/Clouds/Shader Common/CloudNoiseCommon.hlsl"
+
+// Bakes a baseline cloud layer: an equirectangular texture describing a sheet of cloud wrapped
+// around the globe.
+//
+//   R, G  surface normal, in the local east/north tangent basis, *0.5+0.5
+//   B     cloud top height within the layer, 0 at its floor and 1 at its ceiling
+//   A     density
+//
+// Packing the normal means the runtime needs one tap per layer rather than several taps of finite
+// differences, which matters because being cheap to sample is the entire point of the baseline.
+//
+// This kernel is the AUTHORED producer - a procedural field, what a studio would actually make. The
+// second producer, which captures the volumetric renderer into the same format, lives alongside it
+// so the two are drop-in replacements for one another.
+
+RWTexture2D<float4> Result;
+
+float2 outputSize;
+
+int octaves;
+float lacunarity;
+float gain;
+float rangeGain;
+
+float fieldScale;
+float coverageScale;
+float fieldBias;
+float fieldContrast;
+float seedOffset;
+float reliefStrength;
+
+/// Advances the field so the layer drifts between bakes if wanted. Applied in the sphere's own
+/// space rather than as a UV scroll, which would tear at the poles.
+float3 driftOffset;
+
+/// The cloud field at a point on the sphere: how much cloud is here, in 0 to 1.
+///
+/// Two scales, not one. A large-scale coverage field decides where there is cloud at all, and a
+/// smaller-scale shape field is carved by it. A single field gives a layer with the same character
+/// everywhere - no clear regions, no weather systems - which is precisely the uniformity the
+/// volumetric's weather map exists to avoid, and giving the baseline that flaw would make the
+/// comparison unfair rather than simple.
+///
+/// Both are range-corrected before folding: an FBM normalised by the sum of its amplitudes never
+/// reaches that sum, which is the defect the volumetric's weather map and its Perlin both had.
+///
+/// Coverage CARVES the shape rather than scaling it - the same remap the volumetric uses - so cloud
+/// grows outward from where it already is instead of the whole layer fading up together.
+float cloudField(float3 p)
+{
+	float coverageNoise = cloudFbm(p * coverageScale + driftOffset * 0.4 + seedOffset,
+									max(2, octaves - 2), lacunarity, gain);
+	float coverage = saturate(coverageNoise * rangeGain * 0.5 + 0.5 + fieldBias);
+	coverage = saturate(cloudRemap(coverage, 0.5 - 0.5 / max(0.01, fieldContrast),
+									0.5 + 0.5 / max(0.01, fieldContrast), 0, 1));
+	if (coverage <= 0) { return 0; }
+
+	float shapeNoise = cloudFbm(p * fieldScale + driftOffset + seedOffset + 17.0,
+								octaves, lacunarity, gain);
+	float shape = saturate(shapeNoise * rangeGain * 0.5 + 0.5);
+
+	return saturate(cloudRemap(shape, 1.0 - coverage, 1.0, 0.0, 1.0) * coverage);
+}
+
+[numthreads(8, 8, 1)]
+void BakeAuthored(uint3 id : SV_DispatchThreadID)
+{
+	uint2 size = (uint2)outputSize;
+	if (id.x >= size.x || id.y >= size.y) { return; }
+
+	float2 uv = (id.xy + 0.5) / outputSize;
+	float3 p = uvToPointOnSphere(uv);
+
+	float density = cloudField(p);
+
+	// Height follows density: a thicker cloud is a taller one. One field rather than two, so the
+	// relief always agrees with where the cloud actually is - two independent fields would put
+	// lit slopes where there is no cloud to catch the light.
+	float height = density;
+
+	// Surface normal from central differences of the height field, taken in ANGULAR space so the
+	// spacing is a true distance on the globe at every latitude. A finite difference in UV would
+	// shrink toward the poles and the relief would sharpen into a pinch there.
+	float3 poleAxis = float3(0, 1, 0);
+	float3 east = abs(p.y) > 0.9999 ? float3(1, 0, 0) : normalize(cross(poleAxis, p));
+	float3 north = cross(p, east);
+
+	// One output texel, as an angle. Differencing across exactly that keeps the normal at the
+	// finest scale the texture can actually carry.
+	float epsilon = 6.28318530718 / max(1, outputSize.x);
+
+	float3 pE = normalize(p + east * epsilon);
+	float3 pW = normalize(p - east * epsilon);
+	float3 pN = normalize(p + north * epsilon);
+	float3 pS = normalize(p - north * epsilon);
+
+	float dEast = cloudField(pE) - cloudField(pW);
+	float dNorth = cloudField(pN) - cloudField(pS);
+
+	// For a height field h, the surface normal is proportional to (-dh/du, -dh/dv, 1). Only the
+	// tangent components are stored; the runtime recovers the third from them.
+	float2 normalXY = float2(-dEast, -dNorth) * reliefStrength;
+
+	// Clamped rather than normalised. Normalising would give every slope the same steepness once
+	// encoded, flattening the difference between a gentle swell and a sharp edge - which is most
+	// of what relief shading is meant to show.
+	normalXY = clamp(normalXY, -1, 1);
+
+	Result[id.xy] = float4(normalXY * 0.5 + 0.5, height, density);
+}
