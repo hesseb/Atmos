@@ -530,120 +530,19 @@ Shader "Hidden/Clouds"
 
 		// Composite. Blends the cloud pass over the frame, upsampling it when it was rendered at a
 		// lower resolution than the frame.
+		//
+		// The whole pass lives in CloudComposite.hlsl, which the BASELINE renderer includes too.
+		// Shared rather than copied so the two cannot drift apart: everything that is not the
+		// shading model has to be held constant, or the drift gets measured as a difference between
+		// techniques.
 		Pass
 		{
 			CGPROGRAM
-			#pragma vertex vert
-			#pragma fragment frag
+			#pragma vertex compositeVert
+			#pragma fragment compositeFrag
 
 			#include "UnityCG.cginc"
-
-			struct appdata
-			{
-				float4 vertex : POSITION;
-				float4 uv : TEXCOORD0;
-			};
-
-			struct v2f
-			{
-				float4 pos : SV_POSITION;
-				float2 uv : TEXCOORD0;
-			};
-
-			v2f vert(appdata v)
-			{
-				v2f output;
-				output.pos = UnityObjectToClipPos(v.vertex);
-				output.uv = v.uv;
-				return output;
-			}
-
-			sampler2D _MainTex;
-			sampler2D _CloudTex;
-			sampler2D _CameraDepthTexture;
-
-			/// xy = cloud pass resolution, zw = its texel size.
-			float4 _CloudTexSize;
-			/// 1 when the cloud pass ran at full resolution, so the bilateral path is skipped.
-			float _CloudUpsample;
-			/// How hard to reject a neighbour across a depth discontinuity. Higher keeps silhouettes
-			/// crisper and lets more of the low-resolution stair-stepping through.
-			float _CloudDepthRejection;
-
-			float sampleEyeDepth(float2 uv)
-			{
-				return LinearEyeDepth(tex2Dlod(_CameraDepthTexture, float4(uv, 0, 0)).r);
-			}
-
-			/// Depth-aware upsample.
-			///
-			/// A plain bilinear stretch of a half-resolution march bleeds cloud across every
-			/// silhouette, because the four neighbours it blends may sit on opposite sides of a
-			/// depth discontinuity - a mountain ridge against sky reads as a halo. Weighting each
-			/// neighbour by how well its depth matches this pixel's rejects the ones that belong to
-			/// different geometry.
-			///
-			/// The neighbours' depths are read from the full-resolution depth buffer at the
-			/// low-resolution texel centres, which is exactly the depth each of those marches used -
-			/// so no second depth target is needed.
-			float4 upsampleCloud(float2 uv)
-			{
-				if (_CloudUpsample <= 1.0) { return tex2Dlod(_CloudTex, float4(uv, 0, 0)); }
-
-				float2 coord = uv * _CloudTexSize.xy - 0.5;
-				float2 base = floor(coord);
-				float2 f = coord - base;
-
-				float centreDepth = sampleEyeDepth(uv);
-
-				float4 sum = 0;
-				float weightSum = 0;
-
-				[unroll]
-				for (int y = 0; y < 2; y++)
-				{
-					[unroll]
-					for (int x = 0; x < 2; x++)
-					{
-						float2 tapUv = (base + float2(x, y) + 0.5) * _CloudTexSize.zw;
-						float bilinear = (x ? f.x : 1 - f.x) * (y ? f.y : 1 - f.y);
-						float depthDelta = abs(sampleEyeDepth(tapUv) - centreDepth);
-						float weight = bilinear / (1 + depthDelta * _CloudDepthRejection);
-
-						sum += tex2Dlod(_CloudTex, float4(tapUv, 0, 0)) * weight;
-						weightSum += weight;
-					}
-				}
-
-				// Every neighbour can be rejected at once on a thin feature, so fall back to the
-				// nearest tap rather than dividing by zero.
-				if (weightSum < 1e-4) { return tex2Dlod(_CloudTex, float4(uv, 0, 0)); }
-				return sum / weightSum;
-			}
-
-			/// -1 off, 0 above the shell, 1 inside it, 2 below. Computed on the CPU, because the
-			/// camera position and the shell radii are both known there and this only needs to be
-			/// answered once per frame rather than once per pixel.
-			float _CloudDebugRegion;
-
-			float4 frag(v2f i) : SV_Target
-			{
-				float3 background = tex2D(_MainTex, i.uv).rgb;
-				float4 cloud = upsampleCloud(i.uv);
-				float3 col = background * cloud.a + cloud.rgb;
-
-				// A corner swatch rather than a full-screen fill: which region the camera is in is
-				// only useful if the clouds are still visible next to it, so the two can be
-				// correlated as the camera moves.
-				if (_CloudDebugRegion >= 0 && i.uv.x < 0.05 && i.uv.y > 0.93)
-				{
-					if (_CloudDebugRegion < 0.5) { return float4(1, 0.1, 0.1, 1); }   // above
-					if (_CloudDebugRegion < 1.5) { return float4(0.1, 1, 0.1, 1); }   // inside
-					return float4(0.2, 0.4, 1, 1);                                     // below
-				}
-
-				return float4(col, 1);
-			}
+			#include "Assets/Post Processing/Effects/Clouds/Shader Common/CloudComposite.hlsl"
 			ENDCG
 		}
 	}
