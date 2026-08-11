@@ -50,6 +50,7 @@ MonoBehaviour:
   sunTransmittanceWeight: 0.7
   ambientIntensity: 0.4
   ambientHorizon: 0.41
+  nightAmbient: {r: 0.03, g: 0.035, b: 0.05, a: 1}
   ambientFallback: {r: 0.4, g: 0.45, b: 0.55, a: 1}
   lightMarchLength: 8
   lightAbsorption: 0.8

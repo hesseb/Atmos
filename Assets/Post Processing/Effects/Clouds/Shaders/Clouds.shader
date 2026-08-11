@@ -71,6 +71,7 @@ Shader "Hidden/Clouds"
 			float cloudAmbientIntensity;
 			float cloudAmbientHorizon;
 			float3 cloudAmbientFallback;
+			float3 cloudNightAmbient;
 
 			float cloudLightMarchLength;
 			float cloudLightAbsorption;
@@ -236,14 +237,22 @@ Shader "Hidden/Clouds"
 					// Falls back to white when there is no physically based atmosphere bound, so the
 					// clouds keep working in the baseline and ablation profiles.
 					//
-					// Weighted rather than taken whole. This atmosphere is optically much thicker
-					// than Earth's - zenith transmittance 0.45 against 0.77 - which is a deliberate
-					// compensation for a 136 km planet, but it means even a midday sun arrives at a
-					// cloud top already dimmed to 45% and reddened. Lerping toward white keeps the
-					// colour physical while letting the level be authored. Same reasoning, and the
-					// same shape, as the ocean glint's transmittance weight.
+					// Desaturated toward its OWN luminance, not toward white.
+					//
+					// This atmosphere is optically much thicker than Earth's - zenith transmittance
+					// 0.45 against 0.77, a deliberate compensation for a 136 km planet - so a midday
+					// sun arrives already reddened, which read as drab. Pulling the colour toward
+					// grey fixes that.
+					//
+					// Toward white it also floored the term at 1 - weight, which is 0.3 of a full
+					// sun, and transmittance is exactly zero once the sun is below the horizon. So
+					// the sun never actually set on the clouds: at midnight they kept 30% of a sun
+					// whose gradient colour had by then gone deep orange, and they were lit as
+					// though at sunset. Toward the transmittance's own luminance the term dies with
+					// it, because zero has no hue to preserve.
 					float3 sunTransmittance = sampleLightColourAt(pos, cloudSunDir);
-					float3 sunColour = lerp(1.0, sunTransmittance, cloudSunTransmittanceWeight) * cloudSunColour;
+					float sunLuminance = dot(sunTransmittance, float3(0.2126, 0.7152, 0.0722));
+					float3 sunColour = lerp(sunLuminance.xxx, sunTransmittance, cloudSunTransmittanceWeight) * cloudSunColour;
 
 					float energy = cloudBeerPowder(cloudLightMarch(pos), cosViewSun);
 
@@ -267,6 +276,15 @@ Shader "Hidden/Clouds"
 					float3 skyHorizon = sampleSkyViewSafe(up, horizonDir, cloudSunDir);
 					float3 ambient = lerp(skyZenith, skyHorizon, cloudAmbientHorizon) * cloudAmbientIntensity;
 					ambient += cloudAmbientFallback * (hasPhysicalAtmosphere() ? 0.0 : 1.0);
+
+					// Starlight and airglow. Every source the clouds have goes to zero together once
+					// the sun is down - the sky LUT is genuinely dark and the transmittance is
+					// exactly zero - so without a floor they turn pure black rather than dark.
+					// Declared non-physical, exactly like the ocean's and the land's night terms:
+					// what it stands for is outside a single-sun scattering model rather than
+					// something this renderer gets wrong.
+					float nightT = saturate(dot(up, -cloudSunDir));
+					ambient += cloudNightAmbient * smoothstep(0.0, 0.15, nightT);
 
 					float3 inScatter = sunColour * energy * phase * cloudSunIntensity + ambient;
 

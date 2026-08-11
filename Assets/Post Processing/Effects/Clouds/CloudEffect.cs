@@ -145,6 +145,11 @@ namespace Clouds
 			"clouds are still lit in the baseline and ablation profiles rather than going black.")]
 		public Color ambientFallback = new Color(0.4f, 0.45f, 0.55f);
 
+		[Tooltip("Starlight and airglow on the clouds. Without it they go pure black at night, " +
+			"because every source they have reaches zero together once the sun is down. Declared " +
+			"non-physical, like the ocean's and the land's night terms.")]
+		public Color nightAmbient = new Color(0.03f, 0.035f, 0.05f);
+
 		[Header("Light march")]
 		[Tooltip("How far toward the sun the light march reaches, in world units. Around one shell " +
 			"thickness is usually right - beyond that it is sampling air.")]
@@ -506,12 +511,18 @@ namespace Clouds
 			Color sunColour = sunLight != null ? sunLight.color : Color.white;
 
 			material.SetVector("cloudSunDir", sunDir);
-			material.SetVector("cloudSunColour", new Vector4(sunColour.r, sunColour.g, sunColour.b, 1));
+			// The gradient is Sun.cs's camera-keyed approximation, which the land and the ocean both
+			// stopped using once transmittance could answer the same question per pixel. Gated the
+			// same way, so it survives only as the baseline path where there is no LUT to ask.
+			float gate = Shader.GetGlobalFloat("skyReflectionStrength");
+			Color gradient = Color.Lerp(sunColour, Color.white, gate);
+			material.SetVector("cloudSunColour", new Vector4(gradient.r, gradient.g, gradient.b, 1));
 			material.SetFloat("cloudSunIntensity", sunIntensity);
 			material.SetFloat("cloudSunTransmittanceWeight", sunTransmittanceWeight);
 			material.SetFloat("cloudAmbientIntensity", ambientIntensity);
 			material.SetFloat("cloudAmbientHorizon", ambientHorizon);
 			material.SetVector("cloudAmbientFallback", new Vector4(ambientFallback.r, ambientFallback.g, ambientFallback.b, 1));
+			material.SetVector("cloudNightAmbient", new Vector4(nightAmbient.r, nightAmbient.g, nightAmbient.b, 1));
 
 			material.SetFloat("cloudLightMarchLength", lightMarchLength);
 			material.SetFloat("cloudLightAbsorption", lightAbsorption);
