@@ -168,6 +168,16 @@ namespace Clouds
 		[Range(0f, 0.99f)] public float phaseBackward = 0.2f;
 		[Range(0f, 1f)] public float phaseBlend = 0.5f;
 
+		[Tooltip("Silver lining: how many times the isotropic value the phase reaches looking " +
+			"straight at the sun. A separate tight forward lobe combined with max(), not blended - " +
+			"two lobes alone cannot produce this, so it is an addition to the model rather than a " +
+			"tuning of it. 0 removes it.")]
+		[Range(0f, 24f)] public float silverIntensity = 6f;
+
+		[Tooltip("How wide the silver lining is. 0.05 gives a rim within about 4 degrees of the sun, " +
+			"0.25 about 13, 0.3 about 22.")]
+		[Range(0.02f, 0.6f)] public float silverSpread = 0.25f;
+
 		[Header("Cost")]
 		[Tooltip("Full marches every pixel - the honest upper bound and the cleanest image. Half " +
 			"marches a quarter of the pixels and upsamples with a depth-aware filter. Both are the " +
@@ -511,6 +521,8 @@ namespace Clouds
 			material.SetFloat("cloudPhaseForward", phaseForward);
 			material.SetFloat("cloudPhaseBackward", phaseBackward);
 			material.SetFloat("cloudPhaseBlend", phaseBlend);
+			material.SetFloat("cloudSilverIntensity", silverIntensity);
+			material.SetFloat("cloudSilverSpread", silverSpread);
 		}
 	}
 }
