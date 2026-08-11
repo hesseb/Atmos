@@ -126,6 +126,16 @@ float cloudDensityMultiplier;
 float cloudCoverageMultiplier;
 float cloudTypeBias;
 
+/// How much of the shell the base can be lifted by, as a fraction of it. 0 puts every cloud on the
+/// floor of the shell, which is where they all sat before this existed.
+float cloudBaseVariation;
+
+/// What precipitation does. Rain-bearing cloud is thicker, taller and hangs lower, so one field
+/// drives all three rather than three unrelated ones scattering across the globe.
+float cloudPrecipDensity;
+float cloudPrecipTypePush;
+float cloudPrecipBaseDrop;
+
 /// Texels per axis in each volume, so a march step can be converted into a mip level.
 float cloudShapeResolution;
 float cloudDetailResolution;
@@ -154,10 +164,11 @@ float cloudHeightGradient(float h, float type)
 	return stratus * wStratus + cumulus * wCumulus + cumulonimbus * wCumulonimbus;
 }
 
-float3 sampleCloudWeather(float3 pos)
+/// R coverage, G precipitation, B cloud type, A base height.
+float4 sampleCloudWeather(float3 pos)
 {
 	float2 uv = pointToUV(normalize(pos));
-	return CloudWeatherMapTex.SampleLevel(samplerCloudWeatherMapTex, uv, 0).rgb;
+	return CloudWeatherMapTex.SampleLevel(samplerCloudWeatherMapTex, uv, 0);
 }
 
 /// Mip level at which a volume should be read, given how far the march moves between samples.
@@ -185,14 +196,30 @@ float cloudLod(float stepSize, float scale, float resolution)
 /// selects the mip - see cloudLod.
 float sampleCloudDensity(float3 pos, bool cheap, float stepSize)
 {
-	float h = cloudHeightFraction(pos);
-	if (h <= 0 || h >= 1) { return 0; }
+	float shellHeight = cloudHeightFraction(pos);
+	if (shellHeight <= 0 || shellHeight >= 1) { return 0; }
 
-	float3 weather = sampleCloudWeather(pos);
+	float4 weather = sampleCloudWeather(pos);
 	float coverage = saturate(weather.r * cloudCoverageMultiplier);
 	if (coverage <= 0) { return 0; }
 
-	float type = saturate(weather.b + cloudTypeBias);
+	float precipitation = weather.g;
+
+	// Rain correlates with towering cloud rather than sitting independently of its shape, so a
+	// storm region reads as a storm rather than as rain scattered over ordinary cumulus.
+	float type = saturate(weather.b + cloudTypeBias + precipitation * cloudPrecipTypePush);
+
+	// The cloud occupies a SUB-BAND of the shell rather than all of it.
+	//
+	// The shell itself has to stay global - it is what the ray intersects - but where the cloud sits
+	// inside it can be a field. Cloud type already moves the top, because the three height gradients
+	// end at different heights, but all of them start at the bottom; without this the base is the
+	// one thing identical everywhere on the planet.
+	//
+	// Below the base this gives h = 0, and every gradient is zero there, so the region under the
+	// cloud empties out without a separate test.
+	float baseOffset = saturate(weather.a * cloudBaseVariation - precipitation * cloudPrecipBaseDrop);
+	float h = saturate((shellHeight - baseOffset) / max(0.05, 1 - baseOffset));
 
 	float gradient = cloudHeightGradient(h, type);
 	if (gradient <= 0) { return 0; }
@@ -212,6 +239,11 @@ float sampleCloudDensity(float3 pos, bool cheap, float stepSize)
 	// has to clear, so cloud grows outward from where it already is instead of fading up uniformly.
 	float density = cloudRemap(base, 1.0 - coverage, 1.0, 0.0, 1.0) * coverage;
 	if (density <= 0) { return 0; }
+
+	// Rain-bearing cloud is thicker. Applied to both the cheap and full paths so the light march
+	// and the shadow pass see the same cloud the view ray does.
+	density *= 1 + precipitation * cloudPrecipDensity;
+
 	if (cheap) { return density * cloudDensityMultiplier; }
 
 	float3 detail = CloudDetailNoise.SampleLevel(

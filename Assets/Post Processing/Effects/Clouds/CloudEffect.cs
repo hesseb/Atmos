@@ -36,6 +36,10 @@ namespace Clouds
 			Density = 4,
 			StartDistance = 5,
 			CameraRegion = 6,
+			Coverage = 7,
+			CloudType = 8,
+			Precipitation = 9,
+			BaseHeight = 10,
 		}
 
 		[Header("Baked volumes")]
@@ -56,14 +60,30 @@ namespace Clouds
 		[Tooltip("Broken versus overcast: higher pushes coverage toward all-or-nothing.")]
 		[Range(0.2f, 4f)] public float coverageContrast = 1.3f;
 
+		[Tooltip("Stretches every weather field to fill its range before it is folded to 0-1. An FBM " +
+			"normalised by the sum of its amplitudes never reaches that sum, so without this each " +
+			"field sat in the middle third of its range and the whole globe had nearly the same " +
+			"weather - cumulus almost everywhere, with stratus and cumulonimbus unreachable. The " +
+			"default is measured against the current octave counts; re-check it if those change.")]
+		[Range(1f, 4f)] public float weatherRangeGain = 2.3f;
+
 		[Tooltip("Cloud type varies on its own, much larger scale - a region can be solidly covered " +
 			"in flat stratus or lightly dotted with cumulus, and tying type to coverage would " +
 			"collapse the genera axis RQ1 scores.")]
 		[Range(0.1f, 6f)] public float typeScale = 1.1f;
 		[Range(-0.5f, 0.5f)] public float typeBias = 0f;
+		[Tooltip("Pushes cloud type toward the extremes, the same way coverage contrast does. This " +
+			"is what makes stratus and cumulonimbus regions reachable rather than everything " +
+			"tending to cumulus - which RQ1 scores directly.")]
+		[Range(0.2f, 4f)] public float typeContrast = 1.6f;
 
 		[Range(0.2f, 12f)] public float precipitationScale = 3.5f;
 		[Range(-0.5f, 0.5f)] public float precipitationBias = -0.1f;
+
+		[Tooltip("Feature size of the base-height field. Cloud type already moves the TOP of the " +
+			"layer; this is what moves the bottom, which is otherwise identical everywhere.")]
+		[Range(0.2f, 12f)] public float baseHeightScale = 1.6f;
+		[Range(-0.5f, 0.5f)] public float baseHeightBias = 0f;
 
 		[Tooltip("Speed the weather field drifts, in the sphere's own space rather than as a UV " +
 			"scroll - a scroll would slide features along latitude lines and tear them at the poles.")]
@@ -88,6 +108,17 @@ namespace Clouds
 		[Range(0f, 8f)] public float densityMultiplier = 1.5f;
 		[Range(0f, 3f)] public float coverageMultiplier = 1f;
 		[Range(-0.5f, 0.5f)] public float typeOffset = 0f;
+
+		[Tooltip("How much of the shell the cloud base can be lifted by. 0 puts every cloud on the " +
+			"floor of the shell, which is where they all sat before this existed.")]
+		[Range(0f, 0.6f)] public float baseVariation = 0.3f;
+
+		[Header("Precipitation")]
+		[Tooltip("Rain-bearing cloud is thicker, taller and hangs lower. One field drives all three, " +
+			"so a storm region reads as a storm rather than as three unrelated patterns.")]
+		[Range(0f, 3f)] public float precipDensity = 1.2f;
+		[Range(0f, 1f)] public float precipTypePush = 0.45f;
+		[Range(0f, 0.6f)] public float precipBaseDrop = 0.2f;
 		public Vector3 shapeWindDirection = new Vector3(1f, 0.1f, 0.2f);
 		public float shapeWindSpeed = 0.02f;
 		public float detailWindSpeed = 0.05f;
@@ -464,6 +495,10 @@ namespace Clouds
 			weatherCompute.SetFloat("coverageScale", coverageScale);
 			weatherCompute.SetFloat("coverageBias", coverageBias);
 			weatherCompute.SetFloat("coverageContrast", coverageContrast);
+			weatherCompute.SetFloat("weatherRangeGain", weatherRangeGain);
+			weatherCompute.SetFloat("typeContrast", typeContrast);
+			weatherCompute.SetFloat("baseHeightScale", baseHeightScale);
+			weatherCompute.SetFloat("baseHeightBias", baseHeightBias);
 			weatherCompute.SetFloat("typeScale", typeScale);
 			weatherCompute.SetFloat("typeBias", typeBias);
 			weatherCompute.SetFloat("precipitationScale", precipitationScale);
@@ -515,6 +550,10 @@ namespace Clouds
 			compute.SetFloat("cloudTypeBias", typeOffset);
 			compute.SetFloat("cloudShapeResolution", shapeNoise != null ? shapeNoise.width : 128);
 			compute.SetFloat("cloudDetailResolution", detailNoise != null ? detailNoise.width : 32);
+			compute.SetFloat("cloudBaseVariation", baseVariation);
+			compute.SetFloat("cloudPrecipDensity", precipDensity);
+			compute.SetFloat("cloudPrecipTypePush", precipTypePush);
+			compute.SetFloat("cloudPrecipBaseDrop", precipBaseDrop);
 			compute.SetVector("cloudShapeWind", ShapeWind);
 			compute.SetVector("cloudDetailWind", DetailWind);
 		}
@@ -588,6 +627,10 @@ namespace Clouds
 			material.SetFloat("cloudTypeBias", typeOffset);
 			material.SetFloat("cloudShapeResolution", shapeNoise != null ? shapeNoise.width : 128);
 			material.SetFloat("cloudDetailResolution", detailNoise != null ? detailNoise.width : 32);
+			material.SetFloat("cloudBaseVariation", baseVariation);
+			material.SetFloat("cloudPrecipDensity", precipDensity);
+			material.SetFloat("cloudPrecipTypePush", precipTypePush);
+			material.SetFloat("cloudPrecipBaseDrop", precipBaseDrop);
 
 			// The volumes drift faster than the weather field: the weather map is the slow-moving
 			// system, the noise is the air moving through it.

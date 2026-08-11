@@ -57,8 +57,9 @@ Shader "Hidden/Clouds"
 			float cloudStepSize;
 			float cloudStepGrowth;
 			int cloudMaxSteps;
-			/// 0 off, 3 shell length, 4 raw density, 5 start distance. Camera region is handled by
-			/// the composite pass instead, so that the clouds stay visible beside it.
+			/// 0 off, 3 shell length, 4 raw density, 5 start distance, 7-10 the weather channels.
+			/// Camera region is handled by the composite pass instead, so the clouds stay visible
+			/// beside it.
 			int cloudDebugMode;
 
 			/// Temporal reprojection. Period 1 marches every pixel; 4 marches one in four, in a 2x2
@@ -393,6 +394,20 @@ Shader "Hidden/Clouds"
 
 				if (cloudDebugMode == 3) { return float4(((nearSpan.y - nearSpan.x + max(0, farSpan.y - farSpan.x)) / 100.0).xxx, 0); }
 				if (cloudDebugMode == 5) { return float4((nearSpan.x / 50.0).xxx, 0); }
+
+				// The weather fields, painted onto the globe by sampling where the ray first meets
+				// the shell. Tuning four interacting fields without being able to look at them is
+				// guesswork, and it is how a field sitting in the middle third of its range went
+				// unnoticed.
+				if (cloudDebugMode >= 7)
+				{
+					float3 shellPoint = rayOrigin + rayDir * nearSpan.x;
+					float4 weather = sampleCloudWeather(shellPoint);
+					if (cloudDebugMode == 7) { return float4(weather.rrr, 0); }   // coverage
+					if (cloudDebugMode == 8) { return float4(weather.bbb, 0); }   // cloud type
+					if (cloudDebugMode == 9) { return float4(weather.ggg, 0); }   // precipitation
+					return float4(weather.aaa, 0);                                // base height
+				}
 
 				float cosViewSun = dot(rayDir, cloudSunDir);
 				float phase = cloudPhase(cosViewSun, cloudSilverIntensity);
