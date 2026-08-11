@@ -17,6 +17,17 @@ namespace Clouds
 	[CreateAssetMenu(menuName = "PostProcessing/Clouds")]
 	public class CloudEffect : PostProcessingEffect
 	{
+		/// <summary>
+		/// What the march costs, as a switchable mode over one kernel rather than as separate
+		/// renderers - so RQ2 gets a curve across a technique instead of a single number, and the
+		/// comparison between the points on it is not confounded by two implementations.
+		/// </summary>
+		public enum CostMode
+		{
+			Full,
+			Half,
+		}
+
 		[Header("Baked volumes")]
 		public Texture3D shapeNoise;
 		public Texture3D detailNoise;
@@ -135,6 +146,18 @@ namespace Clouds
 		[Range(0f, 0.99f)] public float phaseBackward = 0.2f;
 		[Range(0f, 1f)] public float phaseBlend = 0.5f;
 
+		[Header("Cost")]
+		[Tooltip("Full marches every pixel - the honest upper bound and the cleanest image. Half " +
+			"marches a quarter of the pixels and upsamples with a depth-aware filter. Both are the " +
+			"same march at different resolutions, so the difference between them is a measurement " +
+			"of the technique rather than of two implementations.")]
+		public CostMode costMode = CostMode.Half;
+
+		[Tooltip("How hard the upsample rejects a neighbour across a depth discontinuity. Higher " +
+			"keeps silhouettes crisp and lets more low-resolution stair-stepping through; lower " +
+			"smooths the stepping and bleeds cloud across edges.")]
+		[Range(0f, 64f)] public float depthRejection = 8f;
+
 		[Header("Shadows on the ground")]
 		public ComputeShader shadowCompute;
 		[Tooltip("Equirectangular, so it needs no shadow frustum and does not change with the " +
@@ -227,7 +250,31 @@ namespace Clouds
 			}
 
 			SetProperties();
-			Graphics.Blit(source, target, material);
+
+			// Two passes: march into an offscreen target, then composite it over the frame. The
+			// split is what allows the march to run at a lower resolution than the frame - the
+			// whole of the Half mode - and it keeps the two modes on one code path, which is what
+			// makes the cost difference between them attributable to the resolution alone.
+			int divisor = costMode == CostMode.Full ? 1 : 2;
+			int width = Mathf.Max(1, source.width / divisor);
+			int height = Mathf.Max(1, source.height / divisor);
+
+			// Half format: the cloud's accumulated luminance is not bounded by 1, so an 8-bit target
+			// would clip the lit tops flat.
+			RenderTexture cloudTex = RenderTexture.GetTemporary(
+				width, height, 0, RenderTextureFormat.ARGBHalf);
+			cloudTex.filterMode = FilterMode.Bilinear;
+
+			Graphics.Blit(source, cloudTex, material, 0);
+
+			material.SetTexture("_CloudTex", cloudTex);
+			material.SetVector("_CloudTexSize", new Vector4(width, height, 1f / width, 1f / height));
+			material.SetFloat("_CloudUpsample", divisor);
+			material.SetFloat("_CloudDepthRejection", depthRejection);
+
+			Graphics.Blit(source, target, material, 1);
+
+			RenderTexture.ReleaseTemporary(cloudTex);
 		}
 
 		void RenderWeatherMap()
