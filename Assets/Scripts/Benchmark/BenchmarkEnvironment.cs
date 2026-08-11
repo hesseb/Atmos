@@ -229,10 +229,27 @@ public static class BenchmarkEnvironment
 		// silently measures the staleness rather than the technique. This puts it in warnings[]
 		// next to the numbers it invalidates.
 		AtmosphereEffect atmosphere = FindAtmosphere(refs);
-		foreach (string stale in SkyBakeStamp.FindStale(atmosphere, refs.baselineSky))
+		Clouds.CloudEffect clouds = FindClouds(refs);
+		foreach (string stale in SkyBakeStamp.FindStale(atmosphere, refs.baselineSky, clouds))
 		{
 			warnings.Add($"BAKE_STALE:{stale}");
 		}
+	}
+
+	/// <summary>
+	/// The volumetric cloud effect, for checking the captured baseline layers against it. Found by
+	/// scanning the chain rather than held as a scene reference, the same way the atmosphere is -
+	/// an effect is an asset, not a scene object.
+	/// </summary>
+	static Clouds.CloudEffect FindClouds(BenchmarkSceneRefs refs)
+	{
+		if (refs.postProcessing == null || refs.postProcessing.effects == null) { return null; }
+
+		foreach (PostProcessingEffect effect in refs.postProcessing.effects)
+		{
+			if (effect is Clouds.CloudEffect clouds) { return clouds; }
+		}
+		return null;
 	}
 
 	static AtmosphereEffect FindAtmosphere(BenchmarkSceneRefs refs)

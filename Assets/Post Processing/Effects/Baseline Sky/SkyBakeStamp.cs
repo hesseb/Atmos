@@ -39,7 +39,15 @@ public class SkyBakeStamp : ScriptableObject
 		/// <summary>Depends only on the tone-map constants: the hand-authored gradient is
 		/// inverse-mapped against them, so it goes stale when they move even though no
 		/// atmosphere parameter changed.</summary>
-		ToneMap
+		ToneMap,
+		/// <summary>Depends on the volumetric cloud renderer's parameters. Only the baseline cloud
+		/// layers CAPTURED from it use this - the authored layers are procedural and depend on
+		/// nothing in the scene, so they are never stale.
+		///
+		/// This one matters more than the others: the captured layer exists precisely so that the
+		/// baseline and the volumetric show the same clouds, and a stale capture quietly breaks the
+		/// one comparison it was built to make.</summary>
+		Clouds
 	}
 
 	[System.Serializable]
@@ -163,6 +171,48 @@ public class SkyBakeStamp : ScriptableObject
 			.Add("groundAlbedo", a.groundAlbedo);
 	}
 
+	/// <summary>
+	/// Everything the volumetric cloud field's shape depends on. The lighting parameters are
+	/// deliberately absent: the capture records where cloud IS, not how it is lit, so sun intensity
+	/// or phase moving does not stale it.
+	/// </summary>
+	public static Inputs CloudInputs(Clouds.CloudEffect c)
+	{
+		if (c == null) { return new Inputs(); }
+
+		return new Inputs()
+			.Add("bodyRadius", c.bodyRadius)
+			.Add("cloudBottomAltitude", c.cloudBottomAltitude)
+			.Add("cloudTopAltitude", c.cloudTopAltitude)
+			.Add("shapeScale", c.shapeScale)
+			.Add("detailScale", c.detailScale)
+			.Add("detailWeight", c.detailWeight)
+			.Add("densityMultiplier", c.densityMultiplier)
+			.Add("coverageMultiplier", c.coverageMultiplier)
+			.Add("typeOffset", c.typeOffset)
+			.Add("baseVariation", c.baseVariation)
+			.Add("bandThickness", c.bandThickness)
+			.Add("edgeSoftness", c.edgeSoftness)
+			.Add("precipDensity", c.precipDensity)
+			.Add("precipTypePush", c.precipTypePush)
+			.Add("precipBaseDrop", c.precipBaseDrop)
+			.Add("weatherMapSize", c.weatherMapSize)
+			.Add("weatherOctaves", c.weatherOctaves)
+			.Add("weatherLacunarity", c.weatherLacunarity)
+			.Add("weatherGain", c.weatherGain)
+			.Add("weatherRangeGain", c.weatherRangeGain)
+			.Add("coverageScale", c.coverageScale)
+			.Add("coverageBias", c.coverageBias)
+			.Add("coverageContrast", c.coverageContrast)
+			.Add("typeScale", c.typeScale)
+			.Add("typeBias", c.typeBias)
+			.Add("typeContrast", c.typeContrast)
+			.Add("precipitationScale", c.precipitationScale)
+			.Add("precipitationBias", c.precipitationBias)
+			.Add("baseHeightScale", c.baseHeightScale)
+			.Add("baseHeightBias", c.baseHeightBias);
+	}
+
 	/// <summary>The tone-map constants the hand-authored gradient is inverse-mapped against.</summary>
 	public static Inputs ToneMapInputs(BaselineSkyRenderer b)
 	{
@@ -174,9 +224,15 @@ public class SkyBakeStamp : ScriptableObject
 
 	/// <summary>The scene-derived inputs for a recipe. One place, so bakers and the staleness
 	/// check cannot disagree about what an asset depends on.</summary>
-	public static Inputs InputsFor(Recipe recipe, AtmosphereEffect atmosphere, BaselineSkyRenderer baseline)
+	public static Inputs InputsFor(Recipe recipe, AtmosphereEffect atmosphere, BaselineSkyRenderer baseline,
+		Clouds.CloudEffect clouds = null)
 	{
-		return recipe == Recipe.ToneMap ? ToneMapInputs(baseline) : AtmosphereInputs(atmosphere);
+		switch (recipe)
+		{
+			case Recipe.ToneMap: return ToneMapInputs(baseline);
+			case Recipe.Clouds: return CloudInputs(clouds);
+			default: return AtmosphereInputs(atmosphere);
+		}
 	}
 
 	/// <summary>
@@ -185,7 +241,8 @@ public class SkyBakeStamp : ScriptableObject
 	/// Returns descriptions rather than logging, so the benchmark harness can fold them into
 	/// `run.json`'s warnings where they end up next to the numbers they invalidate.
 	/// </summary>
-	public static List<string> FindStale(AtmosphereEffect atmosphere, BaselineSkyRenderer baseline)
+	public static List<string> FindStale(AtmosphereEffect atmosphere, BaselineSkyRenderer baseline,
+		Clouds.CloudEffect clouds = null)
 	{
 		var stale = new List<string>();
 		SkyBakeStamp stamp = Load();
@@ -193,7 +250,12 @@ public class SkyBakeStamp : ScriptableObject
 
 		foreach (Entry entry in stamp.entries)
 		{
-			if (InputsFor(entry.recipe, atmosphere, baseline).Hash() != entry.hash)
+			// A cloud-recipe entry cannot be checked without the effect it derives from, and
+			// reporting it stale on that basis would be a false alarm every time the clouds are
+			// simply not in the chain.
+			if (entry.recipe == Recipe.Clouds && clouds == null) { continue; }
+
+			if (InputsFor(entry.recipe, atmosphere, baseline, clouds).Hash() != entry.hash)
 			{
 				stale.Add($"{entry.assetPath} (baked {entry.bakedUtc})");
 			}

@@ -1,7 +1,16 @@
 #pragma kernel BakeAuthored
+#pragma kernel CaptureVolumetric
+#pragma kernel ComputeNormals
 
 #include "Assets/Scripts/Shader Common/GeoMath.hlsl"
 #include "Assets/Post Processing/Effects/Clouds/Shader Common/CloudNoiseCommon.hlsl"
+// The volumetric density model itself, for the capture kernel.
+//
+// Included rather than reimplemented, for the reason BakeSkyGradient.compute states about the
+// sky: any difference between the captured baseline and the volumetric renderer could otherwise
+// be a difference in the bake, and that is the one thing this comparison cannot tolerate. The
+// captured layer exists so the two show the SAME clouds.
+#include "Assets/Post Processing/Effects/Clouds/Shader Common/CloudCommon.hlsl"
 
 // Bakes a baseline cloud layer: an equirectangular texture describing a sheet of cloud wrapped
 // around the globe.
@@ -127,4 +136,111 @@ void BakeAuthored(uint3 id : SV_DispatchThreadID)
 	float3 normal = normalize(float3(-dEast * reliefStrength, -dNorth * reliefStrength, 1.0));
 
 	Result[id.xy] = float4(normal.xy * 0.5 + 0.5, height, density);
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// Capture: the volumetric cloud field flattened into the same layer format.
+//
+// Not a shippable baseline - it needs the volumetric renderer to exist in order to be produced -
+// but a control condition. Because the content is identical, any remaining visual difference
+// against the volumetric is the TECHNIQUE rather than the art, which is exactly what RQ1 asks and
+// what the baseline sky's GradientBaked variant exists to provide for the sky.
+// ---------------------------------------------------------------------------------------------
+
+int captureSteps;
+float captureAbsorption;
+float captureThreshold;
+
+/// The span this capture marches, which is HALF the shell - the lower layer takes the bottom
+/// half and the upper the top, so the two parallax against one another rather than being the
+/// same sheet drawn twice.
+///
+/// Separate uniforms rather than overriding cloudInnerRadius and cloudOuterRadius, which would
+/// have been the obvious way to do it and is a trap: the density model reads those itself, in
+/// cloudHeightFraction, to decide where in the shell a sample sits. Narrowing them would move
+/// every height gradient along with the march and capture a cloud that does not exist.
+float captureFloor;
+float captureCeiling;
+
+[numthreads(8, 8, 1)]
+void CaptureVolumetric(uint3 id : SV_DispatchThreadID)
+{
+	uint2 size = (uint2)outputSize;
+	if (id.x >= size.x || id.y >= size.y) { return; }
+
+	float2 uv = (id.xy + 0.5) / outputSize;
+	float3 sphereNormal = uvToPointOnSphere(uv);
+
+	// Straight down from the top of the shell to its floor. A vertical column rather than a view
+	// ray, because this is a map of where cloud is, not a picture of it from anywhere.
+	float3 top = sphereNormal * captureCeiling;
+	float3 down = -sphereNormal;
+	float span = captureCeiling - captureFloor;
+	float stepSize = span / max(1, captureSteps);
+
+	float opticalDepth = 0;
+	float topHeight = 0;
+	bool foundTop = false;
+
+	for (int i = 0; i < captureSteps; i++)
+	{
+		float3 pos = top + down * ((i + 0.5) * stepSize);
+
+		// `cheap`: no detail erosion. The layer is a sheet with a height field, so detail at a scale
+		// finer than one texel of it has nowhere to go.
+		float density = max(0, sampleCloudDensity(pos, true, stepSize));
+
+		// The first sample with real density, marching downward, is the cloud top - which is the
+		// surface the baseline will shade.
+		if (!foundTop && density > captureThreshold)
+		{
+			// Height within THIS layer, not within the whole shell, so each layer's height field
+			// spans its own 0 to 1 and the relief reads the same on both.
+			topHeight = saturate((length(pos) - captureFloor) / max(1e-4, span));
+			foundTop = true;
+		}
+
+		opticalDepth += density * stepSize;
+	}
+
+	// Opacity rather than raw optical depth: the layer's alpha is how much it hides, and Beer is
+	// what the volumetric would have arrived at along the same column.
+	float density = 1 - exp(-opticalDepth * captureAbsorption);
+
+	// Normals are left to ComputeNormals below. Deriving them here would mean four more full
+	// columns per texel; reading them back off the height field afterwards costs four taps.
+	Result[id.xy] = float4(0.5, 0.5, topHeight, density);
+}
+
+// ---------------------------------------------------------------------------------------------
+
+Texture2D<float4> Source;
+float normalStrength;
+
+/// Fills in RG from the height already in B.
+///
+/// A separate pass because a kernel cannot read its neighbours out of the texture it is writing -
+/// they may already have been overwritten.
+[numthreads(8, 8, 1)]
+void ComputeNormals(uint3 id : SV_DispatchThreadID)
+{
+	uint2 size = (uint2)outputSize;
+	if (id.x >= size.x || id.y >= size.y) { return; }
+
+	// Longitude wraps, latitude clamps - the same split the textures themselves are imported with.
+	uint2 e = uint2((id.x + 1) % size.x, id.y);
+	uint2 w = uint2((id.x + size.x - 1) % size.x, id.y);
+	uint2 n = uint2(id.x, min(id.y + 1, size.y - 1));
+	uint2 s = uint2(id.x, max((int)id.y - 1, 0));
+
+	float dEast = Source[e].b - Source[w].b;
+	float dNorth = Source[n].b - Source[s].b;
+
+	// Normalised, not clamped, for the reason the authored path documents: a clamp encodes every
+	// steep slope identically and loses the difference between a swell and an edge.
+	float3 normal = normalize(float3(-dEast * normalStrength, -dNorth * normalStrength, 1.0));
+
+	float4 source = Source[id.xy];
+	Result[id.xy] = float4(normal.xy * 0.5 + 0.5, source.b, source.a);
 }
