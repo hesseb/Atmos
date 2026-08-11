@@ -45,10 +45,19 @@ void CSCloudShadow(uint3 id : SV_DispatchThreadID)
 
 	// Start at the cloud base rather than at sea level: there is no cloud below it by construction,
 	// so the segment between would only be empty steps.
-	float3 origin = sphereNormal * cloudInnerRadius;
+	//
+	// Lifted clear of the inner sphere rather than placed exactly on it. Exactly on it,
+	// dot(origin, origin) - radius^2 rounds to either sign depending on the texel, and the two
+	// signs give completely different answers: negative counts as inside the inner sphere, which
+	// makes the near span collapse to nothing and the texel report no shadow at all, while positive
+	// misses it and marches the whole shell. Roughly half the map came out unshadowed, in a fixed
+	// speckle that the shadow map's 190-fold magnification on screen turns into blotches.
+	//
+	// The old three-branch cloudShellSegment took an explicit "below the shell" case here and was
+	// not exposed to this; the subtraction form is cleaner but has no such case, so the origin has
+	// to be unambiguous.
+	float3 origin = sphereNormal * (cloudInnerRadius + 1e-2);
 
-	// Marching outward from the cloud base toward the sun, so the ray leaves the shell and never
-	// returns to it - the near span is the whole of it and the far span is empty.
 	float2 nearSpan, farSpan;
 	if (!cloudShellSegments(origin, shadowSunDir, nearSpan, farSpan))
 	{
@@ -56,8 +65,11 @@ void CSCloudShadow(uint3 id : SV_DispatchThreadID)
 		return;
 	}
 
+	// Both spans, not just the near one. Marching outward toward a high sun the far span is empty,
+	// but with the sun low the ray can graze back out through the base and the cloud beyond it is
+	// real - the same two-crossing geometry the view ray has.
 	float start = nearSpan.x;
-	float end = nearSpan.y;
+	float end = max(nearSpan.y, farSpan.y);
 	if (end <= start)
 	{
 		Result[id.xy] = 1;
