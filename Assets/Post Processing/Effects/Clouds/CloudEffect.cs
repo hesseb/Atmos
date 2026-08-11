@@ -26,6 +26,7 @@ namespace Clouds
 		{
 			Full,
 			Half,
+			Temporal,
 		}
 
 		public enum DebugMode
@@ -213,6 +214,10 @@ namespace Clouds
 			"smooths the stepping and bleeds cloud across edges.")]
 		[Range(0f, 64f)] public float depthRejection = 8f;
 
+		[Tooltip("Temporal only. How much of a freshly marched pixel to take each frame. Lower is " +
+			"steadier but slower to respond, so a fast camera pan leaves more of a trail.")]
+		[Range(0.05f, 1f)] public float historyBlend = 0.2f;
+
 		[Header("Shadows on the ground")]
 		public ComputeShader shadowCompute;
 		[Tooltip("Equirectangular, so it needs no shadow frustum and does not change with the " +
@@ -227,6 +232,13 @@ namespace Clouds
 
 		RenderTexture weatherMap;
 		RenderTexture shadowMap;
+
+		// Ping-ponged: this frame resolves into one while reading the other.
+		readonly RenderTexture[] history = new RenderTexture[2];
+		int historyIndex;
+		bool historyValid;
+		int temporalFrame;
+		Matrix4x4 previousViewProjection = Matrix4x4.identity;
 
 		// Elapsed time, accumulated rather than read from Time.time, so the benchmark's fixed
 		// captureDeltaTime advances the weather at the same rate a real frame would.
@@ -259,6 +271,37 @@ namespace Clouds
 			Camera.onPreCull -= RenderMaps;
 			ReleaseWeatherMap();
 			ReleaseShadowMap();
+			ReleaseHistory();
+		}
+
+		void ReleaseHistory()
+		{
+			for (int i = 0; i < history.Length; i++)
+			{
+				if (history[i] == null) { continue; }
+				history[i].Release();
+				DestroyImmediate(history[i]);
+				history[i] = null;
+			}
+			historyValid = false;
+		}
+
+		/// <summary>Full-resolution accumulation buffers, recreated when the frame size changes.</summary>
+		void EnsureHistory(int width, int height)
+		{
+			if (history[0] != null && history[0].width == width && history[0].height == height) { return; }
+
+			ReleaseHistory();
+			for (int i = 0; i < history.Length; i++)
+			{
+				history[i] = new RenderTexture(width, height, 0, RenderTextureFormat.ARGBHalf)
+				{
+					filterMode = FilterMode.Bilinear,
+					wrapMode = TextureWrapMode.Clamp,
+					name = $"Cloud History {i}"
+				};
+				history[i].Create();
+			}
 		}
 
 		void ReleaseShadowMap()
@@ -311,13 +354,21 @@ namespace Clouds
 
 			SetProperties();
 
-			// Two passes: march into an offscreen target, then composite it over the frame. The
-			// split is what allows the march to run at a lower resolution than the frame - the
-			// whole of the Half mode - and it keeps the two modes on one code path, which is what
-			// makes the cost difference between them attributable to the resolution alone.
-			int divisor = costMode == CostMode.Full ? 1 : 2;
+			// March into an offscreen target, optionally resolve it against the previous frame, then
+			// composite over the frame. Keeping all three cost modes on one march is what makes the
+			// difference between them attributable to the strategy rather than to three renderers.
+			//
+			//   Full      every pixel, every frame
+			//   Half      quarter of the pixels, upsampled with a depth-aware filter
+			//   Temporal  full resolution, but a quarter of the pixels marched per frame and the
+			//             rest reprojected from the previous result
+			int divisor = costMode == CostMode.Half ? 2 : 1;
 			int width = Mathf.Max(1, source.width / divisor);
 			int height = Mathf.Max(1, source.height / divisor);
+
+			material.SetVector("_CloudMarchSize", new Vector4(width, height, 1f / width, 1f / height));
+			material.SetInt("cloudTemporalPeriod", costMode == CostMode.Temporal ? 4 : 1);
+			material.SetInt("cloudTemporalIndex", temporalFrame & 3);
 
 			// Half format: the cloud's accumulated luminance is not bounded by 1, so an 8-bit target
 			// would clip the lit tops flat.
@@ -327,14 +378,51 @@ namespace Clouds
 
 			Graphics.Blit(source, cloudTex, material, 0);
 
-			material.SetTexture("_CloudTex", cloudTex);
+			RenderTexture resolved = cloudTex;
+
+			if (costMode == CostMode.Temporal)
+			{
+				EnsureHistory(width, height);
+				int previous = historyIndex;
+				int current = 1 - historyIndex;
+
+				material.SetTexture("_CloudTex", cloudTex);
+				material.SetTexture("_CloudHistory", history[previous]);
+				material.SetMatrix("_CloudPrevViewProj", previousViewProjection);
+				material.SetFloat("_CloudHistoryBlend", historyBlend);
+				material.SetFloat("_CloudHistoryValid", historyValid ? 1f : 0f);
+				// Mid-shell, as the stand-in depth for reprojection - see the note in the resolve
+				// pass for why the scene depth cannot be used.
+				material.SetFloat("_CloudReprojectRadius", (InnerRadius + OuterRadius) * 0.5f);
+
+				Graphics.Blit(source, history[current], material, 1);
+
+				resolved = history[current];
+				historyIndex = current;
+				historyValid = true;
+			}
+			else
+			{
+				historyValid = false;
+			}
+
+			material.SetTexture("_CloudTex", resolved);
 			material.SetVector("_CloudTexSize", new Vector4(width, height, 1f / width, 1f / height));
 			material.SetFloat("_CloudUpsample", divisor);
 			material.SetFloat("_CloudDepthRejection", depthRejection);
 
-			Graphics.Blit(source, target, material, 1);
+			Graphics.Blit(source, target, material, 2);
 
 			RenderTexture.ReleaseTemporary(cloudTex);
+
+			// Captured after drawing, for the next frame to reproject against. The plain projection
+			// matrix rather than the GPU one: this is used to derive texture coordinates, not to
+			// rasterise, so the platform's clip-space conventions are not wanted here.
+			if (cam != null)
+			{
+				previousViewProjection = cam.projectionMatrix * cam.worldToCameraMatrix;
+			}
+			temporalFrame++;
 		}
 
 		void RenderWeatherMap()
