@@ -20,6 +20,7 @@ public class WorldScaleController : MonoBehaviour
 	public WorldScalePreset[] presets;
 
 	public AtmosphereEffect atmosphere;
+	public Clouds.CloudEffect clouds;
 	public TestbedCamera testbedCamera;
 
 	[Header("Planet scaling")]
@@ -119,7 +120,8 @@ public class WorldScaleController : MonoBehaviour
 			{
 				foreach (PostProcessingEffect effect in postProcessing.effects)
 				{
-					if (effect is AtmosphereEffect found) { atmosphere = found; break; }
+					if (atmosphere == null && effect is AtmosphereEffect foundAtmosphere) { atmosphere = foundAtmosphere; }
+					if (clouds == null && effect is Clouds.CloudEffect foundClouds) { clouds = foundClouds; }
 				}
 			}
 		}
@@ -217,6 +219,17 @@ public class WorldScaleController : MonoBehaviour
 				if (atmosphere != null)
 				{
 					scope.Set(() => atmosphere.bodyRadius, v => atmosphere.bodyRadius = v, baseRadius * k);
+				}
+
+				// The cloud shell sits on the same sphere and has to move with it. Without this the
+				// planet grows to 2400 units at 16x while the shell stays at 150 and ends up buried
+				// inside it. The ALTITUDES are deliberately left alone: kilometres per world unit is
+				// fixed across the presets, so a cloud base of 0.55 units is the same real height at
+				// every scale - which is the point, since a bigger planet should have a
+				// proportionally thinner atmosphere, not a proportionally taller one.
+				if (clouds != null)
+				{
+					scope.Set(() => clouds.bodyRadius, v => clouds.bodyRadius = v, baseRadius * k);
 				}
 			}
 
