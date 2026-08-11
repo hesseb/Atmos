@@ -336,13 +336,16 @@ namespace Clouds
 				Unity.Collections.NativeArray<byte>.Copy(slice, 0, data, z * sliceBytes, sliceBytes);
 			}
 
-			var texture = new Texture3D(resolution, resolution, resolution, TextureFormat.RGBA32, false)
+			// With mips. The march selects one from its step length, so that a step wider than a
+			// feature reads a pre-filtered volume instead of point-sampling past it - without a mip
+			// chain the density depends on the step size, and therefore on the view angle.
+			var texture = new Texture3D(resolution, resolution, resolution, TextureFormat.RGBA32, mipChain: true)
 			{
 				wrapMode = TextureWrapMode.Repeat,
 				filterMode = FilterMode.Bilinear
 			};
 			texture.SetPixelData(data, 0);
-			texture.Apply(updateMipmaps: false, makeNoLongerReadable: false);
+			texture.Apply(updateMipmaps: true, makeNoLongerReadable: false);
 
 			System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path));
 

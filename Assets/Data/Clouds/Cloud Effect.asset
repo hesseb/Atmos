@@ -21,7 +21,7 @@ MonoBehaviour:
   weatherOctaves: 5
   weatherLacunarity: 2
   weatherGain: 0.5
-  coverageScale: 2.2
+  coverageScale: 1.92
   coverageBias: 0
   coverageContrast: 1.3
   typeScale: 1.1
@@ -37,7 +37,7 @@ MonoBehaviour:
   detailWeight: 0.312
   densityMultiplier: 1.28
   coverageMultiplier: 0.61
-  typeOffset: -0.118
+  typeOffset: -0.035
   shapeWindDirection: {x: 1, y: 0.1, z: 0.2}
   shapeWindSpeed: 0.02
   detailWindSpeed: 0.05
@@ -46,9 +46,9 @@ MonoBehaviour:
   maxSteps: 128
   jitterStrength: 1
   extinction: 4.1
-  sunIntensity: 2
-  ambientIntensity: 0.4
+  sunIntensity: 1.12
   sunTransmittanceWeight: 0.7
+  ambientIntensity: 0.4
   ambientHorizon: 0.41
   ambientFallback: {r: 0.4, g: 0.45, b: 0.55, a: 1}
   lightMarchLength: 8
@@ -58,8 +58,10 @@ MonoBehaviour:
   phaseForward: 0.45
   phaseBackward: 0.2
   phaseBlend: 0.5
+  costMode: 1
+  depthRejection: 8
   shadowCompute: {fileID: 7200000, guid: 7e32ea3e1f7e5774a905538e6cd29a45, type: 3}
   shadowMapSize: {x: 512, y: 256}
   shadowSteps: 32
-  shadowAbsorption: 1.22
-  shadowStrength: 0.683
+  shadowAbsorption: 1.52
+  shadowStrength: 0.8
