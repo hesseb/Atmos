@@ -56,7 +56,7 @@ MonoBehaviour:
   debugMode: 0
   jitterStrength: 1
   extinction: 4.1
-  sunIntensity: 1.12
+  sunIntensity: 1.23
   sunTransmittanceWeight: 0.7
   ambientIntensity: 0.4
   ambientHorizon: 0.41
@@ -70,7 +70,7 @@ MonoBehaviour:
   phaseForward: 0.45
   phaseBackward: 0.2
   phaseBlend: 1
-  silverIntensity: 1.9
+  silverIntensity: 1.8
   silverSpread: 0.6
   moonIntensity: 2
   moonSilverIntensity: 2
@@ -81,5 +81,5 @@ MonoBehaviour:
   shadowMapSize: {x: 512, y: 256}
   shadowSteps: 32
   shadowAbsorption: 1.52
-  shadowDetailScale: 4
+  shadowDetailScale: 0.5
   shadowStrength: 0.8
