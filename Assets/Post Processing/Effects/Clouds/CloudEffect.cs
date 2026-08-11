@@ -94,6 +94,11 @@ namespace Clouds
 			"sunset on the undersides.")]
 		[Range(0f, 4f)] public float ambientIntensity = 1f;
 
+		[Tooltip("How much of the skylight is taken from the sunlit horizon rather than the zenith. " +
+			"At sunset the zenith is deep blue and the horizon is orange, so a zenith-only lookup " +
+			"throws away the colour the clouds should be picking up.")]
+		[Range(0f, 1f)] public float ambientHorizon = 0.6f;
+
 		[Tooltip("Stands in for skylight when there is no physically based atmosphere bound, so the " +
 			"clouds are still lit in the baseline and ablation profiles rather than going black.")]
 		public Color ambientFallback = new Color(0.4f, 0.45f, 0.55f);
@@ -112,8 +117,11 @@ namespace Clouds
 		[Range(0f, 1f)] public float powderStrength = 0.7f;
 
 		[Header("Phase")]
-		[Range(0f, 0.99f)] public float phaseForward = 0.8f;
-		[Range(0f, 0.99f)] public float phaseBackward = 0.3f;
+		[Tooltip("Forward lobe. Softer than the reference project's 0.8, because that value 's " +
+			"peak is roughly twenty times its sideways value - which only became visible once the " +
+			"phase was scaled into the right units.")]
+		[Range(0f, 0.99f)] public float phaseForward = 0.45f;
+		[Range(0f, 0.99f)] public float phaseBackward = 0.2f;
 		[Range(0f, 1f)] public float phaseBlend = 0.5f;
 
 		RenderTexture weatherMap;
@@ -244,6 +252,7 @@ namespace Clouds
 			material.SetVector("cloudSunColour", new Vector4(sunColour.r, sunColour.g, sunColour.b, 1));
 			material.SetFloat("cloudSunIntensity", sunIntensity);
 			material.SetFloat("cloudAmbientIntensity", ambientIntensity);
+			material.SetFloat("cloudAmbientHorizon", ambientHorizon);
 			material.SetVector("cloudAmbientFallback", new Vector4(ambientFallback.r, ambientFallback.g, ambientFallback.b, 1));
 
 			material.SetFloat("cloudLightMarchLength", lightMarchLength);

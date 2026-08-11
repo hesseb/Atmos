@@ -13,10 +13,10 @@ MonoBehaviour:
   m_Name: Cloud Effect
   m_EditorClassIdentifier: Assembly-CSharp::Clouds.CloudEffect
   enabled: 1
-  shader: {fileID: 0}
-  shapeNoise: {fileID: 0}
-  detailNoise: {fileID: 0}
-  weatherCompute: {fileID: 0}
+  shader: {fileID: 4800000, guid: 499e1860038c91842aadc792298d713d, type: 3}
+  shapeNoise: {fileID: 11700000, guid: 3b4e2d58ef15a90469fc9fa36d9affda, type: 2}
+  detailNoise: {fileID: 11700000, guid: c26c036913c039c478adc32897544e1b, type: 2}
+  weatherCompute: {fileID: 7200000, guid: efdcf8a029ccffd47bac0b0674f61d26, type: 3}
   weatherMapSize: {x: 512, y: 256}
   weatherOctaves: 5
   weatherLacunarity: 2
@@ -37,7 +37,7 @@ MonoBehaviour:
   detailWeight: 0.35
   densityMultiplier: 1.5
   coverageMultiplier: 1
-  typeOffset: 0
+  typeOffset: -0.217
   shapeWindDirection: {x: 1, y: 0.1, z: 0.2}
   shapeWindSpeed: 0.02
   detailWindSpeed: 0.05
@@ -46,4 +46,13 @@ MonoBehaviour:
   maxSteps: 128
   jitterStrength: 1
   extinction: 4
-  flatColour: {r: 1, g: 1, b: 1, a: 1}
+  sunIntensity: 1.4
+  ambientIntensity: 1
+  ambientFallback: {r: 0.4, g: 0.45, b: 0.55, a: 1}
+  lightMarchLength: 1.6
+  lightAbsorption: 1.1
+  coneSpread: 0.25
+  powderStrength: 0.7
+  phaseForward: 0.8
+  phaseBackward: 0.3
+  phaseBlend: 0.5

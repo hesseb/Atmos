@@ -556,7 +556,7 @@ MonoBehaviour:
   sunColour: {r: 1, g: 0.9998588, b: 0.99840474, a: 1}
   timeOfDayT: 0.98601604
   maxSize: 0
---- !u!43 &1001472672
+--- !u!43 &944772813
 Mesh:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -949,6 +949,7 @@ MonoBehaviour:
   effects:
   - {fileID: 11400000, guid: 7526e0f14e0a0a7479aeb2e5d87ae0a3, type: 2}
   - {fileID: 11400000, guid: 04fe8bd6952ff0c42bd708348a5b3dd1, type: 2}
+  - {fileID: 11400000, guid: b60f81ca37998eb469f16ebbedc9b1cd, type: 2}
   - {fileID: 11400000, guid: e5eed753fe86b904b8e130f8b903378d, type: 2}
   - {fileID: 11400000, guid: e608ff61b1c8d714baca914975e7bdf2, type: 2}
 --- !u!1 &1389253764
@@ -1040,7 +1041,7 @@ MeshFilter:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1389253764}
-  m_Mesh: {fileID: 1001472672}
+  m_Mesh: {fileID: 944772813}
 --- !u!1 &1433245418
 GameObject:
   m_ObjectHideFlags: 0
@@ -1510,8 +1511,8 @@ MonoBehaviour:
   heading: 0
   roll: 0
   panSpeed: 0.35
-  modeSwitchAltitudeFraction: 0.5
   referenceAltitude: 10
+  modeSwitchAltitudeFraction: 0.5
   headingSpeed: 60
   pitchSpeed: 40
   zoomSensitivity: 1.5
@@ -1538,6 +1539,35 @@ MonoBehaviour:
   startAtHomeView: 1
   bookmarks: {fileID: 11400000, guid: e4750ca0ef052c64ab59835231ab6974, type: 2}
   captureModifier: 304
+--- !u!114 &1735868850
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1735868799}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8b04e6f1d2a75c34996318bd07e5fa29, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::WorldScaleController
+  presets:
+  - {fileID: 11400000, guid: 3c81f47ab29e05e4d9a17206b8f4c3d1, type: 2}
+  - {fileID: 11400000, guid: 9f2b6d0c74a13ae4b85c9127e6d0af38, type: 2}
+  - {fileID: 11400000, guid: 1a5e83c0b9d47f24aa03e6178d92b4c7, type: 2}
+  atmosphere: {fileID: 0}
+  testbedCamera: {fileID: 1735868801}
+  worldRoot: {fileID: 0}
+  heightSettings: {fileID: 0}
+  lodSystem: {fileID: 0}
+  renderCamera: {fileID: 0}
+  renderSettings: {fileID: 0}
+  labelSystem: {fileID: 0}
+  cityLights: {fileID: 0}
+  moon: {fileID: 0}
+  terrainLoader: {fileID: 0}
+  cycleKey: 288
+  applyOnStart: 1
 --- !u!1 &1737174887
 GameObject:
   m_ObjectHideFlags: 0
@@ -2030,32 +2060,3 @@ SceneRoots:
   - {fileID: 1755095013}
   - {fileID: 1712829206}
   - {fileID: 1433245419}
---- !u!114 &1735868850
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1735868799}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 8b04e6f1d2a75c34996318bd07e5fa29, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::WorldScaleController
-  presets:
-  - {fileID: 11400000, guid: 3c81f47ab29e05e4d9a17206b8f4c3d1, type: 2}
-  - {fileID: 11400000, guid: 9f2b6d0c74a13ae4b85c9127e6d0af38, type: 2}
-  - {fileID: 11400000, guid: 1a5e83c0b9d47f24aa03e6178d92b4c7, type: 2}
-  atmosphere: {fileID: 0}
-  testbedCamera: {fileID: 1735868801}
-  worldRoot: {fileID: 0}
-  heightSettings: {fileID: 0}
-  lodSystem: {fileID: 0}
-  renderCamera: {fileID: 0}
-  renderSettings: {fileID: 0}
-  labelSystem: {fileID: 0}
-  cityLights: {fileID: 0}
-  moon: {fileID: 0}
-  terrainLoader: {fileID: 0}
-  cycleKey: 288
-  applyOnStart: 1

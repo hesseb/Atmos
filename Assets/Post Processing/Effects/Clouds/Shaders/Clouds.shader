@@ -66,6 +66,7 @@ Shader "Hidden/Clouds"
 			float3 cloudSunColour;
 			float cloudSunIntensity;
 			float cloudAmbientIntensity;
+			float cloudAmbientHorizon;
 			float3 cloudAmbientFallback;
 
 			float cloudLightMarchLength;
@@ -100,11 +101,18 @@ Shader "Hidden/Clouds"
 			/// Two-lobe Henyey-Greenstein. One forward lobe for the bright rim when looking toward
 			/// the sun, one backward for the glow when looking away. HG is already written up in the
 			/// report's background section, so this term is traceable as it stands.
+			///
+			/// Scaled by 4*pi so that an isotropic phase evaluates to exactly 1 rather than to
+			/// 1/(4*pi). Without it the whole direct term was multiplied by roughly 0.02 to 0.11 -
+			/// a 10x to 50x darkening that no intensity slider in range could recover, and the
+			/// reason the clouds went dark at sunset instead of orange. A phase function integrates
+			/// to one over the sphere by definition; this only changes the units it is expressed in,
+			/// moving the 4*pi into the term where the sun's irradiance would otherwise carry it.
 			float cloudPhase(float cosAngle)
 			{
 				float forward = cloudHg(cosAngle, cloudPhaseForward);
 				float backward = cloudHg(cosAngle, -cloudPhaseBackward);
-				return lerp(forward, backward, cloudPhaseBlend);
+				return lerp(forward, backward, cloudPhaseBlend) * 4 * UNITY_PI;
 			}
 
 			/// Optical depth between this point and the sun, cone-sampled.
@@ -197,8 +205,22 @@ Shader "Hidden/Clouds"
 					// Skylight, from the same LUT the ocean and the land use. This is what puts the
 					// sunset on the undersides, and at low sun it does more of the work than the
 					// direct term does. Returns zero without an atmosphere, hence the fallback.
+					//
+					// Sampled toward the sunlit HORIZON as well as the zenith. At sunset the zenith
+					// is deep blue while the horizon is orange, so a zenith-only lookup throws away
+					// exactly the colour the clouds are supposed to be picking up - which is most of
+					// why they read as dark rather than warm. Two taps, and the horizon one is what
+					// carries the sunset.
 					float3 up = normalize(pos);
-					float3 ambient = sampleSkyViewSafe(up, up, cloudSunDir) * cloudAmbientIntensity;
+					float3 sunTangent = cloudSunDir - up * dot(cloudSunDir, up);
+					float tangentLength = length(sunTangent);
+					// Degenerate with the sun overhead, and there the sky is near enough
+					// azimuthally symmetric that the zenith tap alone is right anyway.
+					float3 horizonDir = tangentLength > 1e-3 ? sunTangent / tangentLength : up;
+
+					float3 skyZenith = sampleSkyViewSafe(up, up, cloudSunDir);
+					float3 skyHorizon = sampleSkyViewSafe(up, horizonDir, cloudSunDir);
+					float3 ambient = lerp(skyZenith, skyHorizon, cloudAmbientHorizon) * cloudAmbientIntensity;
 					ambient += cloudAmbientFallback * (hasPhysicalAtmosphere() ? 0.0 : 1.0);
 
 					float3 inScatter = sunColour * energy * phase * cloudSunIntensity + ambient;
