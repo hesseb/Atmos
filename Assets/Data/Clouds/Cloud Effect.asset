@@ -44,23 +44,24 @@ MonoBehaviour:
   stepSize: 0.05
   stepGrowth: 0.5
   maxSteps: 192
+  debugMode: 0
   jitterStrength: 1
   extinction: 4.1
   sunIntensity: 1.12
   sunTransmittanceWeight: 0.7
   ambientIntensity: 0.4
   ambientHorizon: 0.41
-  nightAmbient: {r: 0.03, g: 0.035, b: 0.05, a: 1}
   ambientFallback: {r: 0.4, g: 0.45, b: 0.55, a: 1}
+  nightAmbient: {r: 0.014239837, g: 0.014239837, b: 0.03773558, a: 1}
   lightMarchLength: 8
   lightAbsorption: 0.8
   coneSpread: 0.153
   powderStrength: 0.2
   phaseForward: 0.45
   phaseBackward: 0.2
-  silverIntensity: 6
-  silverSpread: 0.25
   phaseBlend: 1
+  silverIntensity: 1.9
+  silverSpread: 0.6
   costMode: 1
   depthRejection: 64
   shadowCompute: {fileID: 7200000, guid: 7e32ea3e1f7e5774a905538e6cd29a45, type: 3}

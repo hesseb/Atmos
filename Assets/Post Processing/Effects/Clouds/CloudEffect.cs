@@ -183,6 +183,17 @@ namespace Clouds
 			"0.25 about 13, 0.3 about 22.")]
 		[Range(0.02f, 0.6f)] public float silverSpread = 0.25f;
 
+		[Header("Moon")]
+		[Tooltip("Scales moonlight on the clouds. The moon's published colour is already scaled by " +
+			"its phase, so a new moon contributes nothing and costs nothing - the whole term sits " +
+			"behind a branch on it. 0 disables it outright.")]
+		[Range(0f, 8f)] public float moonIntensity = 2f;
+
+		[Tooltip("Silver lining from the moon. Weaker than the sun's, since the moon is a far dimmer " +
+			"source, but the same tight forward lobe - it is what makes a cloud edge crossing the " +
+			"moon read as lit rather than as a silhouette.")]
+		[Range(0f, 24f)] public float moonSilverIntensity = 2f;
+
 		[Header("Cost")]
 		[Tooltip("Full marches every pixel - the honest upper bound and the cleanest image. Half " +
 			"marches a quarter of the pixels and upsamples with a depth-aware filter. Both are the " +
@@ -534,6 +545,8 @@ namespace Clouds
 			material.SetFloat("cloudPhaseBlend", phaseBlend);
 			material.SetFloat("cloudSilverIntensity", silverIntensity);
 			material.SetFloat("cloudSilverSpread", silverSpread);
+			material.SetFloat("cloudMoonIntensity", moonIntensity);
+			material.SetFloat("cloudMoonSilverIntensity", moonSilverIntensity);
 		}
 	}
 }
