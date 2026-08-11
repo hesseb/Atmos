@@ -18,26 +18,35 @@ MonoBehaviour:
   detailNoise: {fileID: 11700000, guid: c26c036913c039c478adc32897544e1b, type: 2}
   weatherCompute: {fileID: 7200000, guid: efdcf8a029ccffd47bac0b0674f61d26, type: 3}
   weatherMapSize: {x: 512, y: 256}
-  weatherOctaves: 5
-  weatherLacunarity: 2
-  weatherGain: 0.5
-  coverageScale: 1.92
-  coverageBias: 0
-  coverageContrast: 1.3
-  typeScale: 1.1
+  weatherOctaves: 3
+  weatherLacunarity: 3.18
+  weatherGain: 0.685
+  coverageScale: 2.01
+  coverageBias: -0.083
+  coverageContrast: 1.79
+  weatherRangeGain: 2.64
+  typeScale: 2.24
   typeBias: 0
-  precipitationScale: 3.5
-  precipitationBias: -0.1
+  typeContrast: 4
+  precipitationScale: 4.72
+  precipitationBias: -0.155
+  baseHeightScale: 5.18
+  baseHeightBias: 0.031
   weatherWindSpeed: 0.004
   bodyRadius: 150
-  cloudBottomAltitude: 1
-  cloudTopAltitude: 10
+  cloudBottomAltitude: 0.6
+  cloudTopAltitude: 15.17
   shapeScale: 0.038
   detailScale: 0.09
   detailWeight: 0.312
   densityMultiplier: 1.28
   coverageMultiplier: 0.61
   typeOffset: -0.035
+  baseVariation: 0.3
+  edgeSoftness: 1
+  precipDensity: 1.2
+  precipTypePush: 0.45
+  precipBaseDrop: 0.2
   shapeWindDirection: {x: 1, y: 0.1, z: 0.2}
   shapeWindSpeed: 0.02
   detailWindSpeed: 0.05
@@ -55,17 +64,19 @@ MonoBehaviour:
   nightAmbient: {r: 0.014239837, g: 0.014239837, b: 0.03773558, a: 1}
   lightMarchLength: 8
   lightAbsorption: 0.8
-  lightMarchDetail: 0.15
   coneSpread: 0.153
+  lightMarchDetail: 0.15
   powderStrength: 0.2
   phaseForward: 0.45
   phaseBackward: 0.2
   phaseBlend: 1
   silverIntensity: 1.9
   silverSpread: 0.6
+  moonIntensity: 2
+  moonSilverIntensity: 2
   costMode: 1
-  historyBlend: 0.2
   depthRejection: 64
+  historyBlend: 0.2
   shadowCompute: {fileID: 7200000, guid: 7e32ea3e1f7e5774a905538e6cd29a45, type: 3}
   shadowMapSize: {x: 512, y: 256}
   shadowSteps: 32

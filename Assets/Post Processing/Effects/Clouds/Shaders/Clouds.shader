@@ -55,7 +55,6 @@ Shader "Hidden/Clouds"
 			// instead hardcodes a step of 11 world units, which at this planet's scale would step
 			// over the entire cloud layer six times in one step.
 			float cloudStepSize;
-			float cloudStepGrowth;
 			int cloudMaxSteps;
 			/// 0 off, 3 shell length, 4 raw density, 5 start distance, 7-10 the weather channels.
 			/// Camera region is handled by the composite pass instead, so the clouds stay visible
