@@ -98,17 +98,33 @@ void BakeAuthored(uint3 id : SV_DispatchThreadID)
 	float3 pN = normalize(p + north * epsilon);
 	float3 pS = normalize(p - north * epsilon);
 
-	float dEast = cloudField(pE) - cloudField(pW);
-	float dNorth = cloudField(pN) - cloudField(pS);
+	// A SLOPE, not a raw difference. h(+e) - h(-e) is proportional to e, so leaving it undivided
+	// makes the relief depend on the output resolution: the same field baked at 2048 came out with
+	// less than half the relief it had at 768, and at 4096 it would halve again. Dividing by 2e
+	// gives the actual gradient, which is a property of the field rather than of how finely it was
+	// sampled.
+	//
+	// Dividing again by fieldScale makes it dimensionless. One shape feature spans roughly
+	// 1/fieldScale radians and the height changes by about half across it, so the ratio lands near
+	// 0.5 whatever the scale or the resolution - which is what lets reliefStrength mean the same
+	// thing from one layer to the next.
+	float gradientScale = 1.0 / (2.0 * epsilon * max(0.01, fieldScale));
+	float dEast = (cloudField(pE) - cloudField(pW)) * gradientScale;
+	float dNorth = (cloudField(pN) - cloudField(pS)) * gradientScale;
 
-	// For a height field h, the surface normal is proportional to (-dh/du, -dh/dv, 1). Only the
-	// tangent components are stored; the runtime recovers the third from them.
-	float2 normalXY = float2(-dEast, -dNorth) * reliefStrength;
+	// For a height field h, the surface normal is proportional to (-dh/du, -dh/dv, 1). Normalising
+	// that and storing the tangent components bounds them to [-1, 1] by construction, and the
+	// runtime recovers the third as sqrt(1 - x^2 - y^2).
+	//
+	// Normalised rather than clamped. A clamp bounds the value but not the information: at this
+	// resolution nearly a third of the surface hit the limit and every one of those slopes encoded
+	// identically, so a gentle swell and a sheer edge became the same normal - which is most of
+	// what relief shading is supposed to distinguish. Normalising compresses smoothly instead, and
+	// steep slopes approach the limit without ever reaching it.
+	//
+	// reliefStrength now sets how steep the surface is taken to be before normalising, so it
+	// remains a single dial with no cliff at the top of its range.
+	float3 normal = normalize(float3(-dEast * reliefStrength, -dNorth * reliefStrength, 1.0));
 
-	// Clamped rather than normalised. Normalising would give every slope the same steepness once
-	// encoded, flattening the difference between a gentle swell and a sharp edge - which is most
-	// of what relief shading is meant to show.
-	normalXY = clamp(normalXY, -1, 1);
-
-	Result[id.xy] = float4(normalXY * 0.5 + 0.5, height, density);
+	Result[id.xy] = float4(normal.xy * 0.5 + 0.5, height, density);
 }
