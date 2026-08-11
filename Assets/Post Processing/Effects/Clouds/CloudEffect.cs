@@ -87,12 +87,21 @@ namespace Clouds
 			"atmosphere's transmittance LUT at each sample's own altitude - but its absolute level " +
 			"is authored, because the march works in display space alongside an already tone-mapped " +
 			"background rather than in radiance.")]
-		[Range(0f, 8f)] public float sunIntensity = 1.4f;
+		[Range(0f, 8f)] public float sunIntensity = 2.2f;
+
+		[Tooltip("How much of the sun's atmospheric extinction to take. This atmosphere is optically " +
+			"far thicker than Earth's - zenith transmittance 0.45 against 0.77 - so at 1 even a midday " +
+			"sun reaches a cloud top already dimmed to 45% and reddened, which reads as grey. Lerping " +
+			"toward white keeps the colour physical while letting the level be authored, the same way " +
+			"the ocean glint's transmittance weight does.")]
+		[Range(0f, 1f)] public float sunTransmittanceWeight = 0.7f;
 
 		[Tooltip("Scales skylight on the clouds, from the same sky-view LUT the ocean and land use. " +
-			"At low sun this does more of the work than the direct term - it is what puts the " +
-			"sunset on the undersides.")]
-		[Range(0f, 4f)] public float ambientIntensity = 1f;
+			"At low sun this does more of the work than the direct term - it is what puts the sunset " +
+			"on the undersides. In daylight it must stay well under the direct term: at parity the " +
+			"whole cloud sits at mid-grey with barely any top-to-base gradient, which is exactly how " +
+			"a flat, shaded look happens.")]
+		[Range(0f, 4f)] public float ambientIntensity = 0.4f;
 
 		[Tooltip("How much of the skylight is taken from the sunlit horizon rather than the zenith. " +
 			"At sunset the zenith is deep blue and the horizon is orange, so a zenith-only lookup " +
@@ -394,6 +403,7 @@ namespace Clouds
 			material.SetVector("cloudSunDir", sunDir);
 			material.SetVector("cloudSunColour", new Vector4(sunColour.r, sunColour.g, sunColour.b, 1));
 			material.SetFloat("cloudSunIntensity", sunIntensity);
+			material.SetFloat("cloudSunTransmittanceWeight", sunTransmittanceWeight);
 			material.SetFloat("cloudAmbientIntensity", ambientIntensity);
 			material.SetFloat("cloudAmbientHorizon", ambientHorizon);
 			material.SetVector("cloudAmbientFallback", new Vector4(ambientFallback.r, ambientFallback.g, ambientFallback.b, 1));
