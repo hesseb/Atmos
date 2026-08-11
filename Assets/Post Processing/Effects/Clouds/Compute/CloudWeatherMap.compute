@@ -6,8 +6,9 @@
 // Schneider's weather map, on a globe.
 //
 //   R  coverage      how much cloud there is here at all
-//   G  precipitation darkens and thickens the cloud; drives the rain-bearing genera
+//   G  precipitation thickens the cloud, pushes it toward cumulonimbus, and drops its base
 //   B  cloud type    0 stratus -> 0.5 cumulus -> 1 cumulonimbus, selecting the height gradient
+//   A  base height   how far up the shell the cloud starts, as a fraction of it
 //
 // Equirectangular, sampled with pointToUV, the same parameterisation the terrain, the ocean and the
 // city light field already use - so it needs no container and is invariant under the world scale.
@@ -25,15 +26,33 @@ int octaves;
 float lacunarity;
 float gain;
 
+/// Stretches each field to fill [-1, 1] before it is folded to [0, 1].
+///
+/// cloudFbm normalises by the sum of its octave amplitudes, and an FBM never reaches that sum
+/// because the octaves rarely peak together. Measured over these settings the raw output spans only
+/// about +/-0.40, which folds to [0.30, 0.70] - so every field sat in the middle third of its range
+/// and the whole globe had nearly the same weather.
+///
+/// It was worst for cloud type, whose tent weights need 0 for stratus and 1 for cumulonimbus: mean
+/// cumulus weight across the globe was 0.90, and neither other genus was reachable at all.
+///
+/// Same correction, and the same reason, as perlinGain in CloudNoiseGen.compute. The default is
+/// that measured range; it depends on the octave count, so re-check it if that changes.
+float weatherRangeGain;
+
 float coverageScale;
 float coverageBias;        // added before the contrast curve; the main "how cloudy is it" dial
 float coverageContrast;
 
 float typeScale;
 float typeBias;
+float typeContrast;
 
 float precipitationScale;
 float precipitationBias;
+
+float baseHeightScale;
+float baseHeightBias;
 
 /// Advances the noise field so weather drifts. Applied as an offset in the sphere's own space
 /// rather than as a UV scroll, which would slide features along latitude lines and pull them apart
@@ -53,20 +72,33 @@ void CSWeatherMap(uint3 id : SV_DispatchThreadID)
 	// cloud" and the contrast as "broken versus overcast" - two dials that do one thing each, which
 	// is what makes a parameter set authorable rather than merely adjustable.
 	float coverageNoise = cloudFbm(p * coverageScale + windOffset, octaves, lacunarity, gain);
-	float coverage = saturate(coverageNoise * 0.5 + 0.5 + coverageBias);
+	float coverage = saturate(coverageNoise * weatherRangeGain * 0.5 + 0.5 + coverageBias);
 	coverage = saturate(cloudRemap(coverage, 0.5 - 0.5 / max(0.01, coverageContrast),
 									0.5 + 0.5 / max(0.01, coverageContrast), 0, 1));
 
 	// Cloud type, on its own much larger scale and its own offset. Independent of coverage on
 	// purpose: a region can be heavily covered in flat stratus or lightly dotted with cumulus, and
 	// tying the two together would collapse the genera axis RQ1 scores.
+	// Contrast as well as bias, matching coverage. Without it there is no way to push type toward
+	// the extremes, so stratus and cumulonimbus stay unreachable however the bias is set.
 	float typeNoise = cloudFbm(p * typeScale + windOffset * 0.35 + 31.7, max(2, octaves - 2), lacunarity, gain);
-	float type = saturate(typeNoise * 0.5 + 0.5 + typeBias);
+	float type = saturate(typeNoise * weatherRangeGain * 0.5 + 0.5 + typeBias);
+	type = saturate(cloudRemap(type, 0.5 - 0.5 / max(0.01, typeContrast),
+								0.5 + 0.5 / max(0.01, typeContrast), 0, 1));
 
 	// Precipitation, correlated with coverage but not identical - rain sits inside the thicker
 	// parts of a system rather than being spread evenly across it.
 	float precipNoise = cloudFbm(p * precipitationScale + windOffset * 0.6 - 17.3, max(2, octaves - 1), lacunarity, gain);
-	float precipitation = saturate((precipNoise * 0.5 + 0.5 + precipitationBias) * coverage);
+	float precipitation = saturate((precipNoise * weatherRangeGain * 0.5 + 0.5 + precipitationBias) * coverage);
 
-	Result[id.xy] = float4(coverage, precipitation, type, 1);
+	// How far up the shell the cloud starts, as a fraction of it rather than in world units - so it
+	// is scale-invariant under the world-scale presets like everything else here.
+	//
+	// Its own field on its own scale. Cloud type already moves the TOP of the layer, because the
+	// three height gradients end at different heights, but all of them begin at the bottom of the
+	// shell - so without this the base is the one thing that is identical everywhere on the planet.
+	float baseNoise = cloudFbm(p * baseHeightScale + windOffset * 0.5 + 73.1, max(2, octaves - 2), lacunarity, gain);
+	float baseHeight = saturate(baseNoise * weatherRangeGain * 0.5 + 0.5 + baseHeightBias);
+
+	Result[id.xy] = float4(coverage, precipitation, type, baseHeight);
 }
