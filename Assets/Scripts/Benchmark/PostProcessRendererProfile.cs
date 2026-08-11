@@ -47,6 +47,20 @@ public class PostProcessRendererProfile : RendererProfile
 		Null
 	}
 
+	/// <summary>Which cost strategy the clouds should use. Orthogonal to the effect toggle,
+	/// which only decides whether they draw at all.</summary>
+	public enum CloudOverride
+	{
+		/// <summary>Inherit whatever the scene is set to.</summary>
+		LeaveAlone,
+		/// <summary>Marches every pixel every frame. The upper bound.</summary>
+		Full,
+		/// <summary>Quarter of the pixels, depth-aware upsample.</summary>
+		Half,
+		/// <summary>Full resolution, a quarter of the pixels marched per frame, rest reprojected.</summary>
+		Temporal
+	}
+
 	[Tooltip("Effects to force on or off. Effects not listed keep whatever the scene has.")]
 	public EffectToggle[] effects;
 
@@ -57,6 +71,11 @@ public class PostProcessRendererProfile : RendererProfile
 		"inherits whatever the previous pass happened to leave, which is how state leaks " +
 		"between passes.")]
 	public SkyOverride sky = SkyOverride.LeaveAlone;
+
+	[Tooltip("Which cloud cost strategy to use. Only meaningful when the cloud effect is enabled; " +
+		"whether clouds draw at all is the effect toggle's job. Every profile should state this " +
+		"explicitly for the same reason the sky does.")]
+	public CloudOverride clouds = CloudOverride.LeaveAlone;
 
 	public override void Apply(BenchmarkSceneRefs refs, RestoreScope scope)
 	{
@@ -93,6 +112,30 @@ public class PostProcessRendererProfile : RendererProfile
 		}
 
 		ApplySkyOverride(refs, scope);
+		ApplyCloudOverride(refs, scope);
+	}
+
+	void ApplyCloudOverride(BenchmarkSceneRefs refs, RestoreScope scope)
+	{
+		if (clouds == CloudOverride.LeaveAlone) { return; }
+
+		Clouds.CloudEffect effect = FindClouds(refs);
+		if (effect == null)
+		{
+			Debug.LogWarning($"[Benchmark] profile '{id}' asks for cloud mode '{clouds}', but there " +
+				"is no CloudEffect in the post-processing chain.", this);
+			return;
+		}
+
+		Clouds.CloudEffect.CostMode mode;
+		switch (clouds)
+		{
+			case CloudOverride.Full: mode = Clouds.CloudEffect.CostMode.Full; break;
+			case CloudOverride.Temporal: mode = Clouds.CloudEffect.CostMode.Temporal; break;
+			default: mode = Clouds.CloudEffect.CostMode.Half; break;
+		}
+
+		scope.Set(() => effect.costMode, v => effect.costMode = v, mode);
 	}
 
 	void ApplySkyOverride(BenchmarkSceneRefs refs, RestoreScope scope)
@@ -174,7 +217,40 @@ public class PostProcessRendererProfile : RendererProfile
 			  .Append(atmosphere.transmittanceLUTSize.y);
 		}
 
+		// The clouds' cost-relevant parameters, for the same reason. Which cost mode ran, and how
+		// many steps the march was allowed, move the frame time by more than most of what is being
+		// compared - and the mode in particular is the whole point of the comparison, so reading it
+		// back from the effect rather than from what this profile asked for is what stops a profile
+		// that failed to apply claiming otherwise in run.json.
+		Clouds.CloudEffect cloudEffect = FindClouds(refs);
+		if (cloudEffect != null)
+		{
+			sb.Append(" | clouds: enabled=").Append(cloudEffect.enabled)
+			  .Append(", mode=").Append(cloudEffect.costMode)
+			  .Append(", stepSize=").Append(cloudEffect.stepSize)
+			  .Append(", maxSteps=").Append(cloudEffect.maxSteps)
+			  .Append(", lightMarchLength=").Append(cloudEffect.lightMarchLength)
+			  .Append(", shell=").Append(cloudEffect.cloudBottomAltitude).Append('-')
+			  .Append(cloudEffect.cloudTopAltitude)
+			  .Append(", weatherMap=").Append(cloudEffect.weatherMapSize.x).Append('x')
+			  .Append(cloudEffect.weatherMapSize.y)
+			  .Append(", shadowMap=").Append(cloudEffect.shadowMapSize.x).Append('x')
+			  .Append(cloudEffect.shadowMapSize.y)
+			  .Append(", shadowStrength=").Append(cloudEffect.shadowStrength);
+		}
+
 		return sb.ToString();
+	}
+
+	static Clouds.CloudEffect FindClouds(BenchmarkSceneRefs refs)
+	{
+		if (refs.postProcessing == null || refs.postProcessing.effects == null) { return null; }
+
+		foreach (PostProcessingEffect effect in refs.postProcessing.effects)
+		{
+			if (effect is Clouds.CloudEffect clouds) { return clouds; }
+		}
+		return null;
 	}
 
 	static AtmosphereEffect FindAtmosphere(BenchmarkSceneRefs refs)
