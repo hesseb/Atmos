@@ -22,6 +22,10 @@ float3 shadowSunDir;
 int shadowSteps;
 float shadowAbsorption;
 
+/// Widens the footprint each sample is read at, beyond what the map itself can represent. 1 matches
+/// the map exactly; higher softens the shadows further.
+float shadowDetailScale;
+
 [numthreads(8, 8, 1)]
 void CSCloudShadow(uint3 id : SV_DispatchThreadID)
 {
@@ -61,6 +65,19 @@ void CSCloudShadow(uint3 id : SV_DispatchThreadID)
 	}
 
 	float stepSize = (end - start) / max(1, shadowSteps);
+
+	// The density is read at the footprint of a SHADOW MAP TEXEL, not at the march step.
+	//
+	// This map is a fixed grid over the whole globe, so it cannot represent anything finer than two
+	// texels however finely the march samples. Choosing the mip from the step read detail about
+	// seven times finer than that - which does not add detail, it aliases, and because the wind
+	// drifts the field every frame the aliasing moves. That is flicker rather than static noise.
+	//
+	// Reading at the texel footprint is the same principle as the light march's own detail length:
+	// pre-filter to what the consumer can actually carry.
+	float texelWorldSize = 6.28318530718 * cloudInnerRadius / max(1, shadowMapSize.x);
+	float sampleFootprint = max(stepSize, texelWorldSize * shadowDetailScale);
+
 	float opticalDepth = 0;
 
 	for (int i = 0; i < shadowSteps; i++)
@@ -68,7 +85,7 @@ void CSCloudShadow(uint3 id : SV_DispatchThreadID)
 		float3 pos = origin + shadowSunDir * (start + (i + 0.5) * stepSize);
 		// `cheap`: no detail erosion. A shadow cast onto terrain from a kilometre up carries none
 		// of that frequency anyway, and it is the more expensive half of the density function.
-		opticalDepth += max(0, sampleCloudDensity(pos, true, stepSize)) * stepSize;
+		opticalDepth += max(0, sampleCloudDensity(pos, true, sampleFootprint)) * stepSize;
 	}
 
 	Result[id.xy] = exp(-opticalDepth * shadowAbsorption);

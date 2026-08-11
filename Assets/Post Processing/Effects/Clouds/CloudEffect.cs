@@ -133,6 +133,8 @@ namespace Clouds
 		[Range(0f, 3f)] public float precipDensity = 1.2f;
 		[Range(0f, 1f)] public float precipTypePush = 0.45f;
 		[Range(0f, 0.6f)] public float precipBaseDrop = 0.2f;
+
+		[Header("Wind")]
 		public Vector3 shapeWindDirection = new Vector3(1f, 0.1f, 0.2f);
 		public float shapeWindSpeed = 0.02f;
 		public float detailWindSpeed = 0.05f;
@@ -143,13 +145,6 @@ namespace Clouds
 			"sampled properly. The reference project instead hardcodes a step of 11 world units, " +
 			"which here would step over the whole layer six times over in one step.")]
 		[Range(0.005f, 1f)] public float stepSize = 0.05f;
-
-		[Tooltip("How fast the step grows with distance from the camera. Keying the step to distance " +
-			"rather than to the length of the traversed segment is what stops the same world point " +
-			"being sampled fourteen times more coarsely along the horizon than straight down - which " +
-			"made density depend on view direction, and made cloud appear as the camera closed. " +
-			"0 marches at a constant step and will run out of steps long before the horizon.")]
-		[Range(0f, 2f)] public float stepGrowth = 0.5f;
 
 		[Range(16, 512)] public int maxSteps = 192;
 
@@ -271,6 +266,12 @@ namespace Clouds
 		public Vector2Int shadowMapSize = new Vector2Int(512, 256);
 		[Range(2, 32)] public int shadowSteps = 10;
 		[Range(0.1f, 8f)] public float shadowAbsorption = 1.2f;
+
+		[Tooltip("Widens the footprint each shadow sample is read at, relative to what the shadow " +
+			"map can actually represent. 1 matches the map exactly and is what stops the shadows " +
+			"flickering; lower reads finer detail than the map can carry, which aliases, and the " +
+			"aliasing moves with the wind. Higher softens the shadows further.")]
+		[Range(0.5f, 4f)] public float shadowDetailScale = 1f;
 		[Tooltip("0 disables cloud shadows entirely, which is also what happens when this effect is " +
 			"disabled - so a clouds-off benchmark profile gets an unshadowed ground for free.")]
 		[Range(0f, 1f)] public float shadowStrength = 0.85f;
@@ -612,6 +613,7 @@ namespace Clouds
 			shadowCompute.SetVector("shadowSunDir", sunDir);
 			shadowCompute.SetInt("shadowSteps", shadowSteps);
 			shadowCompute.SetFloat("shadowAbsorption", shadowAbsorption);
+			shadowCompute.SetFloat("shadowDetailScale", shadowDetailScale);
 
 			shadowCompute.Dispatch(kernel, Mathf.CeilToInt(width / 8f), Mathf.CeilToInt(height / 8f), 1);
 
@@ -656,7 +658,6 @@ namespace Clouds
 			material.SetVector("cloudDetailWind", DetailWind);
 
 			material.SetFloat("cloudStepSize", stepSize);
-			material.SetFloat("cloudStepGrowth", stepGrowth);
 			// CameraRegion leaves the clouds rendering and shows the region as a corner swatch, so
 			// the two can be watched together; the others replace the image.
 			material.SetInt("cloudDebugMode", debugMode == DebugMode.CameraRegion ? 0 : (int)debugMode);
