@@ -209,17 +209,6 @@ Shader "Hidden/Clouds"
 				// start is large; from inside, the same ray starts at zero.
 				if (cloudDebugMode == 5) { return float4((start / 50.0).xxx, 0); }
 
-				// Which region the camera is in - red above the shell, green inside, blue below.
-				// If the pop coincides with a colour change here, it is the boundary crossing; if
-				// the colour is constant across it, the cause is elsewhere entirely.
-				if (cloudDebugMode == 6)
-				{
-					float camRadius = length(rayOrigin);
-					if (camRadius > cloudOuterRadius) { return float4(1, 0, 0, 0); }
-					if (camRadius > cloudInnerRadius) { return float4(0, 1, 0, 0); }
-					return float4(0, 0, 1, 0);
-				}
-
 				if (cloudDebugMode == 1) { return float4(stepSize.xxx * 2, 0); }
 				if (cloudDebugMode == 2) { return float4((steps / (float)cloudMaxSteps).xxx, 0); }
 				if (cloudDebugMode == 3) { return float4((segment / 100.0).xxx, 0); }
@@ -391,11 +380,28 @@ Shader "Hidden/Clouds"
 				return sum / weightSum;
 			}
 
+			/// -1 off, 0 above the shell, 1 inside it, 2 below. Computed on the CPU, because the
+			/// camera position and the shell radii are both known there and this only needs to be
+			/// answered once per frame rather than once per pixel.
+			float _CloudDebugRegion;
+
 			float4 frag(v2f i) : SV_Target
 			{
 				float3 background = tex2D(_MainTex, i.uv).rgb;
 				float4 cloud = upsampleCloud(i.uv);
-				return float4(background * cloud.a + cloud.rgb, 1);
+				float3 col = background * cloud.a + cloud.rgb;
+
+				// A corner swatch rather than a full-screen fill: which region the camera is in is
+				// only useful if the clouds are still visible next to it, so the two can be
+				// correlated as the camera moves.
+				if (_CloudDebugRegion >= 0 && i.uv.x < 0.05 && i.uv.y > 0.93)
+				{
+					if (_CloudDebugRegion < 0.5) { return float4(1, 0.1, 0.1, 1); }   // above
+					if (_CloudDebugRegion < 1.5) { return float4(0.1, 1, 0.1, 1); }   // inside
+					return float4(0.2, 0.4, 1, 1);                                     // below
+				}
+
+				return float4(col, 1);
 			}
 			ENDCG
 		}

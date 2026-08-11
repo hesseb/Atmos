@@ -466,7 +466,17 @@ namespace Clouds
 
 			material.SetFloat("cloudStepSize", stepSize);
 			material.SetFloat("cloudStepGrowth", stepGrowth);
-			material.SetInt("cloudDebugMode", (int)debugMode);
+			// CameraRegion leaves the clouds rendering and shows the region as a corner swatch, so
+			// the two can be watched together; the others replace the image.
+			material.SetInt("cloudDebugMode", debugMode == DebugMode.CameraRegion ? 0 : (int)debugMode);
+
+			float region = -1f;
+			if (debugMode == DebugMode.CameraRegion && cam != null)
+			{
+				float camRadius = cam.transform.position.magnitude;
+				region = camRadius > OuterRadius ? 0f : (camRadius > InnerRadius ? 1f : 2f);
+			}
+			material.SetFloat("_CloudDebugRegion", region);
 			material.SetInt("cloudMaxSteps", maxSteps);
 			material.SetFloat("cloudJitterStrength", jitterStrength);
 			material.SetFloat("cloudExtinction", extinction);
