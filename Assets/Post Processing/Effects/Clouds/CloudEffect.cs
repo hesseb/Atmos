@@ -158,6 +158,13 @@ namespace Clouds
 		[Tooltip("How far the light march spreads into a cone. A straight line makes every cloud " +
 			"self-shadow like a slab; the cone is what lets light wrap around a billow.")]
 		[Range(0f, 1f)] public float coneSpread = 0.25f;
+
+		[Tooltip("How finely the light march reads the cloud, in world units - separate from how far " +
+			"it steps. The step has to be long to cross a cloud in six samples, but choosing the mip " +
+			"from that length samples a volume blurred past the point where a lit face differs from " +
+			"a shadowed one, which erases self-shadowing entirely. Lower is sharper; raise it if the " +
+			"shadowing looks noisy.")]
+		[Range(0.02f, 2f)] public float lightMarchDetail = 0.15f;
 		[Tooltip("The dark edge that comes from light having to scatter into a thin volume before it " +
 			"can leave. Keep it low: the powder factor rises from zero with optical depth, so at high " +
 			"strength it darkens the cloud TOP most - the part with nothing between it and the sun - " +
@@ -538,6 +545,7 @@ namespace Clouds
 			material.SetFloat("cloudLightMarchLength", lightMarchLength);
 			material.SetFloat("cloudLightAbsorption", lightAbsorption);
 			material.SetFloat("cloudConeSpread", coneSpread);
+			material.SetFloat("cloudLightMarchDetail", lightMarchDetail);
 			material.SetFloat("cloudPowderStrength", powderStrength);
 
 			material.SetFloat("cloudPhaseForward", phaseForward);

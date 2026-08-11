@@ -55,6 +55,7 @@ MonoBehaviour:
   nightAmbient: {r: 0.014239837, g: 0.014239837, b: 0.03773558, a: 1}
   lightMarchLength: 8
   lightAbsorption: 0.8
+  lightMarchDetail: 0.15
   coneSpread: 0.153
   powderStrength: 0.2
   phaseForward: 0.45
