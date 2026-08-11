@@ -57,6 +57,8 @@ MonoBehaviour:
   powderStrength: 0.2
   phaseForward: 0.45
   phaseBackward: 0.2
+  silverIntensity: 6
+  silverSpread: 0.25
   phaseBlend: 1
   costMode: 1
   depthRejection: 64

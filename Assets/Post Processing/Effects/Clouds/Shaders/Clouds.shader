@@ -80,6 +80,8 @@ Shader "Hidden/Clouds"
 			float cloudPhaseForward;
 			float cloudPhaseBackward;
 			float cloudPhaseBlend;
+			float cloudSilverIntensity;
+			float cloudSilverSpread;
 
 			/// Schneider's cone kernel: six fixed directions the light march spreads into, scaled by
 			/// step index so the samples describe a cone toward the sun rather than a line. A line
@@ -101,21 +103,35 @@ Shader "Hidden/Clouds"
 				return (1 - g2) / (4 * UNITY_PI * pow(max(1e-3, 1 + g2 - 2 * g * cosAngle), 1.5));
 			}
 
-			/// Two-lobe Henyey-Greenstein. One forward lobe for the bright rim when looking toward
-			/// the sun, one backward for the glow when looking away. HG is already written up in the
-			/// report's background section, so this term is traceable as it stands.
+			/// Two-lobe Henyey-Greenstein, plus Schneider's silver lining.
 			///
-			/// Scaled by 4*pi so that an isotropic phase evaluates to exactly 1 rather than to
-			/// 1/(4*pi). Without it the whole direct term was multiplied by roughly 0.02 to 0.11 -
-			/// a 10x to 50x darkening that no intensity slider in range could recover, and the
-			/// reason the clouds went dark at sunset instead of orange. A phase function integrates
-			/// to one over the sphere by definition; this only changes the units it is expressed in,
-			/// moving the 4*pi into the term where the sun's irradiance would otherwise carry it.
+			/// The two lobes give the general forward brightening and the backward glow. Scaled by
+			/// 4*pi so an isotropic phase evaluates to exactly 1 rather than 1/(4*pi) - without that
+			/// the whole direct term was multiplied by roughly 0.02 to 0.11, a darkening no
+			/// intensity slider in range could recover. A phase function integrates to one over the
+			/// sphere by definition; the scale only changes the units, moving the 4*pi into the term
+			/// where the sun's irradiance would otherwise carry it.
+			///
+			/// The silver lining is a THIRD, much tighter forward lobe, combined with max() rather
+			/// than blended in. That distinction is the whole point: blending a sharp lobe into the
+			/// others either washes it out or lifts the entire sky with it, whereas taking the
+			/// larger of the two leaves the general phase untouched and adds a bright rim only
+			/// within a few degrees of the sun. Two lobes alone cannot produce it - the effect was
+			/// missing outright, not merely mistuned.
+			///
+			/// Normalised by its own peak so cloudSilverIntensity reads directly as "how many times
+			/// the isotropic value at the sun", instead of being an opaque scale on a function whose
+			/// peak runs into the hundreds.
 			float cloudPhase(float cosAngle)
 			{
 				float forward = cloudHg(cosAngle, cloudPhaseForward);
 				float backward = cloudHg(cosAngle, -cloudPhaseBackward);
-				return lerp(forward, backward, cloudPhaseBlend) * 4 * UNITY_PI;
+				float base = lerp(forward, backward, cloudPhaseBlend) * 4 * UNITY_PI;
+
+				float silverG = 0.99 - cloudSilverSpread;
+				float silver = cloudSilverIntensity * cloudHg(cosAngle, silverG) / max(1e-4, cloudHg(1, silverG));
+
+				return max(base, silver);
 			}
 
 			/// Optical depth between this point and the sun, cone-sampled.
@@ -158,11 +174,17 @@ Shader "Hidden/Clouds"
 			/// over a real column - top at depth 0, base at 0.63 - the defaults now give the top
 			/// 3.7x the base. Raising powder strength flattens that back out, and past about 0.45 it
 			/// inverts again.
-			float cloudBeerPowder(float opticalDepth)
+			///
+			/// `towardSun` is the cosine between the view ray and the sun. The powder term is only
+			/// correct with the sun BEHIND the viewer - Guerrilla say as much - and applying it
+			/// while looking into the sun darkens exactly the thin edges the silver lining is
+			/// trying to light, so the two fight each other. Faded out accordingly.
+			float cloudBeerPowder(float opticalDepth, float towardSun)
 			{
 				float beer = exp(-opticalDepth * cloudLightAbsorption);
 				float powder = 1 - exp(-opticalDepth * cloudLightAbsorption * 2);
-				return beer * lerp(1.0, powder, cloudPowderStrength);
+				float strength = cloudPowderStrength * saturate(0.5 - 0.5 * towardSun);
+				return beer * lerp(1.0, powder, strength);
 			}
 
 			/// Returns the cloud on its own: rgb is what it adds, a is how much of the scene behind
@@ -175,7 +197,7 @@ Shader "Hidden/Clouds"
 			/// cloudShellSegments. Transmittance carries across both, so the far span is correctly
 			/// dimmed by whatever the near one already absorbed.
 			void cloudMarchSpan(
-				float3 rayOrigin, float3 rayDir, float2 span, float phase, float2 uv,
+				float3 rayOrigin, float3 rayDir, float2 span, float phase, float cosViewSun, float2 uv,
 				inout float transmittance, inout float3 luminance, inout float rawDensity)
 			{
 				float start = span.x;
@@ -223,7 +245,7 @@ Shader "Hidden/Clouds"
 					float3 sunTransmittance = sampleLightColourAt(pos, cloudSunDir);
 					float3 sunColour = lerp(1.0, sunTransmittance, cloudSunTransmittanceWeight) * cloudSunColour;
 
-					float energy = cloudBeerPowder(cloudLightMarch(pos));
+					float energy = cloudBeerPowder(cloudLightMarch(pos), cosViewSun);
 
 					// Skylight, from the same LUT the ocean and the land use. This is what puts the
 					// sunset on the undersides, and at low sun it does more of the work than the
@@ -287,14 +309,15 @@ Shader "Hidden/Clouds"
 				if (cloudDebugMode == 3) { return float4(((nearSpan.y - nearSpan.x + max(0, farSpan.y - farSpan.x)) / 100.0).xxx, 0); }
 				if (cloudDebugMode == 5) { return float4((nearSpan.x / 50.0).xxx, 0); }
 
-				float phase = cloudPhase(dot(rayDir, cloudSunDir));
+				float cosViewSun = dot(rayDir, cloudSunDir);
+				float phase = cloudPhase(cosViewSun);
 
 				float transmittance = 1;
 				float3 luminance = 0;
 				float rawDensity = 0;
 
-				cloudMarchSpan(rayOrigin, rayDir, nearSpan, phase, i.uv, transmittance, luminance, rawDensity);
-				cloudMarchSpan(rayOrigin, rayDir, farSpan, phase, i.uv, transmittance, luminance, rawDensity);
+				cloudMarchSpan(rayOrigin, rayDir, nearSpan, phase, cosViewSun, i.uv, transmittance, luminance, rawDensity);
+				cloudMarchSpan(rayOrigin, rayDir, farSpan, phase, cosViewSun, i.uv, transmittance, luminance, rawDensity);
 
 				if (cloudDebugMode == 4) { return float4((rawDensity * 0.2).xxx, 0); }
 
