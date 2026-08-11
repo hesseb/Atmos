@@ -76,6 +76,15 @@ Shader "Hidden/Clouds"
 			float cloudLightMarchLength;
 			float cloudLightAbsorption;
 			float cloudConeSpread;
+
+			/// The length the light march uses to CHOOSE ITS MIP, which is not the length it steps.
+			///
+			/// The two serve different purposes. The step length integrates optical depth, and is
+			/// necessarily long because the march has to cross the cloud in six samples. The mip
+			/// decides how much structure is visible, and choosing it from that long step samples a
+			/// volume blurred past the point where a lit face differs from a shadowed one - which
+			/// erases self-shadowing and leaves the phase function to decide brightness by itself.
+			float cloudLightMarchDetail;
 			float cloudPowderStrength;
 
 			float cloudPhaseForward;
@@ -162,7 +171,15 @@ Shader "Hidden/Clouds"
 					samplePos += cloudConeKernel[i] * (cloudConeSpread * stepSize * (i + 1));
 					// `cheap`: the light march skips detail erosion, where the extra fidelity is
 					// invisible but the cost is the larger half of the density function.
-					totalDensity += max(0, sampleCloudDensity(samplePos, true, stepSize)) * stepSize;
+					//
+					// The mip comes from cloudLightMarchDetail, NOT from stepSize. Passing the step
+					// here asked for a volume blurred to roughly a twentieth of its resolution, at
+					// which a cloud has no inside and no outside - so a sample on the lit face and
+					// one deep in shadow returned nearly the same density, self-shadowing vanished,
+					// and the phase function was left deciding brightness on its own. That is why a
+					// backlit cloud looked brighter than the same cloud front-lit, which is the
+					// wrong way round.
+					totalDensity += max(0, sampleCloudDensity(samplePos, true, cloudLightMarchDetail)) * stepSize;
 				}
 
 				return totalDensity;
