@@ -43,8 +43,18 @@ void CSCloudShadow(uint3 id : SV_DispatchThreadID)
 	// so the segment between would only be empty steps.
 	float3 origin = sphereNormal * cloudInnerRadius;
 
-	float start, end;
-	if (!cloudShellSegment(origin, shadowSunDir, start, end))
+	// Marching outward from the cloud base toward the sun, so the ray leaves the shell and never
+	// returns to it - the near span is the whole of it and the far span is empty.
+	float2 nearSpan, farSpan;
+	if (!cloudShellSegments(origin, shadowSunDir, nearSpan, farSpan))
+	{
+		Result[id.xy] = 1;
+		return;
+	}
+
+	float start = nearSpan.x;
+	float end = nearSpan.y;
+	if (end <= start)
 	{
 		Result[id.xy] = 1;
 		return;

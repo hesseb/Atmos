@@ -57,8 +57,8 @@ Shader "Hidden/Clouds"
 			float cloudStepSize;
 			float cloudStepGrowth;
 			int cloudMaxSteps;
-			/// 0 off, 1 step size, 2 step count, 3 segment length, 4 raw density, 5 start distance,
-			/// 6 which branch of cloudShellSegment the camera is in.
+			/// 0 off, 3 shell length, 4 raw density, 5 start distance. Camera region is handled by
+			/// the composite pass instead, so that the clouds stay visible beside it.
 			int cloudDebugMode;
 			float cloudJitterStrength;
 			float cloudExtinction;
@@ -169,25 +169,19 @@ Shader "Hidden/Clouds"
 			/// it survives. Kept separate from the background so this pass can run at a lower
 			/// resolution than the frame and be upsampled by the composite pass below - which is
 			/// the whole of the Half cost mode.
-			float4 frag(v2f i) : SV_Target
+			/// Marches one span of the shell, accumulating into the caller's running totals.
+			///
+			/// A span rather than the whole ray, because a ray can cross the shell twice - see
+			/// cloudShellSegments. Transmittance carries across both, so the far span is correctly
+			/// dimmed by whatever the near one already absorbed.
+			void cloudMarchSpan(
+				float3 rayOrigin, float3 rayDir, float2 span, float phase, float2 uv,
+				inout float transmittance, inout float3 luminance, inout float rawDensity)
 			{
-				float3 rayOrigin = _WorldSpaceCameraPos;
-				float viewLength = length(i.viewVector);
-				float3 rayDir = i.viewVector / viewLength;
-
-				float start, end;
-				if (!cloudShellSegment(rayOrigin, rayDir, start, end))
-				{
-					return float4(0, 0, 0, 1);
-				}
-
-				// Scene geometry ends the march. Terrain rises above the sphere the shell is built
-				// on, so depth - not a ground intersection - is what actually occludes cloud.
-				float sceneDepth = LinearEyeDepth(SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, i.uv)) * viewLength;
-				end = min(end, sceneDepth);
-				if (end <= start) { return float4(0, 0, 0, 1); }
-
+				float start = span.x;
+				float end = span.y;
 				float segment = end - start;
+				if (segment <= 0 || transmittance < 0.01) { return; }
 
 				// Step count from the segment, so the march ALWAYS covers the whole of it.
 				//
@@ -202,22 +196,7 @@ Shader "Hidden/Clouds"
 
 				// Blue-noise start offset, so undersampling breaks up into noise rather than into
 				// the concentric banding a fixed phase produces on a spherical shell.
-				float jitter = getBlueNoise(i.uv).r * cloudJitterStrength * stepSize;
-
-				// Where the march begins. This is the quantity that jumps if the shell branch is at
-				// fault: above the layer a shallow ray does not reach the tops for a long way, so
-				// start is large; from inside, the same ray starts at zero.
-				if (cloudDebugMode == 5) { return float4((start / 50.0).xxx, 0); }
-
-				if (cloudDebugMode == 1) { return float4(stepSize.xxx * 2, 0); }
-				if (cloudDebugMode == 2) { return float4((steps / (float)cloudMaxSteps).xxx, 0); }
-				if (cloudDebugMode == 3) { return float4((segment / 100.0).xxx, 0); }
-
-				float phase = cloudPhase(dot(rayDir, cloudSunDir));
-
-				float transmittance = 1;
-				float3 luminance = 0;
-				float rawDensity = 0;
+				float jitter = getBlueNoise(uv).r * cloudJitterStrength * stepSize;
 
 				[loop]
 				for (int s = 0; s < steps; s++)
@@ -279,6 +258,43 @@ Shader "Hidden/Clouds"
 
 					if (transmittance < 0.01) { break; }
 				}
+			}
+
+			/// Returns the cloud on its own: rgb is what it adds, a is how much of the scene behind
+			/// it survives. Kept separate from the background so this pass can run at a lower
+			/// resolution than the frame and be upsampled by the composite pass below - which is
+			/// the whole of the Half cost mode.
+			float4 frag(v2f i) : SV_Target
+			{
+				float3 rayOrigin = _WorldSpaceCameraPos;
+				float viewLength = length(i.viewVector);
+				float3 rayDir = i.viewVector / viewLength;
+
+				float2 nearSpan, farSpan;
+				if (!cloudShellSegments(rayOrigin, rayDir, nearSpan, farSpan))
+				{
+					return float4(0, 0, 0, 1);
+				}
+
+				// Scene geometry ends the march. Terrain rises above the sphere the shell is built
+				// on, so depth - not a ground intersection - is what actually occludes cloud. This
+				// is also what removes the far span when the ray runs into the planet rather than
+				// skimming under the cloud base and back out.
+				float sceneDepth = LinearEyeDepth(SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, i.uv)) * viewLength;
+				nearSpan.y = min(nearSpan.y, sceneDepth);
+				farSpan.y = min(farSpan.y, sceneDepth);
+
+				if (cloudDebugMode == 3) { return float4(((nearSpan.y - nearSpan.x + max(0, farSpan.y - farSpan.x)) / 100.0).xxx, 0); }
+				if (cloudDebugMode == 5) { return float4((nearSpan.x / 50.0).xxx, 0); }
+
+				float phase = cloudPhase(dot(rayDir, cloudSunDir));
+
+				float transmittance = 1;
+				float3 luminance = 0;
+				float rawDensity = 0;
+
+				cloudMarchSpan(rayOrigin, rayDir, nearSpan, phase, i.uv, transmittance, luminance, rawDensity);
+				cloudMarchSpan(rayOrigin, rayDir, farSpan, phase, i.uv, transmittance, luminance, rawDensity);
 
 				if (cloudDebugMode == 4) { return float4((rawDensity * 0.2).xxx, 0); }
 
