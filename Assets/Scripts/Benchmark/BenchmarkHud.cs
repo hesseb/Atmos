@@ -523,7 +523,20 @@ public class BenchmarkHud : MonoBehaviour
 
 		if (selected == AllIndex)
 		{
-			queue.AddRange(definitions);
+			// Not every available benchmark - only the ones that claim to produce a result. The
+			// smoke test exists to prove the harness runs end to end and says so itself; queuing it
+			// here would spend time on it and leave a row in the batch summary that reads like a
+			// measurement.
+			foreach (BenchmarkDefinition definition in definitions)
+			{
+				if (definition.includeInAll) { queue.Add(definition); }
+			}
+
+			if (queue.Count == 0)
+			{
+				Debug.LogWarning("[Benchmark] every available benchmark is excluded from All.", this);
+				return;
+			}
 
 			// One parent folder for the whole batch. Redirecting the runner's output root is
 			// what puts each run inside it; the override is restored when the batch ends so

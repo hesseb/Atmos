@@ -26,8 +26,14 @@ static class ExampleBenchmarks
 	// Alpine terrain: mountainous, so LOD transitions and the height-displaced border
 	// geometry are genuinely exercised rather than sitting over flat ocean.
 	static readonly CoordinateDegrees Alps = new CoordinateDegrees(8.0f, 46.5f);
-	// Arid and low-relief, the contrasting terrain case.
+	// Arid and low-relief, the contrasting terrain case. Also the safe choice for a very low
+	// camera, since nothing there rises far enough to intersect one.
 	static readonly CoordinateDegrees Sahara = new CoordinateDegrees(10.0f, 25.0f);
+
+	// Ligurian Sea, with the coast and the Alps to the north. Deliberately in the same region as
+	// the Alps view so terrain detail is comparable and the difference is the water rather than the
+	// dataset - and far enough offshore that a low, oblique framing is mostly ocean.
+	static readonly CoordinateDegrees Ligurian = new CoordinateDegrees(8.5f, 43.4f);
 
 	[MenuItem("Testbed/Benchmark/Create Example Benchmarks")]
 	static void Create()
@@ -35,6 +41,8 @@ static class ExampleBenchmarks
 		System.IO.Directory.CreateDirectory(Folder);
 
 		CreateSmoke();
+		CreateCoast();
+		CreateUnderdeck();
 		CreateFraming();
 		CreateAltitude();
 		CreateOrbit();
@@ -52,6 +60,9 @@ static class ExampleBenchmarks
 	{
 		var def = New("smoke", "Two short holds. For checking the harness runs end to end; " +
 			"too few frames for a trustworthy 1% low.");
+		// Its own description disqualifies it as a result, so All skips it. Still reachable from
+		// the cycle key, which is the only thing it is for.
+		def.includeInAll = false;
 		def.bootFrames = 30;
 		def.warmupFrames = 60;
 		def.flushFrames = 16;
@@ -61,6 +72,80 @@ static class ExampleBenchmarks
 			Hold("tilted", View(Alps, altitude: 25, pitch: 55), 200, Noon()),
 			Hold("nadir", View(Alps, altitude: 25, pitch: 90), 200, Noon())
 		};
+		Save(def);
+	}
+
+	/// <summary>
+	/// Over water, which nothing else in this set frames.
+	///
+	/// The Alps and the Sahara are both land, so a substantial amount of the renderer was sampled
+	/// by no benchmark at all: the ocean's Fresnel reflection of the sky, the cloud deck's downward
+	/// radiance that replaces that sky under overcast, the sun glint, and the city lights on the
+	/// water. All of them only exist on water.
+	///
+	/// Two of the three holds are at low sun, because Schlick's F0 for water is 0.02 but approaches
+	/// 1 at grazing incidence - so the reflection is almost the whole image exactly when the sun is
+	/// low, and a noon-only sample would miss the case the ocean work was written for. The third is
+	/// at noon as the contrast.
+	/// </summary>
+	static void CreateCoast()
+	{
+		var def = New("coast", "Three holds over the Ligurian Sea with the coast in frame. The " +
+			"only benchmark that samples water - the ocean's sky reflection, the cloud deck seen " +
+			"in it, and the sun glint. Two at low sun, where the Fresnel term dominates, one at " +
+			"noon for contrast.");
+
+		// heading 0 puts the coast and the Alps in the upper half of the frame with open water
+		// below, so both surfaces are present in every shot rather than alternating.
+		def.segments = new[]
+		{
+			Hold("oblique-golden", View(Ligurian, altitude: 12, pitch: 30), 500, Elevation(5f)),
+			Hold("horizon-golden", View(Ligurian, altitude: 12, pitch: 2), 500, Elevation(5f)),
+			Hold("oblique-noon", View(Ligurian, altitude: 12, pitch: 30), 500, Noon())
+		};
+
+		def.segments[0].screenshotFrames = new[] { 250 };
+		def.segments[1].screenshotFrames = new[] { 250 };
+		def.segments[2].screenshotFrames = new[] { 250 };
+
+		Save(def);
+	}
+
+	/// <summary>
+	/// Beneath the cloud base, looking up.
+	///
+	/// Every other benchmark sits inside the shell or above it - the altitude sweep starts at 4,
+	/// and the cloud base is at 0.6 - so the view from underneath was never sampled. That view is
+	/// where the newest cloud work does most of its work: the deck's underside rather than its lit
+	/// top, the shadows it casts on the ground, and the light shafts through its gaps. It is also
+	/// the zoomed-in strategy framing.
+	///
+	/// Over the Sahara rather than the Alps, because at this altitude a mountain would be in front
+	/// of the camera rather than below it.
+	///
+	/// NOTE: altitude here has to stay under the cloud base. If cloudBottomAltitude moves, this
+	/// benchmark silently stops testing what it is named for - it will still run, and still produce
+	/// numbers, from inside the deck instead of below it.
+	/// </summary>
+	static void CreateUnderdeck()
+	{
+		var def = New("underdeck", "Three holds beneath the cloud base over low-relief terrain, " +
+			"looking up and along. Samples the deck's underside, its shadows on the ground and " +
+			"the shafts through its gaps - none of which any other benchmark frames.");
+
+		def.segments = new[]
+		{
+			Hold("up", View(Sahara, altitude: 0.3f, pitch: -35), 500, Elevation(25f)),
+			Hold("along", View(Sahara, altitude: 0.3f, pitch: 2), 500, Elevation(25f)),
+			// Low sun along the surface is where shafts are longest and the shadow map is doing the
+			// most, since the sun ray crosses the deck at a shallow angle far from the camera.
+			Hold("along-golden", View(Sahara, altitude: 0.3f, pitch: 2), 500, Elevation(4f))
+		};
+
+		def.segments[0].screenshotFrames = new[] { 250 };
+		def.segments[1].screenshotFrames = new[] { 250 };
+		def.segments[2].screenshotFrames = new[] { 250 };
+
 		Save(def);
 	}
 
