@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Experimental.Rendering;
 
 namespace Clouds
 {
@@ -173,6 +174,28 @@ namespace Clouds
 			"UVs, which would tear at the poles.")]
 		public float windSpeed = 0.15f;
 
+		[Header("Shadows on the ground")]
+		[Tooltip("Publishes the SAME globals the volumetric's shadow pass does, so Terrain.shader " +
+			"and Ocean.shader need no change - cloudShadow() in SurfaceLighting.hlsl already samples " +
+			"them and neither surface can tell which renderer wrote the map.")]
+		public ComputeShader shadowCompute;
+
+		[Tooltip("Equirectangular, so it needs no shadow frustum and does not change with the " +
+			"camera. Matches the volumetric's default, because the two shadow maps have to be the " +
+			"same size for their cost to be comparable.")]
+		public Vector2Int shadowMapSize = new Vector2Int(512, 256);
+
+		[Tooltip("Widens the footprint each deck is read at, relative to what the map can actually " +
+			"represent. 1 matches the map exactly and is what stops the shadows flickering; lower " +
+			"reads finer detail than the map can carry, which aliases, and the aliasing moves with " +
+			"the wind.")]
+		[Range(0.5f, 4f)] public float shadowDetailScale = 1f;
+
+		[Tooltip("0 disables ground shadows entirely, which is also what happens when this effect " +
+			"is disabled. Without them the baseline would be missing a FEATURE rather than rendering " +
+			"the same one more cheaply, and part of the measured gap would be the absence.")]
+		[Range(0f, 1f)] public float shadowStrength = 0.85f;
+
 		[Header("Cost")]
 		[Tooltip("Full shades every pixel; Half shades a quarter of them and upsamples with the same " +
 			"depth-aware filter the volumetric uses. The filter is shared code, so the gap between " +
@@ -187,6 +210,15 @@ namespace Clouds
 		// captureDeltaTime advances the weather at the same rate a real frame would - and so that
 		// pausing with P freezes the clouds, as it does for the volumetric.
 		float elapsed;
+
+		// Which frame the clock was last stepped on. Both the shadow pass and the render want the
+		// decks at the same offset, and both call Advance.
+		int lastAdvanceFrame = -1;
+
+		RenderTexture shadowMap;
+
+		// Whether the shadow globals currently belong to THIS effect - see RenderShadowMap.
+		bool publishedShadows;
 
 		// Resolved lazily and cached: this is a ScriptableObject, so it cannot serialize scene
 		// references.
@@ -222,7 +254,105 @@ namespace Clouds
 			if (shader == null) { shader = Shader.Find("Hidden/BaselineClouds"); }
 			warnedMissingLower = false;
 			warnedMissingUpper = false;
+
+			// The shadow map is generated at pre-cull, not in OnRenderImage, because the terrain and
+			// ocean sample it during forward opaque - which has already happened by the time a
+			// post-process runs. Generating it there would shadow the ground with last frame's
+			// clouds. CloudEffect and AtmosphereEffect register their dispatches the same way.
+			Camera.onPreCull -= RenderShadowMap;
+			Camera.onPreCull += RenderShadowMap;
+
 			base.OnEnable();
+		}
+
+		public override void OnDestroy()
+		{
+			Camera.onPreCull -= RenderShadowMap;
+			ReleaseShadowMap();
+		}
+
+		void ReleaseShadowMap()
+		{
+			if (shadowMap == null) { return; }
+			shadowMap.Release();
+			DestroyImmediate(shadowMap);
+			shadowMap = null;
+		}
+
+		/// <summary>
+		/// Sunlight reaching the globe through the decks, into the globals the surface shaders
+		/// already read.
+		///
+		/// One texture tap per deck, against the volumetric's ten-step march of a full density
+		/// evaluation. Same output, same consumers, same resolution - which makes the shadow pass
+		/// its own clean sub-comparison rather than a confound inside the main one.
+		/// </summary>
+		void RenderShadowMap(Camera renderingCamera)
+		{
+			if (cam != null && renderingCamera != cam) { return; }
+
+			if (!enabled || shadowCompute == null || shadowStrength <= 0f || TextureFor(lower) == null)
+			{
+				// Only retract what THIS effect published.
+				//
+				// Zeroing unconditionally is the obvious version and it is wrong: PostProcessingManager
+				// calls OnEnable on every effect in the chain regardless of its `enabled` flag, so
+				// both cloud renderers have a pre-cull callback registered at all times. The disabled
+				// one would then wipe the strength the enabled one had just set, and which of them
+				// won would come down to callback order. The symptom is ground shadows that flicker
+				// or never appear, with nothing wrong in either renderer.
+				if (publishedShadows)
+				{
+					publishedShadows = false;
+					Shader.SetGlobalFloat("cloudShadowStrength", 0f);
+				}
+				return;
+			}
+
+			int width = Mathf.Max(8, shadowMapSize.x);
+			int height = Mathf.Max(8, shadowMapSize.y);
+
+			if (shadowMap == null || !shadowMap.IsCreated() ||
+				shadowMap.width != width || shadowMap.height != height)
+			{
+				ReleaseShadowMap();
+				// RGBA8 rather than R8 for the reason the volumetric's map documents: random write
+				// to a single-channel 8-bit target is not universally supported.
+				shadowMap = new RenderTexture(width, height, 0, GraphicsFormat.R8G8B8A8_UNorm)
+				{
+					enableRandomWrite = true,
+					wrapModeU = TextureWrapMode.Repeat,   // longitude wraps
+					wrapModeV = TextureWrapMode.Clamp,    // latitude does not
+					filterMode = FilterMode.Bilinear,
+					name = "Baseline Cloud Shadow Map"
+				};
+				shadowMap.Create();
+			}
+
+			// Advanced here rather than in the render, so the shadows and the clouds are drifted by
+			// the same amount within a frame. Guarded so a frame that renders both does not step
+			// the clock twice, which would make the decks move at double speed whenever shadows are
+			// on - a coupling between two unrelated toggles.
+			Advance();
+
+			Vector3 dirToSun = ObserverGeometry.DirectionToSun(ref sun);
+
+			int kernel = shadowCompute.FindKernel("CSBaselineCloudShadow");
+			BindLayer(shadowCompute, kernel, "A", lower);
+			BindLayer(shadowCompute, kernel, "B", upper);
+			shadowCompute.SetInt("baselineLayerCount", UpperActive ? 2 : 1);
+			shadowCompute.SetFloat("baselineBodyRadius", bodyRadius);
+
+			shadowCompute.SetTexture(kernel, "Result", shadowMap);
+			shadowCompute.SetVector("shadowMapSize", new Vector2(width, height));
+			shadowCompute.SetVector("shadowSunDir", dirToSun);
+			shadowCompute.SetFloat("shadowDetailScale", shadowDetailScale);
+
+			shadowCompute.Dispatch(kernel, Mathf.CeilToInt(width / 8f), Mathf.CeilToInt(height / 8f), 1);
+
+			Shader.SetGlobalTexture("CloudShadowMap", shadowMap);
+			Shader.SetGlobalFloat("cloudShadowStrength", shadowStrength);
+			publishedShadows = true;
 		}
 
 		protected override void RenderEffectToTarget(RenderTexture source, RenderTexture target)
@@ -281,6 +411,12 @@ namespace Clouds
 		/// </summary>
 		void Advance()
 		{
+			// Once per frame however many callers ask. The shadow pass and the render both need the
+			// decks at the same offset, and stepping twice would make them drift at double speed
+			// whenever shadows happen to be on - a coupling between two unrelated toggles.
+			if (Time.frameCount == lastAdvanceFrame) { return; }
+			lastAdvanceFrame = Time.frameCount;
+
 			if (solarSystem == null) { solarSystem = FindFirstObjectByType<SolarSystem.SolarSystemManager>(); }
 			float timeScale = solarSystem == null ? 1f : (solarSystem.animate ? solarSystem.timeMultiplier : 0f);
 			elapsed += Time.deltaTime * timeScale;
@@ -297,6 +433,7 @@ namespace Clouds
 			// produces.
 			BindLayer("B", upper);
 			material.SetInt("baselineLayerCount", UpperActive ? 2 : 1);
+			material.SetFloat("baselineBodyRadius", bodyRadius);
 
 			material.SetInt("baselineCloudDebugMode", (int)debugMode);
 
@@ -339,6 +476,30 @@ namespace Clouds
 			material.SetFloat("baselineLayerRelief" + suffix, layer.reliefStrength);
 			material.SetFloat("baselineLayerTexels" + suffix, tex != null ? tex.width : 2048);
 			material.SetMatrix("baselineLayerDrift" + suffix, DriftMatrix(layer.windScale));
+		}
+
+		/// <summary>
+		/// The same uniforms, on a compute rather than a material.
+		///
+		/// Two overloads that must stay in step, exactly as CloudEffect's BindDensity and
+		/// SetProperties do - a divergence here would read as shadows not matching the clouds
+		/// casting them, which looks like a plausible offset rather than an obvious fault.
+		/// </summary>
+		void BindLayer(ComputeShader compute, int kernel, string suffix, LayerSettings layer)
+		{
+			Texture2D tex = TextureFor(layer);
+
+			// A compute cannot take a null texture binding the way a material can, so an unassigned
+			// deck gets an opaque-black stand-in - alpha 0, which is no cloud and casts no shadow.
+			compute.SetTexture(kernel, "BaselineCloudLayer" + suffix,
+				tex != null ? (Texture)tex : Texture2D.blackTexture);
+			compute.SetFloat("baselineLayerRadius" + suffix, bodyRadius + layer.altitude);
+			compute.SetFloat("baselineLayerThickness" + suffix, layer.thickness);
+			compute.SetFloat("baselineLayerOpacity" + suffix, layer.opacity);
+			compute.SetFloat("baselineLayerContrast" + suffix, layer.contrast);
+			compute.SetFloat("baselineLayerRelief" + suffix, layer.reliefStrength);
+			compute.SetFloat("baselineLayerTexels" + suffix, tex != null ? tex.width : 2048);
+			compute.SetMatrix("baselineLayerDrift" + suffix, DriftMatrix(layer.windScale));
 		}
 
 		/// <summary>Once per enable, not once per frame.</summary>
