@@ -15,17 +15,29 @@ MonoBehaviour:
   enabled: 1
   shader: {fileID: 4800000, guid: 40e280c80e5ba7b46afbf235859236fc, type: 3}
   textureSource: 0
-  authoredLayer: {fileID: 2800000, guid: 1b5407ad2977ca144b1249db8b1b227b, type: 3}
-  bakedLayer: {fileID: 2800000, guid: fb9bfc8c8e69ca94db030a271ee2b390, type: 3}
   bodyRadius: 150
-  layerAltitude: 4
-  layerThickness: 2.5
-  opacity: 1.3
-  contrast: 1.1
-  reliefStrength: 1
+  lower:
+    authored: {fileID: 2800000, guid: 1b5407ad2977ca144b1249db8b1b227b, type: 3}
+    baked: {fileID: 2800000, guid: fb9bfc8c8e69ca94db030a271ee2b390, type: 3}
+    altitude: 4
+    thickness: 2.5
+    opacity: 1.3
+    contrast: 1.1
+    reliefStrength: 1
+    windScale: 1
+  upper:
+    authored: {fileID: 2800000, guid: 32a5cb77c081d534cbb5d3477946b296, type: 3}
+    baked: {fileID: 2800000, guid: 28338ccd1c2cc3e48a00e7dca4885867, type: 3}
+    altitude: 8
+    thickness: 1.2
+    opacity: 0.75
+    contrast: 1.4
+    reliefStrength: 0.7
+    windScale: 1.7
+  upperLayerEnabled: 1
   sunColour:
     serializedVersion: 2
-    key0: {r: 1, g: 1, b: 1, a: 1}
+    key0: {r: 1, g: 0.8588909, b: 0.7216981, a: 1}
     key1: {r: 1, g: 1, b: 1, a: 1}
     key2: {r: 0, g: 0, b: 0, a: 0}
     key3: {r: 0, g: 0, b: 0, a: 0}
@@ -50,12 +62,12 @@ MonoBehaviour:
     atime6: 0
     atime7: 0
     m_Mode: 0
-    m_ColorSpace: -1
+    m_ColorSpace: 0
     m_NumColorKeys: 2
     m_NumAlphaKeys: 2
   ambientColour:
     serializedVersion: 2
-    key0: {r: 1, g: 1, b: 1, a: 1}
+    key0: {r: 1, g: 0.7985433, b: 0.61320746, a: 1}
     key1: {r: 1, g: 1, b: 1, a: 1}
     key2: {r: 0, g: 0, b: 0, a: 0}
     key3: {r: 0, g: 0, b: 0, a: 0}
@@ -80,15 +92,19 @@ MonoBehaviour:
     atime6: 0
     atime7: 0
     m_Mode: 0
-    m_ColorSpace: -1
+    m_ColorSpace: 0
     m_NumColorKeys: 2
     m_NumAlphaKeys: 2
-  sunIntensity: 1.4
-  ambientIntensity: 1
-  wrap: 0.45
-  baseLight: 0.25
+  sunIntensity: 0.12
+  ambientIntensity: 0.89
+  wrap: 0.44
+  baseLight: 0.264
   windAxis: {x: 0.15, y: 1, z: 0.1}
   windSpeed: 0.15
+  shadowCompute: {fileID: 7200000, guid: 41ff893c144eb9c4ba299a2b3d2fe901, type: 3}
+  shadowMapSize: {x: 512, y: 256}
+  shadowDetailScale: 0.5
+  shadowStrength: 0.85
   costMode: 0
   depthRejection: 8
   debugMode: 0

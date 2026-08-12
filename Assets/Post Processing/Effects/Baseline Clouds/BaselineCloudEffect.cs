@@ -540,6 +540,49 @@ namespace Clouds
 		}
 
 		/// <summary>
+		/// Whether a ramp is still Unity's untouched default and should be filled in.
+		///
+		/// "Fewer than two keys" is NOT the test, which is the mistake this replaces: Unity's default
+		/// Gradient has exactly two, both white, so that check never fired and the authored defaults
+		/// below were never once applied. What reached the shader instead was white at every sun
+		/// elevation - including midnight, where the ramp's whole job is to go black.
+		///
+		/// Two white keys is the signature of the default and of nothing anyone would deliberately
+		/// author, so it is safe to overwrite. Anything else is left alone.
+		/// </summary>
+		static bool NeedsAuthoring(Gradient gradient)
+		{
+			if (gradient == null || gradient.colorKeys == null || gradient.colorKeys.Length < 2)
+			{
+				return true;
+			}
+			if (gradient.colorKeys.Length > 2) { return false; }
+
+			foreach (GradientColorKey key in gradient.colorKeys)
+			{
+				Color c = key.color;
+				if (c.r < 0.999f || c.g < 0.999f || c.b < 0.999f) { return false; }
+			}
+			return true;
+		}
+
+		/// <summary>
+		/// Rewrites both lighting ramps to the authored defaults, discarding whatever is there.
+		///
+		/// On the context menu because a ramp that is wrong at one end is hard to fix by dragging -
+		/// and being wrong at t=0, which is midnight, is the failure that actually happens: it lights
+		/// the decks at night, and the usual response is to wind sunIntensity down to hide it, which
+		/// then flattens the relief in daylight too.
+		/// </summary>
+		[ContextMenu("Reset lighting ramps")]
+		public void ResetLightingRamps()
+		{
+			sunColour = null;
+			ambientColour = null;
+			EnsureGradients();
+		}
+
+		/// <summary>
 		/// Fills in sensible ramps the first time, so the effect does not silently light the clouds
 		/// with Unity's default black-to-white gradient.
 		///
@@ -550,7 +593,7 @@ namespace Clouds
 		/// </summary>
 		void EnsureGradients()
 		{
-			if (sunColour == null || sunColour.colorKeys == null || sunColour.colorKeys.Length < 2)
+			if (NeedsAuthoring(sunColour))
 			{
 				sunColour = new Gradient();
 				sunColour.SetKeys(
@@ -566,7 +609,7 @@ namespace Clouds
 					new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(1f, 1f) });
 			}
 
-			if (ambientColour == null || ambientColour.colorKeys == null || ambientColour.colorKeys.Length < 2)
+			if (NeedsAuthoring(ambientColour))
 			{
 				ambientColour = new Gradient();
 				ambientColour.SetKeys(
