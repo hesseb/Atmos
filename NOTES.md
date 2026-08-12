@@ -2050,6 +2050,11 @@ separate underside term; and ground shadows on the same globals the volumetric p
   two colour keys", but Unity's default `Gradient` has exactly two - so the authored ramps were never
   once applied and white reached the shader at every sun elevation, including midnight. A guard has
   to recognise the default it is standing in for, not merely the absence of one.
+- **A second renderer needs a second line in WorldScaleController.** It rescales the volumetric's
+  `bodyRadius` under F7 but knew nothing about the baseline's, which is a separate field on purpose -
+  either renderer has to keep working with the other switched off. At x4 the planet grows to 600
+  while the decks stay at 154 and vanish inside it. Anything that mirrors a field for independence
+  buys a place where the two can silently disagree.
 - **Unity's in-memory asset values beat file edits, again.** `captureNormalStrength` reached the
   compute as its first-committed default of 2 rather than the edited 14, with the field absent from
   the asset YAML entirely. Third occurrence this project. When a bake looks wrong, check what the

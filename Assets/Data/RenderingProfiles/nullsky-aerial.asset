@@ -21,5 +21,9 @@ MonoBehaviour:
     enabled: 0
   - effect: {fileID: 11400000, guid: 04fe8bd6952ff0c42bd708348a5b3dd1, type: 2}
     enabled: 1
+  - effect: {fileID: 11400000, guid: b60f81ca37998eb469f16ebbedc9b1cd, type: 2}
+    enabled: 0
   objects: []
   sky: 5
+  clouds: 0
+  baselineClouds: 1

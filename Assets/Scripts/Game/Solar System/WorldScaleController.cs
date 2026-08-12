@@ -21,6 +21,10 @@ public class WorldScaleController : MonoBehaviour
 
 	public AtmosphereEffect atmosphere;
 	public Clouds.CloudEffect clouds;
+	// The baseline cloud renderer's decks sit on the same sphere and have to move with it too. Both
+	// cloud renderers are rescaled whether or not either is currently drawing: one that is off
+	// during a scale change would otherwise come back at the wrong radius.
+	public Clouds.BaselineCloudEffect baselineClouds;
 	public TestbedCamera testbedCamera;
 
 	[Header("Planet scaling")]
@@ -122,6 +126,10 @@ public class WorldScaleController : MonoBehaviour
 				{
 					if (atmosphere == null && effect is AtmosphereEffect foundAtmosphere) { atmosphere = foundAtmosphere; }
 					if (clouds == null && effect is Clouds.CloudEffect foundClouds) { clouds = foundClouds; }
+					if (baselineClouds == null && effect is Clouds.BaselineCloudEffect foundBaseline)
+					{
+						baselineClouds = foundBaseline;
+					}
 				}
 			}
 		}
@@ -230,6 +238,16 @@ public class WorldScaleController : MonoBehaviour
 				if (clouds != null)
 				{
 					scope.Set(() => clouds.bodyRadius, v => clouds.bodyRadius = v, baseRadius * k);
+				}
+
+				// The baseline renderer's decks, on exactly the same reasoning. Its bodyRadius is a
+				// separate field from the volumetric's - deliberately, since either renderer has to
+				// keep working with the other switched off - so it needs its own line here, or the
+				// decks stay at 154 while the planet grows past them and disappear inside it.
+				if (baselineClouds != null)
+				{
+					scope.Set(() => baselineClouds.bodyRadius,
+						v => baselineClouds.bodyRadius = v, baseRadius * k);
 				}
 			}
 

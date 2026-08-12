@@ -37,20 +37,20 @@ MonoBehaviour:
   upperLayerEnabled: 1
   sunColour:
     serializedVersion: 2
-    key0: {r: 1, g: 0.8588909, b: 0.7216981, a: 1}
-    key1: {r: 1, g: 1, b: 1, a: 1}
-    key2: {r: 0, g: 0, b: 0, a: 0}
-    key3: {r: 0, g: 0, b: 0, a: 0}
-    key4: {r: 0, g: 0, b: 0, a: 0}
-    key5: {r: 0, g: 0, b: 0, a: 0}
+    key0: {r: 0, g: 0, b: 0, a: 1}
+    key1: {r: 0.02, g: 0.02, b: 0.035, a: 1}
+    key2: {r: 0.85, g: 0.4, b: 0.18, a: 0}
+    key3: {r: 1, g: 0.78, b: 0.58, a: 0}
+    key4: {r: 1, g: 0.96, b: 0.91, a: 0}
+    key5: {r: 1, g: 1, b: 1, a: 0}
     key6: {r: 0, g: 0, b: 0, a: 0}
     key7: {r: 0, g: 0, b: 0, a: 0}
     ctime0: 0
-    ctime1: 65535
-    ctime2: 0
-    ctime3: 0
-    ctime4: 0
-    ctime5: 0
+    ctime1: 30801
+    ctime2: 32768
+    ctime3: 36437
+    ctime4: 43712
+    ctime5: 65535
     ctime6: 0
     ctime7: 0
     atime0: 0
@@ -62,25 +62,25 @@ MonoBehaviour:
     atime6: 0
     atime7: 0
     m_Mode: 0
-    m_ColorSpace: 0
-    m_NumColorKeys: 2
+    m_ColorSpace: -1
+    m_NumColorKeys: 6
     m_NumAlphaKeys: 2
   ambientColour:
     serializedVersion: 2
-    key0: {r: 1, g: 0.7985433, b: 0.61320746, a: 1}
-    key1: {r: 1, g: 1, b: 1, a: 1}
-    key2: {r: 0, g: 0, b: 0, a: 0}
-    key3: {r: 0, g: 0, b: 0, a: 0}
-    key4: {r: 0, g: 0, b: 0, a: 0}
-    key5: {r: 0, g: 0, b: 0, a: 0}
+    key0: {r: 0.03, g: 0.035, b: 0.055, a: 1}
+    key1: {r: 0.08, g: 0.09, b: 0.14, a: 1}
+    key2: {r: 0.3, g: 0.23, b: 0.23, a: 0}
+    key3: {r: 0.42, g: 0.45, b: 0.52, a: 0}
+    key4: {r: 0.48, g: 0.56, b: 0.68, a: 0}
+    key5: {r: 0.5, g: 0.58, b: 0.7, a: 0}
     key6: {r: 0, g: 0, b: 0, a: 0}
     key7: {r: 0, g: 0, b: 0, a: 0}
     ctime0: 0
-    ctime1: 65535
-    ctime2: 0
-    ctime3: 0
-    ctime4: 0
-    ctime5: 0
+    ctime1: 30801
+    ctime2: 32768
+    ctime3: 36437
+    ctime4: 43712
+    ctime5: 65535
     ctime6: 0
     ctime7: 0
     atime0: 0
@@ -92,8 +92,8 @@ MonoBehaviour:
     atime6: 0
     atime7: 0
     m_Mode: 0
-    m_ColorSpace: 0
-    m_NumColorKeys: 2
+    m_ColorSpace: -1
+    m_NumColorKeys: 6
     m_NumAlphaKeys: 2
   sunIntensity: 0.12
   ambientIntensity: 0.89
@@ -107,4 +107,6 @@ MonoBehaviour:
   shadowStrength: 0.85
   costMode: 0
   depthRejection: 8
+  variant: 0
+  nullShader: {fileID: 0}
   debugMode: 0

@@ -10,19 +10,20 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 13efd33617756b745aaee9745ba00065, type: 3}
-  m_Name: nullsky
+  m_Name: clouds-baseline-mesh
   m_EditorClassIdentifier: Assembly-CSharp::PostProcessRendererProfile
-  id: nullsky
-  description: 'Control: the sky pass with a passthrough fragment and no aerial perspective.
-    Subtract from noatmo to price the sky pass structure itself.'
+  id: clouds-baseline-mesh
+  description: The same baseline shading reached by rasterising a sphere per deck
+    rather than a full-screen quad - what a game would actually ship. Differs from
+    clouds-baseline-authored only in delivery.
   effects:
   - effect: {fileID: 11400000, guid: 7526e0f14e0a0a7479aeb2e5d87ae0a3, type: 2}
-    enabled: 0
+    enabled: 1
   - effect: {fileID: 11400000, guid: 04fe8bd6952ff0c42bd708348a5b3dd1, type: 2}
     enabled: 0
   - effect: {fileID: 11400000, guid: b60f81ca37998eb469f16ebbedc9b1cd, type: 2}
     enabled: 0
   objects: []
-  sky: 5
+  sky: 1
   clouds: 0
-  baselineClouds: 1
+  baselineClouds: 4
