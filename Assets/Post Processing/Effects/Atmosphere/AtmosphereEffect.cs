@@ -147,6 +147,25 @@ public class AtmosphereEffect : PostProcessingEffect
 	// Allow control over how strongly atmosphere affects appearance of terrain
 	[Range(0, 1)] public float aerialPerspectiveStrength = 1;
 
+	/// <summary>
+	/// Draws the light-shaft occlusion term instead of the scene, so "no shafts" can be told apart
+	/// from "shafts too faint to see".
+	///
+	/// Those two have completely different causes and no shared fix, and guessing between them is
+	/// how the cloud pop-in cost four attempts. White everywhere means cloudSunVisibility is
+	/// returning 1 - a plumbing or geometry fault. Cloud-shaped darkening means the term works and
+	/// the question is magnitude, which is a tuning problem in a different file.
+	/// </summary>
+	public enum DebugMode
+	{
+		Off = 0,
+		ShaftVisibility = 1,
+	}
+
+	[Tooltip("Shaft Visibility replaces the frame with the cloud occlusion the in-scatter march " +
+		"sees, averaged along each view ray. White is unoccluded.")]
+	public DebugMode debugMode = DebugMode.Off;
+
 
 	[Header("Sky Texture")]
 	// Num raymarch steps when drawing the sky (this is drawn small and upscaled, so can afford to be fairly high)
@@ -486,6 +505,7 @@ public class AtmosphereEffect : PostProcessingEffect
 		drawAerial.SetVector("params", testParams);
 		drawAerial.SetFloat("ditherStrength", ditherStrength);
 		drawAerial.SetFloat("aerialPerspectiveStrength", aerialPerspectiveStrength);
+		drawAerial.SetInt("atmosphereDebugMode", (int)debugMode);
 
 		drawAerial.SetFloat("intensity", intensity);
 		drawAerial.SetFloat("contrast", contrast);
