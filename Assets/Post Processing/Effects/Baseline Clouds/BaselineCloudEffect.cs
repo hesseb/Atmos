@@ -383,7 +383,7 @@ namespace Clouds
 			int width = Mathf.Max(1, source.width / divisor);
 			int height = Mathf.Max(1, source.height / divisor);
 
-			SetProperties(height);
+			ApplyShadingValuesTo(material, height);
 
 			// Half format for the same reason the volumetric uses one: a lit cloud top is not
 			// bounded by 1, and an 8-bit target would clip it flat.
@@ -422,40 +422,52 @@ namespace Clouds
 			elapsed += Time.deltaTime * timeScale;
 		}
 
-		void SetProperties(int passHeight)
+		/// <summary>
+		/// Every uniform this renderer's shading needs, onto any material.
+		///
+		/// Public because the DRAWN MESH delivery binds the same set. Both deliveries therefore read
+		/// their parameters from this one asset rather than each holding a copy - which is what makes
+		/// "the mesh and the post-process should be near-identical in image and differ only in cost"
+		/// a testable claim instead of a hope. AtmosphereEffect.ApplyAtmosphereValuesTo is public for
+		/// the same reason.
+		///
+		/// `passHeight` is the pixel height of whatever the shading writes into, since the mip
+		/// footprint follows the pass resolution rather than the frame's.
+		/// </summary>
+		public void ApplyShadingValuesTo(Material target, int passHeight)
 		{
 			EnsureGradients();
 
-			BindLayer("A", lower);
+			BindLayer(target, "A", lower);
 			// The upper deck's uniforms are bound whether or not it is drawn - a stale texture bound
 			// to an unused sampler costs nothing, whereas leaving it unbound after a toggle would
 			// leave whatever was there last, which is the class of bug an omitted benchmark toggle
 			// produces.
-			BindLayer("B", upper);
-			material.SetInt("baselineLayerCount", UpperActive ? 2 : 1);
-			material.SetFloat("baselineBodyRadius", bodyRadius);
+			BindLayer(target, "B", upper);
+			target.SetInt("baselineLayerCount", UpperActive ? 2 : 1);
+			target.SetFloat("baselineBodyRadius", bodyRadius);
 
-			material.SetInt("baselineCloudDebugMode", (int)debugMode);
+			target.SetInt("baselineCloudDebugMode", (int)debugMode);
 
 			Vector3 planetCentre = ObserverGeometry.PlanetCentre(ref planet);
 			Vector3 dirToSun = ObserverGeometry.DirectionToSun(ref sun);
 			Vector3 observer = cam != null ? cam.transform.position : Vector3.zero;
 			float sunElevation01 = ObserverGeometry.SunElevation01(observer, planetCentre, dirToSun);
 
-			material.SetVector("baselineCloudSunDir", dirToSun);
-			material.SetColor("baselineCloudSunColour", sunColour.Evaluate(sunElevation01));
-			material.SetColor("baselineCloudAmbientColour", ambientColour.Evaluate(sunElevation01));
-			material.SetFloat("baselineCloudSunIntensity", sunIntensity);
-			material.SetFloat("baselineCloudAmbientIntensity", ambientIntensity);
-			material.SetFloat("baselineCloudWrap", wrap);
-			material.SetFloat("baselineCloudBaseLight", baseLight);
+			target.SetVector("baselineCloudSunDir", dirToSun);
+			target.SetColor("baselineCloudSunColour", sunColour.Evaluate(sunElevation01));
+			target.SetColor("baselineCloudAmbientColour", ambientColour.Evaluate(sunElevation01));
+			target.SetFloat("baselineCloudSunIntensity", sunIntensity);
+			target.SetFloat("baselineCloudAmbientIntensity", ambientIntensity);
+			target.SetFloat("baselineCloudWrap", wrap);
+			target.SetFloat("baselineCloudBaseLight", baseLight);
 
 			// Radians one screen pixel of THIS pass subtends. The mip footprint is derived from it,
 			// so it has to follow the pass resolution rather than the frame's - at Half the pixels
 			// are twice as wide and the layer has to be read one mip coarser to match.
 			float fov = cam != null ? cam.fieldOfView : 60f;
 			float pixelAngle = 2f * Mathf.Tan(fov * 0.5f * Mathf.Deg2Rad) / Mathf.Max(1, passHeight);
-			material.SetFloat("baselineCloudPixelAngle", pixelAngle);
+			target.SetFloat("baselineCloudPixelAngle", pixelAngle);
 		}
 
 		/// <summary>
@@ -464,18 +476,18 @@ namespace Clouds
 		/// A texture width of zero would put the mip footprint at infinity, so an unassigned deck
 		/// falls back to a sane one rather than reading black.
 		/// </summary>
-		void BindLayer(string suffix, LayerSettings layer)
+		void BindLayer(Material target, string suffix, LayerSettings layer)
 		{
 			Texture2D tex = TextureFor(layer);
 
-			material.SetTexture("BaselineCloudLayer" + suffix, tex);
-			material.SetFloat("baselineLayerRadius" + suffix, bodyRadius + layer.altitude);
-			material.SetFloat("baselineLayerThickness" + suffix, layer.thickness);
-			material.SetFloat("baselineLayerOpacity" + suffix, layer.opacity);
-			material.SetFloat("baselineLayerContrast" + suffix, layer.contrast);
-			material.SetFloat("baselineLayerRelief" + suffix, layer.reliefStrength);
-			material.SetFloat("baselineLayerTexels" + suffix, tex != null ? tex.width : 2048);
-			material.SetMatrix("baselineLayerDrift" + suffix, DriftMatrix(layer.windScale));
+			target.SetTexture("BaselineCloudLayer" + suffix, tex);
+			target.SetFloat("baselineLayerRadius" + suffix, bodyRadius + layer.altitude);
+			target.SetFloat("baselineLayerThickness" + suffix, layer.thickness);
+			target.SetFloat("baselineLayerOpacity" + suffix, layer.opacity);
+			target.SetFloat("baselineLayerContrast" + suffix, layer.contrast);
+			target.SetFloat("baselineLayerRelief" + suffix, layer.reliefStrength);
+			target.SetFloat("baselineLayerTexels" + suffix, tex != null ? tex.width : 2048);
+			target.SetMatrix("baselineLayerDrift" + suffix, DriftMatrix(layer.windScale));
 		}
 
 		/// <summary>
