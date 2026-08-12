@@ -1983,3 +1983,88 @@ same everywhere and the layer ended at a flat ceiling.
   moves the burden onto the caller to supply unambiguous inputs.
 
 Also removed `stepGrowth`, dead since the distance-keyed step was reverted.
+
+## Milestone: baseline cloud renderer
+
+The counterpart the volumetric had been missing, so RQ1 and RQ2 now have something to compare
+against. A relief-shaded texture on two spheres around the globe - the Victoria 3 reading of a cloud
+layer floating over the map, adapted from a flat map to a globe.
+
+Built in seven stages, each committed separately: the layer format and authored bake; the capture
+bake off the volumetric; the shared shading header and post-process delivery; two decks with
+parallax; ground shadows; the drawn-mesh delivery; benchmark profiles and the null arm.
+
+### The shape of the comparison
+
+Two axes, deliberately crossed, because "the baseline looks worse" is uninteresting without knowing
+*why*:
+
+- **Two texture sources.** Authored is a procedural field - what a studio would actually make, and
+  the honest baseline. Baked is the volumetric flattened into the same format: not shippable, since
+  it needs the volumetric to exist, but a control condition. The content is then identical, so what
+  is left against `clouds-full` is the technique rather than the art. This is the same separation
+  the baseline sky's `GradientBaked` variant exists to provide.
+- **Two deliveries.** The post-process shares the volumetric's pass shape exactly - same offscreen
+  target, same `Full`/`Half` modes, and literally the same composite code - which is what licenses
+  "volumetric minus baseline = the shading model". The drawn mesh is what a game would ship, and the
+  gap between the two deliveries is its own result.
+
+`CloudComposite.hlsl` was extracted so both renderers *share* the composite rather than resembling
+it. A copy would start identical and drift, and the drift would be measured as a difference between
+techniques.
+
+### What the baseline is deliberately given
+
+A strawman baseline would make RQ1's finding worthless, so it gets: Beer through a slab so a grazing
+ray reads as thicker cloud; a height channel that lifts the sheet so it parallaxes against itself;
+two decks at different radii drifting at different rates, sorted per pixel; a wrapped terminator; a
+separate underside term; and ground shadows on the same globals the volumetric publishes.
+
+### What it still cannot do - findings, not gaps
+
+- **No silhouette.** A height field suggests thickness but cannot put a cumulonimbus tower against
+  the sky. This is the central RQ1 finding about the method.
+- **No view-dependent scattering.** No phase function, so no forward brightening and no silver
+  lining: it cannot respond to being looked at toward the sun at all.
+- **No self-shadowing.** Relief fakes the surface; one cloud cannot shade another and no cloud has
+  an inside.
+- **The mesh delivery sorts per object.** Which deck is behind flips with camera altitude and a
+  render queue expresses one answer per frame, whereas the post-process sorts per pixel. Near the
+  horizon both orders occur in the same frame and the mesh gets one wrong. The cheap delivery is not
+  merely cheaper there.
+
+### Bugs worth remembering
+
+- **The two bake paths disagreed about which way east is.** The authored kernel builds its frame
+  geometrically from `cross(poleAxis, p)`; the capture kernel differences texels and called `+u`
+  east. Under this project's `pointToUV` that cross product points toward *decreasing* longitude, so
+  the captured relief was mirrored. Measured: the authored layer's R channel correlated **+0.91**
+  with the density slope in u, the captured layer's **-0.89**. Invisible without comparing the two -
+  each looks lit, just from the wrong side. North needed no flip (+0.96 / +0.89).
+- **Both cloud renderers wiped each other's shadow globals.** `PostProcessingManager` calls
+  `OnEnable` on every effect regardless of its `enabled` flag, so both keep a pre-cull callback
+  registered permanently, and each zeroed `cloudShadowStrength` unconditionally when disabled. The
+  *disabled* one could therefore wipe what the enabled one had just published, with callback order
+  deciding the winner. Each now retracts only what it published.
+- **A fallback guarded on the wrong condition never fires.** `EnsureGradients` tested for "fewer than
+  two colour keys", but Unity's default `Gradient` has exactly two - so the authored ramps were never
+  once applied and white reached the shader at every sun elevation, including midnight. A guard has
+  to recognise the default it is standing in for, not merely the absence of one.
+- **Unity's in-memory asset values beat file edits, again.** `captureNormalStrength` reached the
+  compute as its first-committed default of 2 rather than the edited 14, with the field absent from
+  the asset YAML entirely. Third occurrence this project. When a bake looks wrong, check what the
+  Inspector says before checking the code.
+
+### Open before the next milestone
+
+Everything under the volumetric's "Open" list still stands. Additionally:
+
+- **The baseline's own texture bake has no LOD chain of its own** beyond the imported mips; the mip
+  is chosen analytically from the pixel footprint, which is right, but has not been checked against a
+  moving camera at ×16 world scale.
+- **The two decks are 4 world units apart** (altitudes 4 and 8, inside the volumetric's 1-10 shell).
+  Parallax goes as `dr * tan(theta)`, so it is near zero looking straight down and strong only near
+  the horizon. Whether that is enough depth cue for a strategy camera is a question for the figures,
+  and widening to 2.5/9 is the lever if not.
+- **No measurements taken yet.** The profiles exist and the subtraction algebra is arranged, but
+  nothing has been run - that, and the report, come once everything is assembled.
