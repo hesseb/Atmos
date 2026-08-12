@@ -49,6 +49,32 @@
 			float4 params;
 			float aerialPerspectiveStrength;
 
+			/// 0 off, 1 the light-shaft occlusion term. See AtmosphereEffect.DebugMode.
+			int atmosphereDebugMode;
+
+			/// The cloud occlusion the in-scatter march sees, averaged along this view ray.
+			///
+			/// Deliberately samples the SAME cloudSunVisibility the march calls, over the same span
+			/// the aerial perspective LUT covers, rather than reproducing the geometry - a diagnostic
+			/// that restates what it is checking can agree with itself while both are wrong.
+			float shaftVisibilityAlong(float3 rayOrigin, float3 rayDir, float sceneDepth) {
+				float2 hitInfo = raySphere(0, atmosphereRadius, rayOrigin, rayDir);
+				float3 inPoint = rayOrigin + rayDir * hitInfo.x;
+
+				float span = min(hitInfo.y, sceneDepth - hitInfo.x);
+				float dstToGround = rayIntersectSphere(inPoint, rayDir, planetRadius);
+				if (dstToGround > 0) { span = min(span, dstToGround); }
+				if (span <= 0) { return 1; }
+
+				const int steps = 12;
+				float total = 0;
+				for (int i = 0; i < steps; i++) {
+					float3 p = inPoint + rayDir * (span * (i + 0.5) / steps);
+					total += cloudSunVisibility(p, dirToSun);
+				}
+				return total / steps;
+			}
+
 			// remap01 used to be declared here, byte-identical to the one in Math.hlsl. Harmless
 			// while nothing brought the two together - and they never met, because this shader had
 			// no path to Math.hlsl until AtmosphereCommon started including CloudShadowCommon for
@@ -149,6 +175,13 @@
 				float viewLength = length(i.viewVector);
 				float3 viewDir = i.viewVector / viewLength;
 			
+				if (atmosphereDebugMode == 1) {
+					float nonlin = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, i.uv);
+					float sceneDepth = LinearEyeDepth(nonlin) * viewLength;
+					float vis = shaftVisibilityAlong(_WorldSpaceCameraPos, viewDir, sceneDepth);
+					return float4(vis.xxx, 1);
+				}
+
 				float3 c = getAtmoCol(i.uv, originalCol, viewLength, viewDir);
 
 				return float4(c, 1);
