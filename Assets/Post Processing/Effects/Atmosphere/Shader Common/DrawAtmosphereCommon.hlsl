@@ -3,51 +3,17 @@
 #ifndef DRAW_ATMOSPHERE_COMMON_INCLUDED
 #define DRAW_ATMOSPHERE_COMMON_INCLUDED
 
-// Tone mapping
-float intensity;
-float contrast;
-float whitePoint;
+// The tone map itself lives in ToneMapCommon.hlsl, because a compute shader needs it and cannot
+// include this file - getBlueNoise below reads _ScreenParams and samples with implicit derivatives,
+// neither of which exists outside a fragment stage. Consumers of this header are unaffected: they
+// get toneMap transitively, exactly as before.
+#include "Assets/Post Processing/Effects/Atmosphere/Shader Common/ToneMapCommon.hlsl"
 
 // Dithering
 float ditherStrength;
 sampler2D BlueNoise;
 float4 BlueNoise_TexelSize;
 
-
-// https://64.github.io/tonemapping/
-float3 reinhard_extended(float3 v, float max_white)
-{
-	float3 numerator = v * (1.0f + (v / (max_white * max_white)));
-	return numerator / (1.0f + v);
-}
-
-float3 smoothMax (float3 a, float3 b, float k) {
-	k = -abs (k);
-	float h = saturate((b - a + k) / (2 * k));
-	return a * h + b * (1 - h) - k * h * (1 - h);//
-}
-
-float3 toneMap(float3 lum) {
-	lum *= intensity;
-	lum = lerp(0.5, lum, contrast);
-	lum = reinhard_extended(lum, whitePoint);
-
-	lum = smoothMax(lum, -0.05, 0.05);
-	
-	return lum;
-}
-
-float3 toneMapA(float3 lum) {
-	lum *= intensity;
-	lum = lerp(0.5, lum, contrast);
-	return lum;
-}
-
-float3 toneMapB(float3 lum) {
-	lum = reinhard_extended(lum, whitePoint);
-	lum = smoothMax(lum, -0.05, 0.05);
-	return lum;
-}
 
 // Remap noise to triangular distribution
 // See pg. 45 to 57 of www.gdcvault.com/play/1023002/Low-Complexity-High-Fidelity-INSIDE
