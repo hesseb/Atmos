@@ -104,6 +104,35 @@ public class PostProcessRendererProfile : RendererProfile
 		"every profile for the same reason as the others.")]
 	public BaselineCloudOverride baselineClouds = BaselineCloudOverride.LeaveAlone;
 
+	/// <summary>
+	/// One of the volumetric renderer's feature dials, forced to a value.
+	///
+	/// These exist so a profile can differ from clouds-full by EXACTLY ONE feature, which is the
+	/// only way to price that feature. Each of the four costs real time in a different shape - a tap
+	/// per raymarch step, a whole extra dispatch, a tap per march step, a second density layer - and
+	/// without an arm apiece a clouds-full number is their sum with no way to decompose it. Same
+	/// argument that put the null arms in.
+	///
+	/// Left at -1 the dial is untouched, which is what every non-ablation profile wants: forcing it
+	/// to the scene's value would be indistinguishable from leaving it alone until someone retunes
+	/// the asset, at which point the profiles would silently pin the old number.
+	/// </summary>
+	[System.Serializable]
+	public struct FeatureDials
+	{
+		[Tooltip("-1 leaves the scene's value alone. 0 disables the feature exactly.")]
+		public float shaftStrength;
+		public float skyStrength;
+		public float aerialStrength;
+		public float highStrength;
+
+		public static FeatureDials Untouched =>
+			new FeatureDials { shaftStrength = -1, skyStrength = -1, aerialStrength = -1, highStrength = -1 };
+	}
+
+	[Tooltip("Volumetric feature dials, for ablation arms. -1 on each leaves the scene alone.")]
+	public FeatureDials dials = FeatureDials.Untouched;
+
 	public override void Apply(BenchmarkSceneRefs refs, RestoreScope scope)
 	{
 		if (effects != null)
@@ -141,6 +170,41 @@ public class PostProcessRendererProfile : RendererProfile
 		ApplySkyOverride(refs, scope);
 		ApplyCloudOverride(refs, scope);
 		ApplyBaselineCloudOverride(refs, scope);
+		ApplyFeatureDials(refs, scope);
+	}
+
+	/// <summary>
+	/// Forces individual volumetric features off, for the ablation arms.
+	///
+	/// Through RestoreScope like everything else here, so a live preview unwinds cleanly and a run
+	/// cannot leave the asset changed on disk - these are ScriptableObject fields, which is the
+	/// hazard EffectStateGuard exists to contain.
+	/// </summary>
+	void ApplyFeatureDials(BenchmarkSceneRefs refs, RestoreScope scope)
+	{
+		Clouds.CloudEffect effect = FindClouds(refs);
+		if (effect == null) { return; }
+
+		if (dials.shaftStrength >= 0)
+		{
+			float v = dials.shaftStrength;
+			scope.Set(() => effect.shaftStrength, x => effect.shaftStrength = x, v);
+		}
+		if (dials.skyStrength >= 0)
+		{
+			float v = dials.skyStrength;
+			scope.Set(() => effect.skyStrength, x => effect.skyStrength = x, v);
+		}
+		if (dials.aerialStrength >= 0)
+		{
+			float v = dials.aerialStrength;
+			scope.Set(() => effect.aerialStrength, x => effect.aerialStrength = x, v);
+		}
+		if (dials.highStrength >= 0)
+		{
+			float v = dials.highStrength;
+			scope.Set(() => effect.highStrength, x => effect.highStrength = x, v);
+		}
 	}
 
 	/// <summary>
