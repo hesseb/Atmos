@@ -13,10 +13,10 @@ MonoBehaviour:
   m_Name: Baseline Cloud Effect
   m_EditorClassIdentifier: Assembly-CSharp::Clouds.BaselineCloudEffect
   enabled: 1
-  shader: {fileID: 0}
+  shader: {fileID: 4800000, guid: 40e280c80e5ba7b46afbf235859236fc, type: 3}
   textureSource: 0
-  authoredLayer: {fileID: 0}
-  bakedLayer: {fileID: 0}
+  authoredLayer: {fileID: 2800000, guid: 1b5407ad2977ca144b1249db8b1b227b, type: 3}
+  bakedLayer: {fileID: 2800000, guid: fb9bfc8c8e69ca94db030a271ee2b390, type: 3}
   bodyRadius: 150
   layerAltitude: 4
   layerThickness: 2.5

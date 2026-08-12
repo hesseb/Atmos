@@ -59,8 +59,14 @@ Shader "Hidden/BaselineClouds"
 
 			sampler2D _CameraDepthTexture;
 
+			// A is the lower deck, B the upper. Two textures rather than one sampled twice: the
+			// second layer has to be different weather, or the pair reads as one sheet with a
+			// ghost rather than as two decks.
 			Texture2D<float4> BaselineCloudLayerA;
 			SamplerState samplerBaselineCloudLayerA;
+
+			Texture2D<float4> BaselineCloudLayerB;
+			SamplerState samplerBaselineCloudLayerB;
 
 			float baselineLayerRadiusA;
 			float baselineLayerThicknessA;
@@ -69,6 +75,18 @@ Shader "Hidden/BaselineClouds"
 			float baselineLayerReliefA;
 			float baselineLayerTexelsA;
 			float4x4 baselineLayerDriftA;
+
+			float baselineLayerRadiusB;
+			float baselineLayerThicknessB;
+			float baselineLayerOpacityB;
+			float baselineLayerContrastB;
+			float baselineLayerReliefB;
+			float baselineLayerTexelsB;
+			float4x4 baselineLayerDriftB;
+
+			/// 1 or 2. A uniform, so the second layer costs exactly nothing when it is off - which
+			/// is what makes one-layer against two a clean measurement of what the depth cue costs.
+			int baselineLayerCount;
 
 			/// 0 off, 1 opacity, 2 world normal, 3 mip level. Small on purpose - the baseline has
 			/// almost no internal state to inspect, which is itself part of what RQ3 is comparing.
@@ -84,6 +102,19 @@ Shader "Hidden/BaselineClouds"
 				layer.reliefStrength = baselineLayerReliefA;
 				layer.texelsAcross = baselineLayerTexelsA;
 				layer.drift = baselineLayerDriftA;
+				return layer;
+			}
+
+			BaselineLayer layerB()
+			{
+				BaselineLayer layer;
+				layer.radius = baselineLayerRadiusB;
+				layer.thickness = baselineLayerThicknessB;
+				layer.opacity = baselineLayerOpacityB;
+				layer.contrast = baselineLayerContrastB;
+				layer.reliefStrength = baselineLayerReliefB;
+				layer.texelsAcross = baselineLayerTexelsB;
+				layer.drift = baselineLayerDriftB;
 				return layer;
 			}
 
@@ -115,9 +146,25 @@ Shader "Hidden/BaselineClouds"
 					return float4((lod / 8.0).xxx, 0);
 				}
 
-				return baselineCloudLayer(
+				float distanceA;
+				float4 cloud = baselineCloudLayer(
 					BaselineCloudLayerA, samplerBaselineCloudLayerA, a,
-					rayOrigin, rayDir, sceneDepth);
+					rayOrigin, rayDir, sceneDepth, distanceA);
+
+				// A uniform branch, so this is genuinely free when the upper layer is off rather
+				// than merely cheap - which is what makes one layer against two a measurement of
+				// the depth cue rather than of a taken branch.
+				if (baselineLayerCount > 1)
+				{
+					float distanceB;
+					float4 upper = baselineCloudLayer(
+						BaselineCloudLayerB, samplerBaselineCloudLayerB, layerB(),
+						rayOrigin, rayDir, sceneDepth, distanceB);
+
+					cloud = baselineCombineLayers(cloud, distanceA, upper, distanceB);
+				}
+
+				return cloud;
 			}
 			ENDCG
 		}
