@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 76d5d66b430063f4db93914e74792b77, type: 3}
   m_Name: Baseline Cloud Effect
   m_EditorClassIdentifier: Assembly-CSharp::Clouds.BaselineCloudEffect
-  enabled: 1
+  enabled: 0
   shader: {fileID: 4800000, guid: 40e280c80e5ba7b46afbf235859236fc, type: 3}
   textureSource: 0
   bodyRadius: 150
@@ -108,5 +108,5 @@ MonoBehaviour:
   costMode: 0
   depthRejection: 8
   variant: 0
-  nullShader: {fileID: 0}
+  nullShader: {fileID: 4800000, guid: d031ca567c0d9044891aee6bb985eb99, type: 3}
   debugMode: 0
