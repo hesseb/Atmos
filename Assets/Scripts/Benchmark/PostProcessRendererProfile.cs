@@ -328,7 +328,12 @@ public class PostProcessRendererProfile : RendererProfile
 			  .Append(", skyMap=").Append(cloudEffect.skyMapSize.x).Append('x')
 			  .Append(cloudEffect.skyMapSize.y)
 			  .Append(", skySteps=").Append(cloudEffect.skySteps)
-			  .Append(", skyStrength=").Append(cloudEffect.skyStrength);
+			  .Append(", skyStrength=").Append(cloudEffect.skyStrength)
+			  // The high band is a second density layer, so it moves both the image and the frame
+			  // time. The genus override replaces the weather entirely - a run taken with one pinned
+			  // is a figure, not a measurement, and run.json has to be able to say which.
+			  .Append(", highBand=").Append(cloudEffect.highStrength)
+			  .Append(", genus=").Append(cloudEffect.genusOverride);
 		}
 
 		// The baseline's arm, read back off the renderer for the same reason the sky's variant is.
