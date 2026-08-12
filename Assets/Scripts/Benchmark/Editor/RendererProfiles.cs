@@ -171,9 +171,56 @@ static class RendererProfiles
 			cloudsOn: false, cloudMode: PostProcessRendererProfile.CloudOverride.LeaveAlone,
 			baselineArm: PostProcessRendererProfile.BaselineCloudOverride.Null));
 
+		// Feature ablations. Each differs from clouds-full by EXACTLY ONE dial, so subtracting gives
+		// that feature's cost on its own. Without them a clouds-full number is the sum of four
+		// features with no way to decompose it - the same argument that put the null arms in, applied
+		// to features rather than to pass structure.
+		//
+		// They are deliberately not a single "everything off" arm: the four cost time in different
+		// shapes - a tap per raymarch step, a whole extra dispatch, a tap per march step, a second
+		// density layer - and a combined arm would only give their sum, which is what clouds-full
+		// already reports.
+		if (clouds != null)
+		{
+			Save(Build("clouds-full-noshafts", "clouds-full with the light shafts off. Subtract to " +
+				"price occluding the atmosphere's in-scatter, which is one texture tap per raymarch " +
+				"step across roughly 8.4 million steps in the sky pass alone.",
+				atmosphere, atmosphereOn: true, aerial, aerialOn: false,
+				clouds, PostProcessRendererProfile.SkyOverride.Off,
+				cloudsOn: true, cloudMode: PostProcessRendererProfile.CloudOverride.Full,
+				baselineArm: PostProcessRendererProfile.BaselineCloudOverride.Off,
+				dials: Dials(shaft: 0)));
+
+			Save(Build("clouds-full-nodecksky", "clouds-full without the deck radiance map. Subtract " +
+				"to price a whole extra dispatch - the one that lets the sea and the land see the " +
+				"cloud base instead of a clear sky.",
+				atmosphere, atmosphereOn: true, aerial, aerialOn: false,
+				clouds, PostProcessRendererProfile.SkyOverride.Off,
+				cloudsOn: true, cloudMode: PostProcessRendererProfile.CloudOverride.Full,
+				baselineArm: PostProcessRendererProfile.BaselineCloudOverride.Off,
+				dials: Dials(sky: 0)));
+
+			Save(Build("clouds-full-noaerial", "clouds-full without aerial perspective on the clouds. " +
+				"Subtract to price one transmittance tap per cloud march step.",
+				atmosphere, atmosphereOn: true, aerial, aerialOn: false,
+				clouds, PostProcessRendererProfile.SkyOverride.Off,
+				cloudsOn: true, cloudMode: PostProcessRendererProfile.CloudOverride.Full,
+				baselineArm: PostProcessRendererProfile.BaselineCloudOverride.Off,
+				dials: Dials(aerial: 0)));
+
+			Save(Build("clouds-full-nohighband", "clouds-full without the ice layer. Subtract to price " +
+				"the second density layer that carries Cirrus, Cirrocumulus and Cirrostratus - three " +
+				"of the ten genera RQ1 scores.",
+				atmosphere, atmosphereOn: true, aerial, aerialOn: false,
+				clouds, PostProcessRendererProfile.SkyOverride.Off,
+				cloudsOn: true, cloudMode: PostProcessRendererProfile.CloudOverride.Full,
+				baselineArm: PostProcessRendererProfile.BaselineCloudOverride.Off,
+				dials: Dials(high: 0)));
+		}
+
 		AssetDatabase.SaveAssets();
 		AssetDatabase.Refresh();
-		Debug.Log($"[Benchmark] wrote {(clouds != null ? 14 : 11)} renderer profiles to {Folder}\n" +
+		Debug.Log($"[Benchmark] wrote {(clouds != null ? 18 : 11)} renderer profiles to {Folder}\n" +
 			"  Assign them to the BenchmarkRunner's Profiles array in the order you want the " +
 			"summary's baseline column to be - the first entry is what deltas are measured from.");
 	}
@@ -183,9 +230,14 @@ static class RendererProfiles
 		AerialPerspectiveSimple aerial, bool aerialOn,
 		Clouds.CloudEffect clouds, PostProcessRendererProfile.SkyOverride sky,
 		bool cloudsOn = false,
-		PostProcessRendererProfile.CloudOverride cloudMode = PostProcessRendererProfile.CloudOverride.LeaveAlone,
+		// Half rather than LeaveAlone as the default. LeaveAlone was harmless while every profile
+		// also stated the cloud EFFECT toggle - a cost mode cannot matter if the effect is off - but
+		// it is exactly the omission the header warns about, and it becomes live the moment a
+		// profile enables clouds without naming a mode.
+		PostProcessRendererProfile.CloudOverride cloudMode = PostProcessRendererProfile.CloudOverride.Half,
 		PostProcessRendererProfile.BaselineCloudOverride baselineArm =
-			PostProcessRendererProfile.BaselineCloudOverride.Off)
+			PostProcessRendererProfile.BaselineCloudOverride.Off,
+		PostProcessRendererProfile.FeatureDials? dials = null)
 	{
 		var profile = ScriptableObject.CreateInstance<PostProcessRendererProfile>();
 		profile.id = id;
@@ -196,6 +248,11 @@ static class RendererProfiles
 		// did not mention the baseline clouds would measure the sky with whichever cloud arm the
 		// pass before it happened to leave running.
 		profile.baselineClouds = baselineArm;
+
+		// Untouched unless this is an ablation arm. Forcing the dials to the scene's values instead
+		// would be indistinguishable from leaving them alone until someone retunes the asset, at
+		// which point every profile would silently pin the old number.
+		profile.dials = dials ?? PostProcessRendererProfile.FeatureDials.Untouched;
 		profile.objects = new PostProcessRendererProfile.ObjectToggle[0];
 
 		// Both effects are listed on every profile, including where the value matches the
@@ -222,9 +279,36 @@ static class RendererProfiles
 		return profile;
 	}
 
+	/// <summary>One dial forced, the rest left alone. -1 is "untouched".</summary>
+	static PostProcessRendererProfile.FeatureDials Dials(
+		float shaft = -1, float sky = -1, float aerial = -1, float high = -1)
+	{
+		return new PostProcessRendererProfile.FeatureDials
+		{
+			shaftStrength = shaft,
+			skyStrength = sky,
+			aerialStrength = aerial,
+			highStrength = high
+		};
+	}
+
 	static void Save(PostProcessRendererProfile profile)
 	{
 		string path = $"{Folder}/{profile.id}.asset";
+
+		// Two assets predate this generator and are named PBR.asset and NoAtmo.asset while carrying
+		// the ids pbr and noatmo. Save() overwrites in place and never renames, so the Inspector has
+		// been showing one name while run.json records another. Renamed on sight rather than left,
+		// because the mismatch makes a profile hard to find from a result file.
+		foreach (string legacy in new[] { "PBR", "NoAtmo" })
+		{
+			if (!string.Equals(legacy, profile.id, System.StringComparison.OrdinalIgnoreCase)) { continue; }
+			string legacyPath = $"{Folder}/{legacy}.asset";
+			if (legacyPath != path && AssetDatabase.LoadAssetAtPath<PostProcessRendererProfile>(legacyPath) != null)
+			{
+				AssetDatabase.RenameAsset(legacyPath, profile.id);
+			}
+		}
 
 		// Overwrite in place: CreateAsset mints a new GUID, which would null out every
 		// reference to the profile - most obviously the BenchmarkRunner's Profiles array -
