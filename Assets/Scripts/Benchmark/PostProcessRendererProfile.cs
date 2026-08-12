@@ -61,6 +61,28 @@ public class PostProcessRendererProfile : RendererProfile
 		Temporal
 	}
 
+	/// <summary>Which baseline cloud arm this profile wants. Orthogonal to CloudOverride, which
+	/// is the VOLUMETRIC renderer's cost mode - the two renderers are separate and a profile has
+	/// to be able to say something about each.</summary>
+	public enum BaselineCloudOverride
+	{
+		/// <summary>Inherit whatever the scene is set to.</summary>
+		LeaveAlone,
+		/// <summary>Both baseline deliveries off.</summary>
+		Off,
+		/// <summary>Post-process delivery, procedurally authored textures. The honest baseline.</summary>
+		PostAuthored,
+		/// <summary>Post-process delivery, textures baked off the volumetric. Same shader and same
+		/// cost as PostAuthored; the difference is purely the content, which is what separates
+		/// "the technique is weaker" from "the art is weaker".</summary>
+		PostBaked,
+		/// <summary>Drawn-mesh delivery. Same shading, reached by rasterising a sphere instead of a
+		/// full-screen quad - what a game would actually ship.</summary>
+		Mesh,
+		/// <summary>The measurement control: the cloud pass structure with no shading.</summary>
+		Null
+	}
+
 	[Tooltip("Effects to force on or off. Effects not listed keep whatever the scene has.")]
 	public EffectToggle[] effects;
 
@@ -76,6 +98,11 @@ public class PostProcessRendererProfile : RendererProfile
 		"whether clouds draw at all is the effect toggle's job. Every profile should state this " +
 		"explicitly for the same reason the sky does.")]
 	public CloudOverride clouds = CloudOverride.LeaveAlone;
+
+	[Tooltip("Which baseline cloud arm to run. Separate from the cloud override above, which is " +
+		"the volumetric's cost mode - they are two different renderers. State this explicitly on " +
+		"every profile for the same reason as the others.")]
+	public BaselineCloudOverride baselineClouds = BaselineCloudOverride.LeaveAlone;
 
 	public override void Apply(BenchmarkSceneRefs refs, RestoreScope scope)
 	{
@@ -113,6 +140,63 @@ public class PostProcessRendererProfile : RendererProfile
 
 		ApplySkyOverride(refs, scope);
 		ApplyCloudOverride(refs, scope);
+		ApplyBaselineCloudOverride(refs, scope);
+	}
+
+	/// <summary>
+	/// Selects one of the baseline's arms: which delivery, which texture source, or the control.
+	///
+	/// Both deliveries are switched on every branch rather than only the one being turned on. They
+	/// are independent - a post-process effect flag and a scene component - so leaving one alone
+	/// lets a previous pass's choice survive, and the two drawing at once would silently measure
+	/// their sum while looking almost correct.
+	/// </summary>
+	void ApplyBaselineCloudOverride(BenchmarkSceneRefs refs, RestoreScope scope)
+	{
+		if (baselineClouds == BaselineCloudOverride.LeaveAlone) { return; }
+
+		Clouds.BaselineCloudEffect effect = FindBaselineClouds(refs);
+		Clouds.BaselineCloudShell shell = refs.baselineCloudShell;
+
+		if (effect == null)
+		{
+			Debug.LogWarning($"[Benchmark] profile '{id}' asks for baseline clouds " +
+				$"'{baselineClouds}', but there is no BaselineCloudEffect in the post-processing " +
+				"chain.", this);
+			return;
+		}
+
+		bool wantsMesh = baselineClouds == BaselineCloudOverride.Mesh;
+		bool wantsPost = baselineClouds == BaselineCloudOverride.PostAuthored ||
+						 baselineClouds == BaselineCloudOverride.PostBaked ||
+						 baselineClouds == BaselineCloudOverride.Null;
+
+		// Source and variant before the enable, so switching arms never briefly draws the previous
+		// arm's content - the same ordering the sky override uses for its variant.
+		if (baselineClouds != BaselineCloudOverride.Off)
+		{
+			var source = baselineClouds == BaselineCloudOverride.PostBaked
+				? Clouds.BaselineCloudEffect.TextureSource.Baked
+				: Clouds.BaselineCloudEffect.TextureSource.Authored;
+			scope.Set(() => effect.textureSource, v => effect.textureSource = v, source);
+
+			var variant = baselineClouds == BaselineCloudOverride.Null
+				? Clouds.BaselineCloudEffect.Variant.Null
+				: Clouds.BaselineCloudEffect.Variant.Shaded;
+			scope.Set(() => effect.variant, v => effect.variant = v, variant);
+		}
+
+		scope.Set(() => effect.enabled, v => effect.enabled = v, wantsPost);
+
+		if (shell != null)
+		{
+			scope.Set(() => shell.enabled, v => shell.enabled = v, wantsMesh);
+		}
+		else if (wantsMesh)
+		{
+			Debug.LogWarning($"[Benchmark] profile '{id}' asks for the drawn-mesh cloud delivery, " +
+				"but there is no BaselineCloudShell in the scene - nothing will draw.", this);
+		}
 	}
 
 	void ApplyCloudOverride(BenchmarkSceneRefs refs, RestoreScope scope)
@@ -239,7 +323,41 @@ public class PostProcessRendererProfile : RendererProfile
 			  .Append(", shadowStrength=").Append(cloudEffect.shadowStrength);
 		}
 
+		// The baseline's arm, read back off the renderer for the same reason the sky's variant is.
+		// Which delivery ran and which texture source it used are the two axes the baseline is
+		// compared along, so a profile that failed to apply must not be able to claim otherwise.
+		Clouds.BaselineCloudEffect baselineClouds = FindBaselineClouds(refs);
+		if (baselineClouds != null)
+		{
+			sb.Append(" | baselineClouds: enabled=").Append(baselineClouds.enabled)
+			  .Append(", variant=").Append(baselineClouds.variant)
+			  .Append(", source=").Append(baselineClouds.textureSource)
+			  .Append(", mode=").Append(baselineClouds.costMode)
+			  .Append(", decks=").Append(baselineClouds.UpperActive ? 2 : 1)
+			  .Append(", altitudes=").Append(baselineClouds.lower.altitude).Append('/')
+			  .Append(baselineClouds.upper.altitude)
+			  .Append(", shadowMap=").Append(baselineClouds.shadowMapSize.x).Append('x')
+			  .Append(baselineClouds.shadowMapSize.y)
+			  .Append(", shadowStrength=").Append(baselineClouds.shadowStrength);
+		}
+
+		sb.Append(" | baselineCloudMesh: ")
+		  .Append(refs.baselineCloudShell == null
+			  ? "absent"
+			  : (refs.baselineCloudShell.isActiveAndEnabled ? "on" : "off"));
+
 		return sb.ToString();
+	}
+
+	static Clouds.BaselineCloudEffect FindBaselineClouds(BenchmarkSceneRefs refs)
+	{
+		if (refs.postProcessing == null || refs.postProcessing.effects == null) { return null; }
+
+		foreach (PostProcessingEffect effect in refs.postProcessing.effects)
+		{
+			if (effect is Clouds.BaselineCloudEffect baseline) { return baseline; }
+		}
+		return null;
 	}
 
 	static Clouds.CloudEffect FindClouds(BenchmarkSceneRefs refs)

@@ -46,6 +46,20 @@ namespace Clouds
 			Half,
 		}
 
+		/// <summary>
+		/// Shaded, or the pass structure with nothing in it.
+		///
+		/// Null is the measurement control, and it is a VARIANT rather than a separate effect for
+		/// the same reason the sky's null is a variant of the sky renderer: it has to allocate the
+		/// same target and run the same two blits, or it prices something other than what it is
+		/// standing in for.
+		/// </summary>
+		public enum Variant
+		{
+			Shaded,
+			Null,
+		}
+
 		public enum DebugMode
 		{
 			Off = 0,
@@ -204,6 +218,15 @@ namespace Clouds
 
 		[Range(0f, 64f)] public float depthRejection = 8f;
 
+		[Tooltip("Null draws nothing but pays the whole pass structure - target allocation, two " +
+			"blits, the composite. Subtracting it is what separates 'what a cloud renderer costs to " +
+			"have at all' from 'what this shading model costs'.")]
+		public Variant variant = Variant.Shaded;
+
+		[Tooltip("Used by the Null variant. Structurally identical to the main shader, with a " +
+			"fragment that returns no cloud.")]
+		public Shader nullShader;
+
 		public DebugMode debugMode = DebugMode.Off;
 
 		// Elapsed scene time, accumulated rather than read from Time.time, so the benchmark's fixed
@@ -216,6 +239,11 @@ namespace Clouds
 		int lastAdvanceFrame = -1;
 
 		RenderTexture shadowMap;
+
+		// Kept alongside the shaded material rather than swapping `shader` on this asset, which is
+		// serialized state and would reach disk on a play-mode change - the hazard EffectStateGuard
+		// exists to contain.
+		Material nullMaterial;
 
 		// Whether the shadow globals currently belong to THIS effect - see RenderShadowMap.
 		bool publishedShadows;
@@ -252,6 +280,7 @@ namespace Clouds
 		public override void OnEnable()
 		{
 			if (shader == null) { shader = Shader.Find("Hidden/BaselineClouds"); }
+			if (nullShader == null) { nullShader = Shader.Find("Hidden/BaselineCloudsNull"); }
 			warnedMissingLower = false;
 			warnedMissingUpper = false;
 
@@ -269,6 +298,14 @@ namespace Clouds
 		{
 			Camera.onPreCull -= RenderShadowMap;
 			ReleaseShadowMap();
+			ReleaseNullMaterial();
+		}
+
+		void ReleaseNullMaterial()
+		{
+			if (nullMaterial == null) { return; }
+			DestroyImmediate(nullMaterial);
+			nullMaterial = null;
 		}
 
 		void ReleaseShadowMap()
@@ -291,7 +328,12 @@ namespace Clouds
 		{
 			if (cam != null && renderingCamera != cam) { return; }
 
-			if (!enabled || shadowCompute == null || shadowStrength <= 0f || TextureFor(lower) == null)
+			// The null variant casts no shadows either. It stands for a cloud renderer that draws
+			// nothing, and a control arm that left the ground shadowed by clouds it is not drawing
+			// would put the shadow pass's cost - and its visible effect - on the wrong side of the
+			// subtraction.
+			if (!enabled || variant == Variant.Null ||
+				shadowCompute == null || shadowStrength <= 0f || TextureFor(lower) == null)
 			{
 				// Only retract what THIS effect published.
 				//
@@ -383,7 +425,19 @@ namespace Clouds
 			int width = Mathf.Max(1, source.width / divisor);
 			int height = Mathf.Max(1, source.height / divisor);
 
-			ApplyShadingValuesTo(material, height);
+			// The null variant runs the identical sequence below - same temporary, same two blits,
+			// same composite - and differs only in that its first pass returns no cloud. Anything
+			// short-circuited here would be excluded from the structure it is meant to price.
+			Material active = material;
+			if (variant == Variant.Null)
+			{
+				CreateMaterial(ref nullMaterial, nullShader);
+				active = nullMaterial;
+			}
+			else
+			{
+				ApplyShadingValuesTo(active, height);
+			}
 
 			// Half format for the same reason the volumetric uses one: a lit cloud top is not
 			// bounded by 1, and an 8-bit target would clip it flat.
@@ -391,15 +445,15 @@ namespace Clouds
 				width, height, 0, RenderTextureFormat.ARGBHalf);
 			cloudTex.filterMode = FilterMode.Bilinear;
 
-			Graphics.Blit(source, cloudTex, material, 0);
+			Graphics.Blit(source, cloudTex, active, 0);
 
-			material.SetTexture("_CloudTex", cloudTex);
-			material.SetVector("_CloudTexSize", new Vector4(width, height, 1f / width, 1f / height));
-			material.SetFloat("_CloudUpsample", divisor);
-			material.SetFloat("_CloudDepthRejection", depthRejection);
-			material.SetFloat("_CloudDebugRegion", -1f);
+			active.SetTexture("_CloudTex", cloudTex);
+			active.SetVector("_CloudTexSize", new Vector4(width, height, 1f / width, 1f / height));
+			active.SetFloat("_CloudUpsample", divisor);
+			active.SetFloat("_CloudDepthRejection", depthRejection);
+			active.SetFloat("_CloudDebugRegion", -1f);
 
-			Graphics.Blit(source, target, material, 1);
+			Graphics.Blit(source, target, active, 1);
 
 			RenderTexture.ReleaseTemporary(cloudTex);
 		}
