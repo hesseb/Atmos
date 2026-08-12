@@ -23,7 +23,16 @@
 // For toneMap. The sky is written to the colour buffer already tone-mapped, so anything derived
 // from raw sky radiance has to go through the same transform to sit at the same exposure as the
 // sky one pixel away.
-#include "Assets/Post Processing/Effects/Atmosphere/Shader Common/DrawAtmosphereCommon.hlsl"
+//
+// ToneMapCommon rather than DrawAtmosphereCommon, which is what this used to include. The tone map
+// is all this header ever wanted from it, and the rest - getBlueNoise - reads _ScreenParams and
+// samples with implicit derivatives, so pulling it in made this whole file impossible to include
+// from a compute shader. It is now compute-safe, which is what lets the cloud deck's radiance bake
+// call these functions instead of restating them.
+//
+// A shader that wants blueNoiseDither must include DrawAtmosphereCommon itself. Ocean.shader and
+// Clouds.shader both used to get it through here by accident, and both now say so.
+#include "Assets/Post Processing/Effects/Atmosphere/Shader Common/ToneMapCommon.hlsl"
 // For pointToUV, used by the cloud shadow lookup. Both consumers already include it, but relying on
 // their include order to satisfy this header would be a trap for the next one.
 #include "Assets/Scripts/Shader Common/GeoMath.hlsl"
@@ -82,9 +91,12 @@ float3 sampleLightColour(float3 sphereNormal, float3 lightDir) {
 sampler2D CloudShadowMap;
 float cloudShadowStrength;
 
+/// tex2Dlod, not tex2D. The map is a RenderTexture with no mip chain, so mip 0 is the only level
+/// there is and the two are identical here - but tex2D needs derivatives, which do not exist in a
+/// compute shader, and this header is now included by one.
 float cloudShadow(float3 sphereNormal) {
 	if (cloudShadowStrength <= 0) { return 1; }
-	float shadow = tex2D(CloudShadowMap, pointToUV(sphereNormal)).r;
+	float shadow = tex2Dlod(CloudShadowMap, float4(pointToUV(sphereNormal), 0, 0)).r;
 	return lerp(1, shadow, cloudShadowStrength);
 }
 

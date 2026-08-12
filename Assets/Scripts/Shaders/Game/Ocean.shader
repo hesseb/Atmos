@@ -101,6 +101,9 @@ Shader "Custom/Ocean"
 			// Shared with Terrain.shader, which needs the same terms for the same reason: the land
 			// has to warm at sunset alongside the water, or the coastline shows a seam.
 			#include "Assets/Post Processing/Effects/Atmosphere/Shader Common/SurfaceLighting.hlsl"
+			// For blueNoiseDither. Was reaching this through SurfaceLighting.hlsl, which no longer
+			// includes it - that header had to become compute-safe. Guarded, so this is free.
+			#include "Assets/Post Processing/Effects/Atmosphere/Shader Common/DrawAtmosphereCommon.hlsl"
 
 			struct appdata
 			{
