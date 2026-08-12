@@ -100,6 +100,70 @@ float cloudShadow(float3 sphereNormal) {
 	return lerp(1, shadow, cloudShadowStrength);
 }
 
+/// What the cloud deck looks like from below, and how much sky it hides.
+///
+/// The counterpart to cloudShadow, and the reason it is needed: cloudShadow darkens the direct SUN
+/// under cloud, but a surface is also lit by, and reflects, the sky - and those terms knew nothing
+/// about cloud at all. Under full overcast at sunset the sea still reflected a clear orange horizon,
+/// which at grazing incidence is most of the image, because Schlick's F0 for water is 0.02 but
+/// approaches 1 exactly where a sunset is viewed from.
+///
+///   rgb  radiance leaving the deck's underside, already in DISPLAY space
+///   a    how much of the sky it hides, 0 when clouds are off
+///
+/// Display space, so a consumer blends it straight into a sampleSkyViewSafe result without tone
+/// mapping either - the bake assembles its colour the same way the march does, which is what makes
+/// the reflected deck look like the drawn deck.
+///
+/// Not gated on skyReflectionStrength, and deliberately: cloudShadow is not either. The clouds are a
+/// separate renderer from the sky, so they occlude it whichever sky is being drawn - and in the
+/// baseline modes the deck falls back to the same authored ambient the clouds themselves use.
+sampler2D CloudSkyMap;
+float cloudSkyStrength;
+
+/// Radius the deck is treated as sitting at, for the reflected-ray lookup below. Mid-shell: the map
+/// describes a whole column, so any single radius is a choice.
+float cloudDeckRadius;
+
+float4 sampleCloudSky(float3 sphereNormal) {
+	if (cloudSkyStrength <= 0) { return 0; }
+	float4 deck = tex2Dlod(CloudSkyMap, float4(pointToUV(sphereNormal), 0, 0));
+	return float4(deck.rgb, saturate(deck.a * cloudSkyStrength));
+}
+
+/// The deck where `dir` meets it, rather than the deck directly overhead.
+///
+/// For reflections, and the distinction is not cosmetic. A grazing reflection - which is what a
+/// sunset across water is - travels a long way beneath the deck before reaching it, so the cloud it
+/// meets can be tens of units away and completely unlike the sky above the viewer. Using the
+/// overhead value would reflect the wrong weather in exactly the case this exists for.
+float4 sampleCloudSkyAlong(float3 pos, float3 dir) {
+	if (cloudSkyStrength <= 0) { return 0; }
+
+	float3 up = normalize(pos);
+	// Below the horizon there is no deck to meet along this ray; the far root would land on the far
+	// side of the planet. Ocean.shader lifts its reflection above the horizon before calling, so
+	// this is a guard rather than a path.
+	if (dot(dir, up) <= 0) { return sampleCloudSky(up); }
+
+	// Always the far root: a surface point is inside the deck's sphere, so there is exactly one
+	// exit. Local rather than an include of AtmosphereCommon's raySphere, which owns the global
+	// dirToSun and would shadow the local sun direction of every shader including this header.
+	float b = dot(pos, dir);
+	float c = dot(pos, pos) - cloudDeckRadius * cloudDeckRadius;
+	float d = b * b - c;
+	if (d < 0) { return sampleCloudSky(up); }
+
+	float3 hit = pos + dir * (-b + sqrt(d));
+	return sampleCloudSky(normalize(hit));
+}
+
+/// Blends a sky term toward the deck hiding it. Both are display space, so neither is tone mapped
+/// here, and a = 0 makes this the identity - which is what happens with the clouds off.
+float3 applyCloudSky(float3 skyTerm, float4 deck) {
+	return lerp(skyTerm, deck.rgb, deck.a);
+}
+
 /// The same, but at the position given rather than at sea level beneath it.
 ///
 /// For volumes rather than surfaces. A cloud sits at altitude and that is the whole point: its top

@@ -381,7 +381,13 @@ Shader "Custom/Ocean"
 				//
 				// Not attenuated by `sunVisibility`: that is the sun's shadow map, and skylight does
 				// not arrive from the sun's direction.
-				float3 skyAmbient = sampleSkyViewSafe(sphereNormal, sphereNormal, sunDir) * _SkyAmbientWeight;
+				//
+				// It IS attenuated by cloud, though, which is a different thing. Overhead cloud does
+				// not merely block the sun - it replaces the sky, and what falls on the water beneath
+				// an overcast is the underside of the deck rather than the blue above it.
+				float3 skyAmbient = applyCloudSky(
+					sampleSkyViewSafe(sphereNormal, sphereNormal, sunDir),
+					sampleCloudSky(sphereNormal)) * _SkyAmbientWeight;
 				// Starlight and airglow, faded in as the sun goes down.
 				//
 				// The atmosphere model is sun-only: with the sun below the horizon the sky LUT is
@@ -485,6 +491,13 @@ Shader "Custom/Ocean"
 				// pass - a raw radiance here would sit at a completely different exposure from the
 				// sky one pixel above the horizon.
 				float3 skyReflection = sampleSkyViewSafe(sphereNormal, reflectDir, sunDir);
+
+				// The cloud the reflected ray actually meets, which at grazing angles is a long way
+				// from here - not the cloud overhead. This is the term that was making an overcast
+				// sunset still turn the sea orange: F approaches 1 at grazing incidence, so the
+				// reflection is nearly the whole image there, and it was a reflection of a sky with
+				// no clouds in it.
+				skyReflection = applyCloudSky(skyReflection, sampleCloudSkyAlong(i.worldPos, reflectDir));
 
 				// lerp, never +=, for two independent reasons. It is the correct energy split - F
 				// reflects and 1-F refracts into the body - so the sky REPLACES body colour rather

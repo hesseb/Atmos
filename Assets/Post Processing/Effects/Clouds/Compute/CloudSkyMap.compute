@@ -1,0 +1,143 @@
+#pragma kernel CSCloudSkyMap
+
+#include "Assets/Scripts/Shader Common/GeoMath.hlsl"
+// The optical model - phase, Beer-Powder, the cone light march - and through it the density model.
+// Shared with the view-ray march rather than restated, so the deck's underside cannot disagree with
+// the cloud drawn above it.
+#include "Assets/Post Processing/Effects/Clouds/Shader Common/CloudLightingCommon.hlsl"
+// sampleLightColourAt and sampleSkyViewSafe, the same two the march lights each sample with. This
+// header only became includable from a compute once its tone map was split out; see the note there.
+#include "Assets/Post Processing/Effects/Atmosphere/Shader Common/SurfaceLighting.hlsl"
+
+// What the cloud deck looks like FROM BELOW, and how much sky it hides.
+//
+// The ocean and the terrain already darken their direct sun with the cloud shadow map, but their
+// SKY terms knew nothing about cloud - so under full overcast at sunset the sea still reflected a
+// clear orange horizon and lit itself with a clear blue zenith. Schlick's F0 for water is 0.02 but
+// approaches 1 at grazing incidence, which is exactly where a sunset is viewed from, so that
+// reflection is most of the image and it was of a sky with no clouds in it.
+//
+//   rgb  radiance leaving the deck's underside, in DISPLAY space
+//   a    sky occlusion: 1 - transmittance looking straight up through the deck
+//
+// Display space, not radiance, and that is deliberate. The march assembles its colour in display
+// space alongside an already tone-mapped background, and sampleSkyViewSafe - which the ocean's
+// reflection term uses - returns tone-mapped values too. Storing radiance here would mean the
+// consumer lerped between two quantities at different exposures. Matching the march is what makes
+// the reflected deck look like the drawn deck.
+//
+// Equirectangular and indexed by pointToUV like every other global field here, so it is
+// view-independent, needs no frustum, is scale-invariant under F7, and costs its consumers one tap.
+
+RWTexture2D<float4> Result;
+
+float2 cloudSkyMapSize;
+float3 cloudSkySunDir;
+
+/// Steps down through the shell. Fewer than the view march by a wide margin: this is a
+/// low-resolution field of a quantity - the average look of a cloud base - that carries no
+/// high-frequency detail, and every step here pays for a six-sample cone light march.
+int cloudSkySteps;
+
+/// Widens the footprint the density is read at, relative to what this map can represent. The same
+/// control the shadow map needs and for the same reason: reading finer detail than a fixed global
+/// grid can carry does not add detail, it aliases, and because the deck drifts the aliasing moves.
+float cloudSkyDetailScale;
+
+// The march's own lighting parameters, bound identically so the two agree.
+float3 cloudSunColour;
+float cloudSunIntensity;
+float cloudSunTransmittanceWeight;
+float cloudAmbientIntensity;
+float cloudAmbientHorizon;
+float3 cloudAmbientFallback;
+float3 cloudNightAmbient;
+float cloudSilverIntensity;
+float cloudExtinction;
+
+[numthreads(8, 8, 1)]
+void CSCloudSkyMap(uint3 id : SV_DispatchThreadID)
+{
+	uint2 size = (uint2)cloudSkyMapSize;
+	if (id.x >= size.x || id.y >= size.y) { return; }
+
+	float2 uv = (id.xy + 0.5) / cloudSkyMapSize;
+	float3 sphereNormal = uvToPointOnSphere(uv);
+
+	// Straight down through the shell, from the top. A vertical column rather than a view ray: this
+	// asks what leaves the base, and the surface below it is looking up.
+	float3 down = -sphereNormal;
+	float span = cloudOuterRadius - cloudInnerRadius;
+	float stepSize = span / max(1, cloudSkySteps);
+
+	// Lifted clear of the outer sphere rather than started exactly on it, for the reason the shadow
+	// pass documents at length: exactly on the boundary, dot(o,o) - r^2 rounds either way and the
+	// two signs give completely different answers.
+	float3 top = sphereNormal * (cloudOuterRadius - 1e-2);
+
+	// Read at the footprint of a MAP TEXEL, not of a march step. This is a fixed grid over the whole
+	// globe and cannot represent anything finer than two texels, so asking the volume for more does
+	// not add detail - it aliases, and the drift makes the aliasing crawl.
+	float texelWorldSize = 6.28318530718 * cloudInnerRadius / max(1, cloudSkyMapSize.x);
+	float sampleFootprint = max(stepSize, texelWorldSize * cloudSkyDetailScale);
+
+	// The phase argument is the angle between the direction light LEAVES in - straight down - and
+	// the sun. Constant down the column, so it is evaluated once.
+	//
+	// Downward is also why the moon term and the aerial perspective are absent here and present in
+	// the view march: this is a different query, not the same one restated. The silver lining is
+	// kept, because a thin deck with the sun behind it genuinely does glow when seen from below -
+	// that is what a bright overcast IS.
+	float cosDownSun = dot(down, cloudSkySunDir);
+	float phase = cloudPhase(cosDownSun, cloudSilverIntensity);
+
+	float nightT = saturate(dot(sphereNormal, -cloudSkySunDir));
+
+	// Skylight arriving at the deck. Sampled toward the sunlit horizon as well as the zenith,
+	// exactly as the march does - at sunset the zenith is deep blue while the horizon is orange, and
+	// the horizon tap is what carries the sunset onto the underside.
+	float3 sunTangent = cloudSkySunDir - sphereNormal * dot(cloudSkySunDir, sphereNormal);
+	float tangentLength = length(sunTangent);
+	float3 horizonDir = tangentLength > 1e-3 ? sunTangent / tangentLength : sphereNormal;
+
+	float3 skyZenith = sampleSkyViewSafe(sphereNormal, sphereNormal, cloudSkySunDir);
+	float3 skyHorizon = sampleSkyViewSafe(sphereNormal, horizonDir, cloudSkySunDir);
+	float3 ambient = lerp(skyZenith, skyHorizon, cloudAmbientHorizon) * cloudAmbientIntensity;
+	ambient += cloudAmbientFallback * (hasPhysicalAtmosphere() ? 0.0 : 1.0);
+	ambient += cloudNightAmbient * smoothstep(0.0, 0.15, nightT);
+
+	float transmittance = 1;
+	float3 luminance = 0;
+
+	for (int i = 0; i < cloudSkySteps; i++)
+	{
+		float3 pos = top + down * ((i + 0.5) * stepSize);
+
+		float density = sampleCloudDensity(pos, false, sampleFootprint);
+		if (density <= 0) { continue; }
+
+		// The sun's colour at THIS altitude, desaturated toward its own luminance by the same weight
+		// the march uses - see the long note there about why toward its own luminance and not toward
+		// white, which floored the term at 30% of a sun and lit the clouds at midnight.
+		float3 sunTransmittance = sampleLightColourAt(pos, cloudSkySunDir);
+		float sunLuminance = dot(sunTransmittance, float3(0.2126, 0.7152, 0.0722));
+		float3 sunColour = lerp(sunLuminance.xxx, sunTransmittance, cloudSunTransmittanceWeight) * cloudSunColour;
+
+		float energy = cloudBeerPowder(cloudLightMarch(pos, cloudSkySunDir), cosDownSun);
+
+		float3 inScatter = sunColour * energy * phase * cloudSunIntensity + ambient;
+
+		// The same analytic per-step integration the march uses: for a purely scattering medium the
+		// scattering and extinction coefficients cancel, leaving exactly (1 - stepTransmittance).
+		float stepTransmittance = exp(-density * stepSize * cloudExtinction);
+		luminance += inScatter * (1 - stepTransmittance) * transmittance;
+		transmittance *= stepTransmittance;
+
+		if (transmittance < 0.01) { break; }
+	}
+
+	// max(0) for the reason sampleSkyViewSafe documents: toneMap(0) is about -0.05 because the
+	// contrast pivot is a pedestal, so an unclamped value SUBTRACTS from whatever it is lerped into.
+	// At night, when every source here is genuinely zero, that would push the sea below black.
+	Result[id.xy] = float4(max(0, luminance), 1 - transmittance);
+}
