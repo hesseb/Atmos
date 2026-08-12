@@ -409,13 +409,14 @@ public class BenchmarkHud : MonoBehaviour
 			$"gpu         {gpuLine}\n" +
 			$"process cpu {(perfCpuPercent < 0 ? "n/a" : perfCpuPercent.ToString("0", Ci) + " %")}\n" +
 			$"memory      {Mb(sample.totalUsedBytes)}   gfx {Mb(sample.gfxUsedBytes)}\n" +
-			$"draw calls  {sample.drawCalls.ToString("N0", Ci)}\n" +
-			// Named rather than omitted, so it is clear these were considered and are not simply
-			// missing. None is reachable from Unity: die temperatures and GPU utilisation come from
-			// vendor interfaces - NVML, ADL, or Windows performance counters - not from the engine.
-			"cpu temp    n/a (needs vendor tooling)\n" +
-			"gpu usage   n/a (needs vendor tooling)\n" +
-			"gpu temp    n/a (needs vendor tooling)";
+			$"draw calls  {sample.drawCalls.ToString("N0", Ci)}";
+
+		// Deliberately absent: CPU and GPU die temperature, and GPU utilisation. None is reachable
+		// from Unity - they come from vendor interfaces (NVML, ADL) or Windows performance
+		// counters - so showing them would mean either a permanent "n/a" or a vendor-locked
+		// dependency. Worth knowing if the question comes up again: GPU temperature is the one with
+		// a real bearing on the measurements, because thermal throttling mid-run would bias later
+		// passes against earlier ones.
 
 		perfWallSum = perfCpuMainSum = perfCpuRenderSum = perfGpuSum = 0;
 		perfSampleCount = 0;
