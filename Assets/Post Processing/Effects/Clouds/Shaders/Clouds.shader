@@ -81,6 +81,13 @@ Shader "Hidden/Clouds"
 			float3 cloudAmbientFallback;
 			float3 cloudNightAmbient;
 
+			/// How much aerial perspective the clouds pick up, 0 to 1.
+			///
+			/// Named and shaped after the atmosphere's own aerialPerspectiveStrength. At 0 the term
+			/// is exactly identity rather than merely small, so the feature's cost and its visual
+			/// contribution can both be priced against the same build.
+			float cloudAerialStrength;
+
 			float cloudLightMarchLength;
 			float cloudLightAbsorption;
 			float cloudConeSpread;
@@ -232,6 +239,7 @@ Shader "Hidden/Clouds"
 			/// dimmed by whatever the near one already absorbed.
 			void cloudMarchSpan(
 				float3 rayOrigin, float3 rayDir, float2 span, float phase, float cosViewSun, float2 uv,
+				AerialRay aerialRay, float3 aerialSky,
 				inout float transmittance, inout float3 luminance, inout float rawDensity)
 			{
 				float start = span.x;
@@ -346,6 +354,30 @@ Shader "Hidden/Clouds"
 						inScatter += moonColour * moonEnergy * moonPhase * cloudMoonIntensity;
 					}
 
+					// Aerial perspective, per sample rather than once on the composited result.
+					//
+					// Per sample because a single representative depth cannot describe this pixel: a
+					// horizon ray's cloud spans roughly 6 to 105 world units, so one depth would be
+					// wrong by a factor of seventeen across the same pixel. It is also the cheaper
+					// route - the march records no depth and has no spare channel to put one in,
+					// which is why the temporal pass reprojects against a mid-shell sphere proxy
+					// instead of a real one.
+					//
+					// Applied to the whole of inScatter, after the sun, ambient and moon terms: all
+					// of them leave this point together and cross the same air to reach the camera.
+					//
+					// The in-scatter added back is the sky radiance in the view direction, weighted
+					// by how much air is in the way. The exact form is L_sky(cam) - T * L_sky(pos),
+					// which would cost one more tap - but sampleSkyView reads skyViewLutRadius, a
+					// uniform baked at sea level, so L_sky(pos) and L_sky(cam) return the same value
+					// and the difference collapses to this. Exact at both ends - no haze on a near
+					// cloud, a distant one fading entirely into the sky it is seen against - and
+					// approximate in between.
+					float3 aerialT = aerialTransmittanceAt(aerialRay, pos);
+					inScatter = lerp(inScatter,
+						inScatter * aerialT + aerialSky * (1 - aerialT),
+						cloudAerialStrength);
+
 					// Analytic integration over the step rather than a rectangle rule: for a purely
 					// scattering medium the scattering and extinction coefficients cancel, leaving
 					// exactly (1 - stepTransmittance). Converges at far lower step counts, which is
@@ -411,12 +443,20 @@ Shader "Hidden/Clouds"
 				float cosViewSun = dot(rayDir, cloudSunDir);
 				float phase = cloudPhase(cosViewSun, cloudSilverIntensity);
 
+				// Both aerial perspective terms are per PIXEL rather than per sample, and both are
+				// hoisted here rather than derived inside the span - which matters, because
+				// cloudMarchSpan is called twice for the same ray.
+				AerialRay aerialRay = aerialRayBegin(rayOrigin, rayDir);
+				float3 aerialSky = sampleSkyViewSafe(normalize(rayOrigin), rayDir, cloudSunDir);
+
 				float transmittance = 1;
 				float3 luminance = 0;
 				float rawDensity = 0;
 
-				cloudMarchSpan(rayOrigin, rayDir, nearSpan, phase, cosViewSun, i.uv, transmittance, luminance, rawDensity);
-				cloudMarchSpan(rayOrigin, rayDir, farSpan, phase, cosViewSun, i.uv, transmittance, luminance, rawDensity);
+				cloudMarchSpan(rayOrigin, rayDir, nearSpan, phase, cosViewSun, i.uv,
+					aerialRay, aerialSky, transmittance, luminance, rawDensity);
+				cloudMarchSpan(rayOrigin, rayDir, farSpan, phase, cosViewSun, i.uv,
+					aerialRay, aerialSky, transmittance, luminance, rawDensity);
 
 				if (cloudDebugMode == 4) { return float4((rawDensity * 0.2).xxx, 0); }
 

@@ -101,6 +101,86 @@ float3 sampleLightColourAt(float3 pos, float3 lightDir) {
 	return sampleTransmittanceLUT(TransmittanceLUT, pos, lightDir);
 }
 
+/// Transmittance of the air between two points on the same ray, as a multiplier.
+///
+/// This is aerial perspective's extinction term for a volume, and it exists because the screen-space
+/// aerial perspective LUT cannot answer the question for clouds. That LUT's depth axis is normalised
+/// per ray against a span deliberately capped at the planet's tangent distance - 55.7 units from 10
+/// up - to keep the axis continuous across the horizon. The cap is justified in
+/// AerialPerspective.compute on the grounds that it only truncates rays which miss the planet, "and
+/// those are sky, where the composite takes its sky branch and never reads this LUT". Clouds are
+/// exactly those rays: a horizon-grazing ray crosses the cloud shell again at around 105 units, well
+/// past the end of the axis. Extending the span would bring the horizon band back.
+///
+/// So this takes the other route - Bruneton's ratio identity, the same one Hillaire 2020 uses.
+/// Transmittance to space composes along a ray, so the transmittance of a SEGMENT of it is a
+/// quotient of two whole-ray lookups, and the existing 2D LUT already holds both.
+///
+/// The case split is not optional, and it is the reason this is a shared function rather than four
+/// lines at the call site. Bruneton's mapping stores only rays that miss the ground, and
+/// sampleTransmittanceLUT returns exactly 0 for a below-horizon direction. Reversing the direction
+/// turns a descending ray into an ascending one, so BOTH branches only ever ask the LUT about rays
+/// it actually contains. Asking it directly about a downward ray returns zero and blacks the volume
+/// out entirely.
+///
+/// Returns 1 without a physically based atmosphere, so a caller can multiply unconditionally and get
+/// its previous behaviour in the baseline and ablation profiles - the same convention
+/// sampleLightColour follows.
+///
+/// `rayDir` must be the normalised direction from the origin toward the far point; the two have to
+/// lie on one ray for the identity to mean anything.
+///
+/// Split into a begin/at pair rather than one call, because a volume evaluates this at every march
+/// step along one ray and everything about the origin is loop-invariant: the direction test, and one
+/// of the two lookups. Hoisting it explicitly costs the caller two lines and halves the per-step tap
+/// count, which is not something to leave to whether the compiler notices.
+struct AerialRay {
+	float3 originTransmittance;
+	float3 dir;
+	bool descending;
+	bool active;
+};
+
+AerialRay aerialRayBegin(float3 origin, float3 rayDir) {
+	AerialRay ray;
+	ray.dir = rayDir;
+	ray.active = hasPhysicalAtmosphere();
+
+	float radius = length(origin);
+	float cosZenith = dot(origin / radius, rayDir);
+
+	// Which way the ray is headed decides which quotient is the valid one. Tested at the origin,
+	// because that is where the segment starts - a ray can pass its lowest point partway along
+	// without changing the answer, since the far point is still between the origin and the exit.
+	ray.descending = transmittanceRayHitsGround(radius, cosZenith);
+
+	// Descending, the reversed lookup is the denominator; ascending, the forward one is the
+	// numerator. Either way it is the origin's, so it is computed once here.
+	ray.originTransmittance = ray.active
+		? sampleTransmittanceLUT(TransmittanceLUT, origin, ray.descending ? -rayDir : rayDir)
+		: 1;
+	return ray;
+}
+
+float3 aerialTransmittanceAt(AerialRay ray, float3 pos) {
+	if (!ray.active) { return 1; }
+
+	float3 atPos = sampleTransmittanceLUT(TransmittanceLUT, pos, ray.descending ? -ray.dir : ray.dir);
+
+	float3 nearer = ray.descending ? atPos : ray.originTransmittance;
+	float3 farther = ray.descending ? ray.originTransmittance : atPos;
+
+	// saturate because the quotient is bounded by 1 analytically but not numerically, and 1e-5
+	// because the denominator genuinely reaches zero for a grazing ray through the whole atmosphere.
+	return saturate(nearer / max(farther, 1e-5));
+}
+
+/// The whole thing in one call, for a caller with a single point to evaluate. Defined in terms of
+/// the pair above so there is still one implementation of the identity.
+float3 aerialTransmittance(float3 fromPos, float3 toPos, float3 rayDir) {
+	return aerialTransmittanceAt(aerialRayBegin(fromPos, rayDir), toPos);
+}
+
 /// Sky radiance arriving from `dir` at a surface whose local up is `up`, tone-mapped to sit at the
 /// same exposure as the sky the sky pass wrote into the colour buffer.
 ///
