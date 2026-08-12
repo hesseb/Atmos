@@ -197,11 +197,39 @@ float cloudHeightGradient(float h, float type)
 	return stratus * wStratus + cumulus * wCumulus + cumulonimbus * wCumulonimbus;
 }
 
-/// R coverage, G precipitation, B cloud type, A base height.
+/// Pins every weather field to one genus, globally, bypassing the maps.
+///
+/// Authoring scaffolding rather than a rendering path: it feeds the SAME density model, so what it
+/// shows is genuinely what the renderer can produce. RQ1 needs one image of each of the ten genera,
+/// and hunting for a region where the noise happens to have produced Cirrocumulus is not a workflow.
+///
+/// It is also evidence for RQ3 in its own right. The mapping from "I want Altostratus" to a set of
+/// parameter values IS the authoring-flexibility axis the report grades, and the table in
+/// CloudEffect.GenusSettings is that mapping written down.
+float cloudWeatherOverrideOn;
+float4 cloudWeatherOverride;      // coverage, precipitation, form, unused
+float2 cloudHighWeatherOverride;  // coverage, form
+
+/// The low layer's floor, supplied directly by the override rather than through
+/// weather.a * cloudBaseVariation - so a genus lands in its stated altitude band whatever the base
+/// variation happens to be tuned to. Precipitation still lowers it, because that is what the
+/// -nimbus affix does and Nimbostratus depends on it.
+float cloudGenusBaseOffset;
+
+/// R coverage, G precipitation, B form, A base height.
 float4 sampleCloudWeather(float3 pos)
 {
+	if (cloudWeatherOverrideOn > 0) { return cloudWeatherOverride; }
 	float2 uv = pointToUV(normalize(pos));
 	return CloudWeatherMapTex.SampleLevel(samplerCloudWeatherMapTex, uv, 0);
+}
+
+/// R coverage, G form, for the ice layer.
+float4 sampleCloudWeatherHigh(float3 pos)
+{
+	if (cloudWeatherOverrideOn > 0) { return float4(cloudHighWeatherOverride, 0, 0); }
+	float2 uv = pointToUV(normalize(pos));
+	return CloudWeatherMapHighTex.SampleLevel(samplerCloudWeatherMapHighTex, uv, 0);
 }
 
 /// Mip level at which a volume should be read, given how far the march moves between samples.
@@ -272,8 +300,7 @@ float sampleCloudHigh(float3 pos, float shellHeight, float stepSize)
 	float h = (shellHeight - cloudHighBase) / max(1e-4, cloudHighThickness);
 	if (h <= 0 || h >= 1) { return 0; }
 
-	float2 uv = pointToUV(normalize(pos));
-	float4 weather = CloudWeatherMapHighTex.SampleLevel(samplerCloudWeatherMapHighTex, uv, 0);
+	float4 weather = sampleCloudWeatherHigh(pos);
 
 	float coverage = saturate(weather.r * cloudHighCoverageMultiplier);
 	if (coverage <= 0) { return 0; }
@@ -350,7 +377,8 @@ float sampleCloudLow(float3 pos, float shellHeight, bool cheap, float stepSize)
 	//
 	// Below the base this gives h = 0, and every gradient is zero there, so the region under the
 	// cloud empties out without a separate test.
-	float baseOffset = saturate(weather.a * cloudBaseVariation - precipitation * cloudPrecipBaseDrop);
+	float baseSource = cloudWeatherOverrideOn > 0 ? cloudGenusBaseOffset : weather.a * cloudBaseVariation;
+	float baseOffset = saturate(baseSource - precipitation * cloudPrecipBaseDrop);
 
 	// Clamped so the band cannot run off the top of the shell once its floor is raised into the mid
 	// altitudes - which is what Altostratus, Altocumulus and Nimbostratus need. A no-op at the low

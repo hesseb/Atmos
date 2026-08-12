@@ -210,7 +210,28 @@ public class SkyBakeStamp : ScriptableObject
 			.Add("precipitationScale", c.precipitationScale)
 			.Add("precipitationBias", c.precipitationBias)
 			.Add("baseHeightScale", c.baseHeightScale)
-			.Add("baseHeightBias", c.baseHeightBias);
+			.Add("baseHeightBias", c.baseHeightBias)
+			// The ice layer. Captured into the baseline's upper deck along with everything else the
+			// density model produces, so a change here really does invalidate the bake - and an
+			// omission would mean the captured baseline quietly stopped corresponding to the
+			// renderer it was derived from, which is the exact failure this stamp exists to catch.
+			.Add("highStrength", c.highStrength)
+			.Add("highBase", c.highBase)
+			.Add("highThickness", c.highThickness)
+			.Add("highScale", c.highScale)
+			.Add("highDensityMultiplier", c.highDensityMultiplier)
+			.Add("highCoverageMultiplier", c.highCoverageMultiplier)
+			.Add("highStretch", c.highStretch)
+			.Add("highGranularity", c.highGranularity)
+			.Add("highWindDirection", c.highWindDirection)
+			.Add("highCoverageScale", c.highCoverageScale)
+			.Add("highCoverageBias", c.highCoverageBias)
+			.Add("highCoverageContrast", c.highCoverageContrast)
+			.Add("highFormScale", c.highFormScale)
+			.Add("highFormBias", c.highFormBias)
+			// Deliberately included: a capture taken while a genus was pinned is not a capture of the
+			// renderer's weather, and it would be indistinguishable from one that was.
+			.Add("genusOverride", (int)c.genusOverride);
 	}
 
 	/// <summary>The tone-map constants the hand-authored gradient is inverse-mapped against.</summary>

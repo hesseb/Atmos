@@ -32,6 +32,31 @@ namespace Clouds
 			Temporal,
 		}
 
+		/// <summary>
+		/// The ten genera of THESIS.md 3.5, which is RQ1's scoring rubric.
+		///
+		/// Ordered by altitude band - low, mid, high - because "are they recognisable at the altitude
+		/// band they belong to" is half of what the rubric asks, and reading the list in band order
+		/// makes a wrong placement obvious.
+		/// </summary>
+		public enum Genus
+		{
+			Off = 0,
+
+			Stratus,
+			Stratocumulus,
+			Cumulus,
+			Cumulonimbus,
+
+			Altostratus,
+			Altocumulus,
+			Nimbostratus,
+
+			Cirrus,
+			Cirrocumulus,
+			Cirrostratus,
+		}
+
 		public enum DebugMode
 		{
 			Off = 0,
@@ -325,6 +350,13 @@ namespace Clouds
 		[Tooltip("How strongly cloud replaces the sky the surfaces see. 0 is identity, which is what " +
 			"prices the feature; it is also what happens when the clouds are off.")]
 		[Range(0f, 1f)] public float skyStrength = 1f;
+
+		[Header("Genus override")]
+		[Tooltip("Pins every weather field to one genus, globally. Authoring scaffolding rather than " +
+			"a rendering path - it feeds the same density model, so what it shows is genuinely what " +
+			"the renderer can produce. RQ1 needs one image of each of the ten, and hunting for a " +
+			"region where the noise happened to make Cirrocumulus is not a workflow.")]
+		public Genus genusOverride = Genus.Off;
 
 		[Header("Cost")]
 		[Tooltip("Full marches every pixel - the honest upper bound and the cleanest image. Half " +
@@ -850,6 +882,7 @@ namespace Clouds
 			compute.SetFloat("cloudHighGranularity", highGranularity);
 			compute.SetVector("cloudHighWindDir", HighWindDir);
 			compute.SetVector("cloudHighWind", HighWind);
+			BindGenusOverride(compute.SetFloat, compute.SetVector);
 		}
 
 		void RenderShadowMap()
@@ -910,6 +943,69 @@ namespace Clouds
 			sunLight = sunObject != null ? sunObject.GetComponent<Light>() : null;
 		}
 
+		/// <summary>
+		/// One genus, as weather-field values.
+		///
+		/// This table is a thesis artefact as much as a debug aid: RQ3 grades authoring flexibility on
+		/// "how predictably does a parameter map to a visible outcome", and the mapping from a genus
+		/// name to these six numbers is exactly that evidence.
+		///
+		/// baseOffset is a fraction of the shell. At 0.91 km per world unit and a shell running 0.91
+		/// to 9.1 km, the taxonomy's bands land at: low below 0.13, mid 0.13 to 0.62, high above
+		/// 0.62. The high genera turn the low layer off and vice versa - a genus image should show
+		/// one genus.
+		/// </summary>
+		void GenusSettings(Genus genus, out Vector4 low, out Vector2 high, out float baseOffset)
+		{
+			// low = coverage, precipitation, form, unused
+			switch (genus)
+			{
+				// --- low band, floor on the deck -----------------------------------------------
+				case Genus.Stratus:
+					low = new Vector4(0.95f, 0f, 0.00f, 0); high = Vector2.zero; baseOffset = 0.00f; return;
+				case Genus.Stratocumulus:
+					low = new Vector4(0.80f, 0f, 0.28f, 0); high = Vector2.zero; baseOffset = 0.02f; return;
+				case Genus.Cumulus:
+					low = new Vector4(0.50f, 0f, 0.50f, 0); high = Vector2.zero; baseOffset = 0.03f; return;
+				case Genus.Cumulonimbus:
+					// Precipitation is what makes it tower and darken - the -nimbus affix, not a
+					// separate profile.
+					low = new Vector4(0.80f, 0.90f, 1.00f, 0); high = Vector2.zero; baseOffset = 0.00f; return;
+
+				// --- mid band: the same forms, floor raised ------------------------------------
+				case Genus.Altostratus:
+					low = new Vector4(0.95f, 0f, 0.00f, 0); high = Vector2.zero; baseOffset = 0.32f; return;
+				case Genus.Altocumulus:
+					low = new Vector4(0.70f, 0f, 0.32f, 0); high = Vector2.zero; baseOffset = 0.30f; return;
+				case Genus.Nimbostratus:
+					// Thick, featureless and raining. Its floor starts mid and precipitation drags it
+					// down, which is why it reads as a low grey overcast despite being a mid genus.
+					low = new Vector4(1.00f, 0.75f, 0.10f, 0); high = Vector2.zero; baseOffset = 0.22f; return;
+
+				// --- high band: the ice layer, low layer off ------------------------------------
+				case Genus.Cirrus:
+					low = Vector4.zero; high = new Vector2(0.35f, 0.00f); baseOffset = 0f; return;
+				case Genus.Cirrocumulus:
+					low = Vector4.zero; high = new Vector2(0.55f, 0.50f); baseOffset = 0f; return;
+				case Genus.Cirrostratus:
+					low = Vector4.zero; high = new Vector2(0.70f, 1.00f); baseOffset = 0f; return;
+
+				default:
+					low = Vector4.zero; high = Vector2.zero; baseOffset = 0f; return;
+			}
+		}
+
+		/// <summary>Binds the override to whichever consumer. Off leaves every field at its map value.</summary>
+		void BindGenusOverride(System.Action<string, float> setFloat, System.Action<string, Vector4> setVector)
+		{
+			GenusSettings(genusOverride, out Vector4 low, out Vector2 high, out float baseOffset);
+
+			setFloat("cloudWeatherOverrideOn", genusOverride == Genus.Off ? 0f : 1f);
+			setVector("cloudWeatherOverride", low);
+			setVector("cloudHighWeatherOverride", new Vector4(high.x, high.y, 0, 0));
+			setFloat("cloudGenusBaseOffset", baseOffset);
+		}
+
 		void SetProperties()
 		{
 			material.SetTexture("CloudShapeNoise", shapeNoise);
@@ -950,6 +1046,7 @@ namespace Clouds
 			material.SetFloat("cloudHighGranularity", highGranularity);
 			material.SetVector("cloudHighWindDir", HighWindDir);
 			material.SetVector("cloudHighWind", HighWind);
+			BindGenusOverride(material.SetFloat, material.SetVector);
 
 			material.SetFloat("cloudStepSize", stepSize);
 			// CameraRegion leaves the clouds rendering and shows the region as a corner swatch, so
