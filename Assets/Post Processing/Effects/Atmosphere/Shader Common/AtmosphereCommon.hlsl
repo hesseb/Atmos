@@ -28,6 +28,10 @@
 // include later does not silently take PI with it.
 #include "Assets/Scripts/Shader Common/Math.hlsl"
 
+/// How much of the multiply-scattered term the cloud deck occludes, 0 to 1. See the note where it
+/// is applied for why this is not the same question as the earth shadow.
+float cloudShaftMultipleScattering;
+
 // Rayleigh, mie and ozone parameters.
 //
 // Coefficients are per world unit and scale heights are in world units, so an optical depth is
@@ -335,7 +339,8 @@ void raymarchSegment(inout ScatteringState state, float3 segmentStart, float3 ra
 		// How visible the result is depends entirely on the resolution each consumer marches at. The
 		// sky is 128x256; the aerial LUT is 32 texels across the SCREEN unless raised, which is about
 		// 80 pixels at 1440p, and a shaft narrower than one texel does not exist in the data.
-		sunTransmittance *= cloudSunVisibility(rayPos, dirToSun);
+		float cloudVisibility = cloudSunVisibility(rayPos, dirToSun);
+		sunTransmittance *= cloudVisibility;
 
 
 		// Amount of light scattered in towards the camera at current sample point.
@@ -366,6 +371,25 @@ void raymarchSegment(inout ScatteringState state, float3 segmentStart, float3 ra
 		// Total scattering coefficient, not the phase-weighted split - Psi_ms carries a radiance
 		// that is the same in every direction, so both species scatter it identically.
 		float3 multipleScattering = sampleMultipleScattering(rayPos, dirToSun) * multipleScatteringStrength;
+
+		// Cloud occludes the multiply-scattered term too, and this is the one place where the
+		// earth-shadow argument above does NOT carry over.
+		//
+		// That argument is right about the planet's shadow: the night side is lit by light that
+		// multiply-scattered in from an enormous adjacent daylit region, so zeroing it there is what
+		// makes the shadowed band black, and black is wrong. A point under a broad overcast has no
+		// such neighbour - the cloud blocks the sunlight BEFORE it enters the air below, so the
+		// multiply-scattered field down there really is reduced.
+		//
+		// It matters more than it sounds. This atmosphere is optically thick, zenith transmittance
+		// 0.45 against Earth's 0.77, so multiple scattering is a large share of the in-scatter. Left
+		// unoccluded it fills the shadowed air back in and washes the shafts out - which is exactly
+		// what happened: the single-scattering term was correctly shadowed and the beams still could
+		// not be seen.
+		//
+		// Partial rather than full, because some multiply-scattered light genuinely does arrive from
+		// the sides. 0 restores the previous behaviour exactly.
+		multipleScattering *= lerp(1, cloudVisibility, cloudShaftMultipleScattering);
 		float3 scatteringCoefficient = scattering.rayleigh + scattering.mie;
 
 		float3 inScattering = sunIlluminance *

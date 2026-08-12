@@ -147,6 +147,13 @@ public class AtmosphereEffect : PostProcessingEffect
 	// Allow control over how strongly atmosphere affects appearance of terrain
 	[Range(0, 1)] public float aerialPerspectiveStrength = 1;
 
+	[Tooltip("How much the cloud deck occludes the MULTIPLY-scattered light, as well as the direct " +
+		"sun. Without it the shafts wash out: this atmosphere is optically thick, so multiple " +
+		"scattering is a large share of the in-scatter and it fills the shadowed air back in. " +
+		"Partial, because some of that light really does arrive from the sides. 0 is the previous " +
+		"behaviour exactly.")]
+	[Range(0, 1)] public float cloudShaftMultipleScattering = 0.7f;
+
 	/// <summary>
 	/// Draws the light-shaft occlusion term instead of the scene, so "no shafts" can be told apart
 	/// from "shafts too faint to see".
@@ -452,6 +459,7 @@ public class AtmosphereEffect : PostProcessingEffect
 		// that have to agree.
 		values.vectors.Add(("multipleScatteringLutSize", new Vector2(multipleScatteringLUTSize.x, multipleScatteringLUTSize.y)));
 		values.floats.Add(("multipleScatteringStrength", multipleScatteringStrength));
+		values.floats.Add(("cloudShaftMultipleScattering", cloudShaftMultipleScattering));
 		values.floats.Add(("groundAlbedo", groundAlbedo));
 
 		// Sky view. The size goes as a float2 because both the write and the read divide by it.
