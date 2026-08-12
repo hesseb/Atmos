@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using System.Globalization;
 using UnityEngine;
+// For SolarTime, which formats the clock the merged overlay shows.
+using SolarSystem;
 
 /// <summary>
 /// In-application benchmark control: pick a benchmark and a mode with the keyboard, then

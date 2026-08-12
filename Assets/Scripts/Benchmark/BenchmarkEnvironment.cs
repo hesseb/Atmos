@@ -141,9 +141,9 @@ public static class BenchmarkEnvironment
 		{
 			scope.Set(() => refs.timeController.inputEnabled,
 				v => refs.timeController.inputEnabled = v, false);
-			// IMGUI allocates and calls CalcSize every OnGUI pass.
-			scope.Set(() => refs.timeController.showOverlay,
-				v => refs.timeController.showOverlay = v, false);
+			// The overlay is no longer suppressed from here. There is one panel now, owned by
+			// BenchmarkHud, and its OnGUI already returns early while a run is in progress - which is
+			// the stronger guarantee, since it does not depend on this scope having been applied.
 		}
 
 		// ---- animation --------------------------------------------------------
