@@ -52,6 +52,8 @@ MonoBehaviour:
   aerialPerspectiveLUTCompute: {fileID: 7200000, guid: 5261cb094de7cb64189738546d046b7d, type: 3}
   aerialPerspectiveLUTSize: 64
   aerialPerspectiveStrength: 0.529
+  cloudShaftMultipleScattering: 0.7
+  debugMode: 0
   numSkyScatteringSteps: 256
   skyRenderCompute: {fileID: 7200000, guid: 768e75c0bfe7f084daefc455ceb6b5ac, type: 3}
   skyRenderSize: {x: 128, y: 256}
@@ -62,7 +64,7 @@ MonoBehaviour:
   ditherStrength: 4
   blueNoise: {fileID: 2800000, guid: f94aa116956069842b6a2820258a64f0, type: 3}
   filterMode: 1
-  rayleighCoefficients: {x: 1.876744, y: 4.1003814, z: 8.238811}
+  rayleighCoefficients: {x: 0.5802264, y: 1.3557584, z: 3.309956}
   transmittanceLUT: {fileID: 0}
   multipleScatteringLUT: {fileID: 0}
   skyViewLUT: {fileID: 0}
