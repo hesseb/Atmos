@@ -5,10 +5,24 @@
 
 // Schneider's weather map, on a globe.
 //
+// TWO layers, written by one dispatch so they cannot drift out of step.
+//
+// Result - the low/mid layer, which carries seven of the ten genera:
 //   R  coverage      how much cloud there is here at all
-//   G  precipitation thickens the cloud, pushes it toward cumulonimbus, and drops its base
-//   B  cloud type    0 stratus -> 0.5 cumulus -> 1 cumulonimbus, selecting the height gradient
-//   A  base height   how far up the shell the cloud starts, as a fraction of it
+//   G  precipitation thickens the cloud, drops its base, and is the -nimbus affix
+//   B  form          sheet -> cellular -> heaped -> towering
+//   A  base altitude where the layer's floor sits in the shell, as a fraction of it
+//
+// ResultHigh - the ice layer, which carries the other three:
+//   R  coverage      cirrus is usually sparse, so this sits low by default
+//   G  form          fibrous (Ci) -> granular (Cc) -> veil (Cs)
+//   B, A  spare
+//
+// Why two. THESIS.md 3.5 makes the genera table RQ1's rubric, and that table is two-dimensional -
+// altitude BAND crossed with FORM. One layer with one form axis can only walk one row of it, which
+// is why three genera were unreachable and the mid band was unrepresented. The bands are separated
+// in altitude by construction, so a density sample is inside at most one and the second layer costs
+// a texture tap rather than a second noise evaluation.
 //
 // Equirectangular, sampled with pointToUV, the same parameterisation the terrain, the ocean and the
 // city light field already use - so it needs no container and is invariant under the world scale.
@@ -19,6 +33,7 @@
 // antimeridian, whereas the sphere is a closed domain with no distortion and no edge to match up.
 
 RWTexture2D<float4> Result;
+RWTexture2D<float4> ResultHigh;
 
 float2 weatherMapSize;
 
@@ -53,6 +68,15 @@ float precipitationBias;
 
 float baseHeightScale;
 float baseHeightBias;
+
+/// The ice layer. Its own scales, because high cloud arrives on its own weather - a cirrus shield
+/// runs ahead of a front and has nothing to do with the cumulus underneath it. Tying the two would
+/// collapse exactly the band axis the rubric scores.
+float highCoverageScale;
+float highCoverageBias;
+float highCoverageContrast;
+float highFormScale;
+float highFormBias;
 
 /// Advances the noise field so weather drifts. Applied as an offset in the sphere's own space
 /// rather than as a UV scroll, which would slide features along latitude lines and pull them apart
@@ -101,4 +125,23 @@ void CSWeatherMap(uint3 id : SV_DispatchThreadID)
 	float baseHeight = saturate(baseNoise * weatherRangeGain * 0.5 + 0.5 + baseHeightBias);
 
 	Result[id.xy] = float4(coverage, precipitation, type, baseHeight);
+
+	// The ice layer, on its own offsets so it is not a copy of the low layer shifted upward.
+	//
+	// Range-corrected like every other field here. An FBM normalised by the sum of its octave
+	// amplitudes never reaches that sum, and this project has now been caught by that three times -
+	// in the Perlin, in this file's own type channel, and in the baseline's authored bake. A new
+	// field without weatherRangeGain would sit in the middle third of its range and cirrus would be
+	// neither absent nor complete anywhere on the globe.
+	float highNoise = cloudFbm(p * highCoverageScale + windOffset * 1.4 + 53.9,
+								max(2, octaves - 2), lacunarity, gain);
+	float highCoverage = saturate(highNoise * weatherRangeGain * 0.5 + 0.5 + highCoverageBias);
+	highCoverage = saturate(cloudRemap(highCoverage, 0.5 - 0.5 / max(0.01, highCoverageContrast),
+										0.5 + 0.5 / max(0.01, highCoverageContrast), 0, 1));
+
+	float highFormNoise = cloudFbm(p * highFormScale + windOffset * 1.1 - 91.4,
+									max(2, octaves - 3), lacunarity, gain);
+	float highForm = saturate(highFormNoise * weatherRangeGain * 0.5 + 0.5 + highFormBias);
+
+	ResultHigh[id.xy] = float4(highCoverage, highForm, 0, 0);
 }
