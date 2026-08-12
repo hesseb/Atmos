@@ -34,7 +34,7 @@ RWTexture2D<float4> Result;
 float2 cloudSkyMapSize;
 float3 cloudSkySunDir;
 
-/// Steps down through the shell. Fewer than the view march by a wide margin: this is a
+/// Steps up through the shell, from the base. Fewer than the view march by a wide margin: this is a
 /// low-resolution field of a quantity - the average look of a cloud base - that carries no
 /// high-frequency detail, and every step here pays for a six-sample cone light march.
 int cloudSkySteps;
@@ -64,16 +64,23 @@ void CSCloudSkyMap(uint3 id : SV_DispatchThreadID)
 	float2 uv = (id.xy + 0.5) / cloudSkyMapSize;
 	float3 sphereNormal = uvToPointOnSphere(uv);
 
-	// Straight down through the shell, from the top. A vertical column rather than a view ray: this
-	// asks what leaves the base, and the surface below it is looking up.
-	float3 down = -sphereNormal;
+	// UP through the shell, from the base, and the direction is the whole point.
+	//
+	// A volumetric march integrates from the EYE outward - the origin is where the observer is, and
+	// transmittance accumulates away from it. The consumer here is the sea and the land BELOW the
+	// deck, looking up, so the march has to start at the base and climb.
+	//
+	// Marching from the top down computes the opposite quantity: what an observer above the deck
+	// sees, which is the sunlit top at full transmittance. That is what this did, and the sea
+	// reflected a brilliant white deck no matter what its underside was doing.
+	float3 up = sphereNormal;
 	float span = cloudOuterRadius - cloudInnerRadius;
 	float stepSize = span / max(1, cloudSkySteps);
 
-	// Lifted clear of the outer sphere rather than started exactly on it, for the reason the shadow
+	// Lifted clear of the inner sphere rather than started exactly on it, for the reason the shadow
 	// pass documents at length: exactly on the boundary, dot(o,o) - r^2 rounds either way and the
 	// two signs give completely different answers.
-	float3 top = sphereNormal * (cloudOuterRadius - 1e-2);
+	float3 base = sphereNormal * (cloudInnerRadius + 1e-2);
 
 	// Read at the footprint of a MAP TEXEL, not of a march step. This is a fixed grid over the whole
 	// globe and cannot represent anything finer than two texels, so asking the volume for more does
@@ -81,15 +88,16 @@ void CSCloudSkyMap(uint3 id : SV_DispatchThreadID)
 	float texelWorldSize = 6.28318530718 * cloudInnerRadius / max(1, cloudSkyMapSize.x);
 	float sampleFootprint = max(stepSize, texelWorldSize * cloudSkyDetailScale);
 
-	// The phase argument is the angle between the direction light LEAVES in - straight down - and
-	// the sun. Constant down the column, so it is evaluated once.
+	// The phase argument is the cosine between the VIEW RAY and the sun, matching how the main march
+	// forms it - and the view ray of an observer below the deck points UP. dot(up, sun), not
+	// dot(down, sun), which is the backward lobe and is never where the sun is during the day.
 	//
-	// Downward is also why the moon term and the aerial perspective are absent here and present in
-	// the view march: this is a different query, not the same one restated. The silver lining is
-	// kept, because a thin deck with the sun behind it genuinely does glow when seen from below -
-	// that is what a bright overcast IS.
-	float cosDownSun = dot(down, cloudSkySunDir);
-	float phase = cloudPhase(cosDownSun, cloudSilverIntensity);
+	// With the sun overhead this is near +1, the forward lobe, which is correct: a thin deck with the
+	// sun behind it glows when seen from underneath. That is what a bright overcast IS, and it is why
+	// the silver lining is kept here while the moon term and the aerial perspective are not - this is
+	// a different query from the view march, not the same one restated.
+	float cosUpSun = dot(up, cloudSkySunDir);
+	float phase = cloudPhase(cosUpSun, cloudSilverIntensity);
 
 	float nightT = saturate(dot(sphereNormal, -cloudSkySunDir));
 
@@ -111,7 +119,7 @@ void CSCloudSkyMap(uint3 id : SV_DispatchThreadID)
 
 	for (int i = 0; i < cloudSkySteps; i++)
 	{
-		float3 pos = top + down * ((i + 0.5) * stepSize);
+		float3 pos = base + up * ((i + 0.5) * stepSize);
 
 		float density = sampleCloudDensity(pos, false, sampleFootprint);
 		if (density <= 0) { continue; }
@@ -123,7 +131,7 @@ void CSCloudSkyMap(uint3 id : SV_DispatchThreadID)
 		float sunLuminance = dot(sunTransmittance, float3(0.2126, 0.7152, 0.0722));
 		float3 sunColour = lerp(sunLuminance.xxx, sunTransmittance, cloudSunTransmittanceWeight) * cloudSunColour;
 
-		float energy = cloudBeerPowder(cloudLightMarch(pos, cloudSkySunDir), cosDownSun);
+		float energy = cloudBeerPowder(cloudLightMarch(pos, cloudSkySunDir), cosUpSun);
 
 		float3 inScatter = sunColour * energy * phase * cloudSunIntensity + ambient;
 
