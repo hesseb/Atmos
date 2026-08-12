@@ -11,8 +11,11 @@ namespace Clouds
 	/// next enable, and SkyPass.Record is asserted to be the only sky-pass shape. The post-process
 	/// chain is the sanctioned extension point and already has the depth texture.
 	///
-	/// Sits AFTER the atmosphere composite in the chain, which is why the clouds will apply their
-	/// own aerial perspective in stage 4 rather than inheriting it.
+	/// Sits AFTER the atmosphere composite in the chain, so the clouds do not inherit its aerial
+	/// perspective and apply their own instead - see cloudAerialStrength and aerialTransmittance in
+	/// SurfaceLighting.hlsl. They cannot inherit it: that pass reads a screen-space LUT whose depth
+	/// axis is capped at the planet's tangent distance, and the clouds that most need haze are the
+	/// ones past that cap.
 	/// </summary>
 	[CreateAssetMenu(menuName = "PostProcessing/Clouds")]
 	public class CloudEffect : PostProcessingEffect
@@ -185,6 +188,12 @@ namespace Clouds
 		[Tooltip("Stands in for skylight when there is no physically based atmosphere bound, so the " +
 			"clouds are still lit in the baseline and ablation profiles rather than going black.")]
 		public Color ambientFallback = new Color(0.4f, 0.45f, 0.55f);
+
+		[Tooltip("How much aerial perspective the clouds pick up - the haze of the air between them " +
+			"and the camera. Distant cloud loses contrast and takes the colour of the sky it is seen " +
+			"against, which is what stops it reading as crisp cut-outs over terrain that has already " +
+			"gone blue. 0 is identity, for pricing the feature.")]
+		[Range(0f, 1f)] public float aerialStrength = 1f;
 
 		[Tooltip("Starlight and airglow on the clouds. Without it they go pure black at night, " +
 			"because every source they have reaches zero together once the sun is down. Declared " +
@@ -731,6 +740,8 @@ namespace Clouds
 			material.SetFloat("cloudAmbientHorizon", ambientHorizon);
 			material.SetVector("cloudAmbientFallback", new Vector4(ambientFallback.r, ambientFallback.g, ambientFallback.b, 1));
 			material.SetVector("cloudNightAmbient", new Vector4(nightAmbient.r, nightAmbient.g, nightAmbient.b, 1));
+
+			material.SetFloat("cloudAerialStrength", aerialStrength);
 
 			material.SetFloat("cloudLightMarchLength", lightMarchLength);
 			material.SetFloat("cloudLightAbsorption", lightAbsorption);

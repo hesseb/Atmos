@@ -314,6 +314,7 @@ public class PostProcessRendererProfile : RendererProfile
 			  .Append(", stepSize=").Append(cloudEffect.stepSize)
 			  .Append(", maxSteps=").Append(cloudEffect.maxSteps)
 			  .Append(", lightMarchLength=").Append(cloudEffect.lightMarchLength)
+			  .Append(", aerialStrength=").Append(cloudEffect.aerialStrength)
 			  .Append(", shell=").Append(cloudEffect.cloudBottomAltitude).Append('-')
 			  .Append(cloudEffect.cloudTopAltitude)
 			  .Append(", weatherMap=").Append(cloudEffect.weatherMapSize.x).Append('x')
