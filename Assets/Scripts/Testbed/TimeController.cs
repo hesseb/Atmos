@@ -24,8 +24,10 @@ public class TimeController : MonoBehaviour
 	[Header("Speed")]
 	public float[] speedSteps = { 0.1f, 0.25f, 1f, 4f, 16f, 64f, 256f };
 	public int speedIndex = 2;
-	public KeyCode slowerKey = KeyCode.Comma;
-	public KeyCode fasterKey = KeyCode.Period;
+	// J and K rather than comma and period: they sit under the right hand next to the movement
+	// keys, and the punctuation pair is easy to hit by accident while typing in the console.
+	public KeyCode slowerKey = KeyCode.J;
+	public KeyCode fasterKey = KeyCode.K;
 	public KeyCode pauseKey = KeyCode.P;
 
 	[Header("Sun presets")]
@@ -47,7 +49,14 @@ public class TimeController : MonoBehaviour
 
 	public bool inputEnabled = true;
 
-	string lastAction = "";
+	/// <summary>The last thing a time key did, for the shared overlay to echo.</summary>
+	public string LastAction { get; private set; } = "";
+
+	string lastAction
+	{
+		get => LastAction;
+		set => LastAction = value;
+	}
 	GUIStyle overlayStyle;
 	Texture2D overlayBackground;
 	Color appliedBackgroundColour;
@@ -75,7 +84,6 @@ public class TimeController : MonoBehaviour
 	{
 		if (!inputEnabled) { return; }
 
-		if (Input.GetKeyDown(toggleOverlayKey)) { showOverlay = !showOverlay; }
 
 		if (Input.GetKeyDown(pauseKey) && solarSystem != null)
 		{
@@ -187,51 +195,9 @@ public class TimeController : MonoBehaviour
 
 	// ---------------------------------------------------------------- overlay
 
-	void OnGUI()
-	{
-		if (!showOverlay || solarSystem == null || Earth == null) { return; }
-
-		// Built from a bare GUIStyle rather than GUI.skin.label: the editor skin's label
-		// is dark text intended for a light background, and a style copied from it can
-		// also lose an overridden colour across a domain reload. Colour and size are
-		// re-applied every frame so the overlay never silently reverts to black.
-		if (overlayStyle == null)
-		{
-			overlayStyle = new GUIStyle { richText = false, wordWrap = false };
-			overlayStyle.padding = new RectOffset(12, 12, 10, 10);
-		}
-		overlayStyle.fontSize = Mathf.Max(1, overlayFontSize);
-		overlayStyle.normal.textColor = overlayTextColour;
-
-		// Only rebuilt when the colour actually changes - OnGUI runs several times a frame.
-		if (overlayBackground == null || appliedBackgroundColour != overlayBackgroundColour)
-		{
-			if (overlayBackground == null)
-			{
-				overlayBackground = new Texture2D(1, 1) { hideFlags = HideFlags.HideAndDontSave };
-			}
-			overlayBackground.SetPixel(0, 0, overlayBackgroundColour);
-			overlayBackground.Apply();
-			appliedBackgroundColour = overlayBackgroundColour;
-		}
-
-		string state = solarSystem.animate ? $"{CurrentSpeed:0.##}x" : "paused";
-		string text =
-			$"solar {SolarTime.FormatHours(CurrentLocalSolarHours)}   sun {CurrentSunElevation:+0.0;-0.0}°   {state}\n" +
-			$"dayT {solarSystem.dayT:0.0000}   yearT {solarSystem.yearT:0.0000}\n" +
-			$"1 sunrise  2 noon  3 sunset  4 midnight  5 golden({goldenElevationDegrees:0.#}°)\n" +
-			$", . speed   P pause   F1 hide" +
-			(string.IsNullOrEmpty(lastAction) ? "" : $"\n{lastAction}");
-
-		// Size to the content so the panel tracks the font size and the optional last
-		// action line, rather than clipping at a hardcoded rect.
-		GUIContent content = new GUIContent(text);
-		Vector2 size = overlayStyle.CalcSize(content);
-		Rect rect = new Rect(10f, 10f, size.x, size.y);
-
-		GUI.DrawTexture(rect, overlayBackground);
-		GUI.Label(rect, content, overlayStyle);
-	}
+// The overlay lives in BenchmarkHud now - one panel, one hide key, rather than two stacked in
+	// opposite corners each with its own toggle. This class still owns the time KEYS and the state
+	// behind them; only the drawing moved.
 
 	// Edit-mode access, for composing a shot without entering play mode.
 	// SolarSystemManager is [ExecuteInEditMode], so the orbit updates immediately.

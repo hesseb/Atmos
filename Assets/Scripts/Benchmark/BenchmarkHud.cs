@@ -21,15 +21,25 @@ public class BenchmarkHud : MonoBehaviour
 	[Header("Wiring")]
 	public BenchmarkRunner runner;
 
+	[Tooltip("Drawn by this overlay rather than its own. One panel and one hide key beat two " +
+		"stacked in opposite corners, each with a separate toggle - which is how the UI ended up " +
+		"impossible to fully dismiss.")]
+	public TimeController time;
+
 	[Header("Keys")]
-	public KeyCode cycleBenchmarkKey = KeyCode.F2;
-	public KeyCode cycleModeKey = KeyCode.F3;
-	public KeyCode runKey = KeyCode.F4;
-	[Tooltip("Applies a renderer profile live, for looking at the difference rather than " +
-		"measuring it. Cycles: scene as authored -> each profile -> back.")]
-	public KeyCode cycleProfileKey = KeyCode.F5;
+	// F1-F8, ordered by how often they are reached for rather than by which system owns them.
+	// The old layout grew one key at a time - cycle-benchmark on F2 because it was written first,
+	// hide split across F1 and F6 because two components each drew their own panel - and it read as
+	// an implementation history rather than as a control surface.
+	public KeyCode cycleProfileKey = KeyCode.F1;
+	// F2 is the world scale, owned by WorldScaleController.
+	public KeyCode cycleGenusKey = KeyCode.F3;
+	public KeyCode cycleModeKey = KeyCode.F4;
+	public KeyCode runKey = KeyCode.F5;
+	public KeyCode cycleBenchmarkKey = KeyCode.F6;
+	public KeyCode toggleOverlayKey = KeyCode.F7;
+	public KeyCode fullscreenKey = KeyCode.F8;
 	public KeyCode abortKey = KeyCode.Escape;
-	public KeyCode toggleOverlayKey = KeyCode.F6;
 
 	[Header("Overlay")]
 	public bool showOverlay = true;
@@ -152,7 +162,9 @@ public class BenchmarkHud : MonoBehaviour
 		if (Input.GetKeyDown(cycleBenchmarkKey)) { CycleBenchmark(); }
 		if (Input.GetKeyDown(cycleModeKey)) { CycleMode(); }
 		if (Input.GetKeyDown(cycleProfileKey)) { CyclePreviewProfile(); }
+		if (Input.GetKeyDown(cycleGenusKey)) { CycleGenus(); }
 		if (Input.GetKeyDown(runKey)) { Run(); }
+		if (Input.GetKeyDown(fullscreenKey)) { ToggleFullscreen(); }
 	}
 
 	// ------------------------------------------------------------------ live preview
@@ -219,6 +231,56 @@ public class BenchmarkHud : MonoBehaviour
 	}
 
 	readonly List<RendererProfile> previewProfiles = new List<RendererProfile>();
+
+/// <summary>
+	/// Steps the volumetric's genus override through the ten of THESIS.md 3.5, plus Off.
+	///
+	/// RQ1 needs one image of each, and hunting for a region where the noise happened to produce
+	/// Cirrocumulus is not a workflow. Paired with the capture mode this makes the evidence set a
+	/// couple of minutes of tapping.
+	/// </summary>
+	void CycleGenus()
+	{
+		Clouds.CloudEffect clouds = FindClouds();
+		if (clouds == null)
+		{
+			lastMessage = "no CloudEffect in the post-processing chain";
+			return;
+		}
+
+		var values = (Clouds.CloudEffect.Genus[])System.Enum.GetValues(typeof(Clouds.CloudEffect.Genus));
+		int next = (System.Array.IndexOf(values, clouds.genusOverride) + 1) % values.Length;
+		clouds.genusOverride = values[next];
+		lastMessage = $"genus: {clouds.genusOverride}";
+	}
+
+	Clouds.CloudEffect FindClouds()
+	{
+		if (runner == null || !runner.sceneRefs.Resolve(out _)) { return null; }
+		if (runner.sceneRefs.postProcessing == null) { return null; }
+
+		foreach (PostProcessingEffect effect in runner.sceneRefs.postProcessing.effects)
+		{
+			if (effect is Clouds.CloudEffect clouds) { return clouds; }
+		}
+		return null;
+	}
+
+	/// <summary>
+	/// Borderless-window fullscreen rather than exclusive.
+	///
+	/// Exclusive fullscreen changes the swap chain and can change the frame pacing, which is the
+	/// thing being measured - so a key that flips it mid-session would quietly invalidate a
+	/// comparison across the flip. This mode does not.
+	/// </summary>
+	void ToggleFullscreen()
+	{
+		Screen.fullScreenMode = Screen.fullScreen
+			? FullScreenMode.Windowed
+			: FullScreenMode.FullScreenWindow;
+		Screen.fullScreen = !Screen.fullScreen;
+		lastMessage = Screen.fullScreen ? "fullscreen" : "windowed";
+	}
 
 	void CycleBenchmark()
 	{
@@ -386,64 +448,61 @@ public class BenchmarkHud : MonoBehaviour
 		var content = new GUIContent(runner.IsRunning ? ProgressText() : IdleText());
 		Vector2 size = overlayStyle.CalcSize(content);
 
-		// Bottom left, so it does not fight the time overlay in the top left.
-		var rect = new Rect(10f, Screen.height - size.y - 10f, size.x, size.y);
+		// Top left. It used to sit bottom-left to avoid fighting the time overlay, which this panel
+		// now contains.
+		var rect = new Rect(10f, 10f, size.x, size.y);
 
 		GUI.DrawTexture(rect, overlayBackground);
 		GUI.Label(rect, content, overlayStyle);
+	}
+
+/// <summary>
+	/// The time half of the panel: what time it is and how fast it is moving.
+	///
+	/// Sun elevation, dayT and yearT were dropped. They are derived quantities that were useful
+	/// while the solar model was being built and are noise now - and every line here is a line that
+	/// has to be read past to find the one being looked for.
+	/// </summary>
+	string TimeText()
+	{
+		if (time == null || time.solarSystem == null) { return ""; }
+
+		string speed = time.solarSystem.animate ? $"{time.CurrentSpeed:0.##}x" : "paused";
+
+		return
+			$"solar {SolarTime.FormatHours(time.CurrentLocalSolarHours)}   {speed}\n" +
+			$"  1 sunrise  2 noon  3 sunset  4 midnight  5 golden\n" +
+			$"  {KeyName(time.slowerKey)}{KeyName(time.fasterKey)} speed   {KeyName(time.pauseKey)} pause\n" +
+			(string.IsNullOrEmpty(time.LastAction) ? "" : $"  {time.LastAction}\n") +
+			"\n";
 	}
 
 	string IdleText()
 	{
 		List<BenchmarkDefinition> definitions = Available;
 
-		string name;
-		int frames, runs;
+		string name = definitions.Count == 0
+			? "(none - populate availableBenchmarks)"
+			: selected == AllIndex
+				? $"All ({definitions.Count})"
+				: definitions[Mathf.Clamp(selected, 0, definitions.Count - 1)].id;
 
-		if (definitions.Count == 0)
-		{
-			name = "(none - populate availableBenchmarks)";
-			frames = 0;
-			runs = 0;
-		}
-		else if (selected == AllIndex)
-		{
-			name = $"All ({definitions.Count})";
-			frames = 0;
-			foreach (BenchmarkDefinition definition in definitions)
-			{
-				frames += BenchmarkPlan.EstimateLength(definition);
-			}
-			runs = definitions.Count;
-		}
-		else
-		{
-			BenchmarkDefinition definition = definitions[Mathf.Clamp(selected, 0, definitions.Count - 1)];
-			name = definition.id;
-			frames = BenchmarkPlan.EstimateLength(definition);
-			runs = 1;
-		}
+		Clouds.CloudEffect clouds = FindClouds();
 
-		int passes = PassesPerRun();
-		long total = (long)frames * passes;
-
-		string sizeLine = runs == 0
-			? "        -"
-			: $"{total.ToString("N0", Ci)} frames  ({frames.ToString("N0", Ci)} x {passes} pass" +
-			  (passes == 1 ? "" : "es") + (runs > 1 ? $" x {runs} runs" : "") + ")";
-
+		// The profile LIST is gone, and so are the frame-count estimate, the enabled-effect list and
+		// the world stats other than scale. All of them were answerable from elsewhere; what is left
+		// is the state that decides what a keypress will do next.
 		return
-			"BENCHMARK\n" +
-			$"  benchmark   {name}\n" +
-			$"  mode        {runner.mode}{ModeNote()}\n" +
-			$"  profiles    {ProfileList()}\n" +
-			$"  size        {sizeLine}\n" +
-			$"  viewing     {PreviewName()}\n" +
-			$"  post        {EnabledEffects()}\n" +
-			WorldScaleLine() +
-			$"  {KeyName(cycleBenchmarkKey)} benchmark   {KeyName(cycleModeKey)} mode   " +
-			$"{KeyName(cycleProfileKey)} view   {KeyName(runKey)} run   " +
-			$"{KeyName(toggleOverlayKey)} hide" + WorldScaleKeyHint() +
+			TimeText() +
+			$"benchmark   {name}\n" +
+			$"mode        {runner.mode}{ModeNote()}\n" +
+			$"profile     {PreviewName()}\n" +
+			$"scale       {WorldScaleName()}\n" +
+			(clouds == null ? "" : $"genus       {clouds.genusOverride}\n") +
+			$"  {KeyName(cycleProfileKey)} profile  {KeyName(WorldScaleKey())} scale  " +
+			$"{KeyName(cycleGenusKey)} genus  {KeyName(cycleModeKey)} mode\n" +
+			$"  {KeyName(runKey)} run  {KeyName(cycleBenchmarkKey)} benchmark  " +
+			$"{KeyName(toggleOverlayKey)} hide  {KeyName(fullscreenKey)} fullscreen" +
 			(string.IsNullOrEmpty(lastMessage) ? "" : $"\n  {lastMessage}");
 	}
 
@@ -453,15 +512,16 @@ public class BenchmarkHud : MonoBehaviour
 	/// Resolved on demand rather than cached: the controller is not required for a benchmark,
 	/// and a run left as authored should show no scale line at all rather than a stale one.
 	/// </summary>
-	string WorldScaleLine()
+	string WorldScaleName()
 	{
 		string status = WorldScale != null ? WorldScale.StatusLine : null;
-		return string.IsNullOrEmpty(status) ? "" : $"  world       {status}\n";
+		return string.IsNullOrEmpty(status) ? "as authored" : status;
 	}
 
-	string WorldScaleKeyHint()
+	/// <summary>The scale key, so the panel names the real binding rather than a hardcoded F2.</summary>
+	KeyCode WorldScaleKey()
 	{
-		return WorldScale != null ? $"   {KeyName(WorldScale.cycleKey)} scale" : "";
+		return WorldScale != null ? WorldScale.cycleKey : KeyCode.None;
 	}
 
 	WorldScaleController worldScaleCached;
@@ -497,25 +557,6 @@ public class BenchmarkHud : MonoBehaviour
 		return rendering != null ? $"{requested}   (sky: {rendering.ActiveMode})" : requested;
 	}
 
-	/// <summary>
-	/// The post-processing effects currently on. Shown because the sky line alone cannot tell
-	/// two configurations apart: the aerial perspective passes live in the post chain, so
-	/// "PBR sky" and "PBR sky plus the cheap fog on top" report identically without this.
-	/// </summary>
-	string EnabledEffects()
-	{
-		PostProcessingManager post = runner.sceneRefs != null ? runner.sceneRefs.postProcessing : null;
-		if (post == null || post.effects == null) { return "-"; }
-
-		var on = new List<string>();
-		foreach (PostProcessingEffect effect in post.effects)
-		{
-			if (effect != null && effect.enabled) { on.Add(effect.name); }
-		}
-
-		return on.Count > 0 ? string.Join(", ", on) : "none";
-	}
-
 	string ProgressText()
 	{
 		int total = runner.Plan != null ? runner.Plan.Length : 0;
@@ -537,38 +578,6 @@ public class BenchmarkHud : MonoBehaviour
 			BenchmarkRunMode.SelfCheck => "   (repeats, writes noise floor)",
 			_ => "   (statistics, no images)"
 		};
-	}
-
-	string ProfileList()
-	{
-		if (runner.profiles == null || runner.profiles.Length == 0) { return "scene as authored"; }
-
-		var ids = new List<string>();
-		foreach (RendererProfile profile in runner.profiles)
-		{
-			if (profile != null) { ids.Add(profile.id); }
-		}
-		return ids.Count > 0 ? string.Join(", ", ids) : "scene as authored";
-	}
-
-	/// <summary>Mirrors BenchmarkRunner.BuildPassPlans so the size shown matches what runs.</summary>
-	int PassesPerRun()
-	{
-		int profileCount = 0;
-		if (runner.profiles != null)
-		{
-			foreach (RendererProfile profile in runner.profiles)
-			{
-				if (profile != null) { profileCount++; }
-			}
-		}
-		if (profileCount == 0) { profileCount = 1; }
-
-		int repeats = runner.IsCaptureRun
-			? 1
-			: Mathf.Max(runner.mode == BenchmarkRunMode.SelfCheck ? 2 : 1, runner.repeats);
-
-		return profileCount * repeats;
 	}
 
 	static string KeyName(KeyCode key) => key == KeyCode.None ? "-" : key.ToString();

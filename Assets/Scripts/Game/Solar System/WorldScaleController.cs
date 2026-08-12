@@ -57,7 +57,7 @@ public class WorldScaleController : MonoBehaviour
 	public LodMeshLoader terrainLoader;
 
 	[Tooltip("Cycles to the next preset. F5 and F6 belong to the benchmark HUD.")]
-	public KeyCode cycleKey = KeyCode.F7;
+	public KeyCode cycleKey = KeyCode.F2;
 
 	[Tooltip("Apply the first preset on start. Off leaves the scene exactly as authored, which " +
 		"is what a measurement run wants - a benchmark should not silently inherit a scale.")]
