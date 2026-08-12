@@ -51,6 +51,16 @@ namespace Clouds
 			Opacity = 1,
 			Normal = 2,
 			MipLevel = 3,
+
+			/// <summary>
+			/// Tints the lower deck red and the upper blue, leaving both rendering.
+			///
+			/// Unlike the others this does not replace the frame, because the question it exists to
+			/// answer - are the two decks actually separating - cannot be asked of a picture with
+			/// one deck in it. Two decks that are drawing but coincident and one deck that is
+			/// drawing alone are otherwise the identical image.
+			/// </summary>
+			LayerTint = 4,
 		}
 
 		/// <summary>

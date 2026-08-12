@@ -88,8 +88,10 @@ Shader "Hidden/BaselineClouds"
 			/// is what makes one-layer against two a clean measurement of what the depth cue costs.
 			int baselineLayerCount;
 
-			/// 0 off, 1 opacity, 2 world normal, 3 mip level. Small on purpose - the baseline has
-			/// almost no internal state to inspect, which is itself part of what RQ3 is comparing.
+			/// 0 off, 1 opacity, 2 world normal, 3 mip level, 4 tint the decks apart.
+			///
+			/// Small on purpose - the baseline has almost no internal state to inspect, which is
+			/// itself part of what RQ3 is comparing.
 			int baselineCloudDebugMode;
 
 			BaselineLayer layerA()
@@ -130,7 +132,10 @@ Shader "Hidden/BaselineClouds"
 
 				BaselineLayer a = layerA();
 
-				if (baselineCloudDebugMode > 0)
+				// Modes 1-3 inspect one tap of deck A and replace the frame. Mode 4 is different: it
+				// leaves both decks rendering and only tints them, because the question it answers -
+				// are these two sheets separating - cannot be asked of a picture with one deck in it.
+				if (baselineCloudDebugMode > 0 && baselineCloudDebugMode < 4)
 				{
 					float t = baselineLayerHit(a.radius, rayOrigin, rayDir);
 					if (t < 0 || t >= sceneDepth) { return float4(0, 0, 0, 1); }
@@ -151,6 +156,12 @@ Shader "Hidden/BaselineClouds"
 					BaselineCloudLayerA, samplerBaselineCloudLayerA, a,
 					rayOrigin, rayDir, sceneDepth, distanceA);
 
+				// Warm for the lower deck, cold for the upper. Applied to the premultiplied colour,
+				// so a deck that is not drawing simply stays absent rather than tinting the sky -
+				// which makes "only one deck is assigned" and "both are assigned but coincident"
+				// distinguishable at a glance, and they are otherwise the same picture.
+				if (baselineCloudDebugMode == 4) { cloud.rgb *= float3(1.0, 0.30, 0.25); }
+
 				// A uniform branch, so this is genuinely free when the upper layer is off rather
 				// than merely cheap - which is what makes one layer against two a measurement of
 				// the depth cue rather than of a taken branch.
@@ -160,6 +171,8 @@ Shader "Hidden/BaselineClouds"
 					float4 upper = baselineCloudLayer(
 						BaselineCloudLayerB, samplerBaselineCloudLayerB, layerB(),
 						rayOrigin, rayDir, sceneDepth, distanceB);
+
+					if (baselineCloudDebugMode == 4) { upper.rgb *= float3(0.25, 0.55, 1.0); }
 
 					cloud = baselineCombineLayers(cloud, distanceA, upper, distanceB);
 				}
