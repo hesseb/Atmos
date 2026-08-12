@@ -4,11 +4,29 @@
 // Declares atmosphereThickness / atmosphereRadius / planetRadius and the single definition of
 // the transmittance LUT's parameterisation, shared with DrawSky.shader.
 #include "TransmittanceCommon.hlsl"
+// The cloud deck's occlusion of the sun, which is what turns in-scattered light into shafts.
+//
+// Its own header rather than SurfaceLighting.hlsl, which also needs it: that file cannot include
+// this one, because this one owns the global `dirToSun` and would shadow the local sun direction of
+// every forward shader. Declaring the map in both would collide as soon as a shader wanted both.
+#include "Assets/Post Processing/Effects/Atmosphere/Shader Common/CloudShadowCommon.hlsl"
 
 // Must follow TransmittanceCommon.hlsl, which declares the planet dimensions its mapping uses.
 #include "MultipleScatteringCommon.hlsl"
 
-static const float PI = 3.14159265359;
+// PI, which this file used to declare itself.
+//
+// It cannot any more: CloudShadowCommon.hlsl above needs pointToUV, that reaches GeoMath.hlsl ->
+// Math.hlsl -> MathInternal.hlsl, and MathInternal declares its own PI. Two `static const float PI`
+// in one translation unit is a redefinition, and this pairing had never occurred before - nothing
+// included both this file and GeoMath.
+//
+// Taking MathInternal's is exact rather than approximately exact: 3.14159265359 and
+// 3.141592653589793238462643383279 are the same float32, bits 40490fdb, so nothing downstream moves.
+//
+// Included explicitly rather than left to arrive through CloudShadowCommon, so that removing that
+// include later does not silently take PI with it.
+#include "Assets/Scripts/Shader Common/Math.hlsl"
 
 // Rayleigh, mie and ozone parameters.
 //
@@ -301,6 +319,23 @@ void raymarchSegment(inout ScatteringState state, float3 segmentStart, float3 ra
 		if (rayIntersectSphere(rayPos, dirToSun, earthShadowRadius) > 0) {
 			sunTransmittance = 0;
 		}
+
+		// Cloud shadow, which is the exact analogue of the line above - the same question about a
+		// different occluder, which is why it sits here rather than anywhere else.
+		//
+		// This is what produces light shafts, and it produces them as a CONSEQUENCE rather than as an
+		// effect: in-scattered light under a deck should be shadowed, and once it is, the variation
+		// along the ray is the beams. With no occlusion term there is no variation, and an overcast
+		// renders as uniformly lit haze.
+		//
+		// Being in raymarchSegment means the sky pass and the aerial perspective LUT both get it from
+		// one definition - the property the comment above this function already claims for the
+		// scattering integral.
+		//
+		// How visible the result is depends entirely on the resolution each consumer marches at. The
+		// sky is 128x256; the aerial LUT is 32 texels across the SCREEN unless raised, which is about
+		// 80 pixels at 1440p, and a shaft narrower than one texel does not exist in the data.
+		sunTransmittance *= cloudSunVisibility(rayPos, dirToSun);
 
 
 		// Amount of light scattered in towards the camera at current sample point.

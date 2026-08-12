@@ -322,6 +322,9 @@ public class PostProcessRendererProfile : RendererProfile
 			  .Append(", shadowMap=").Append(cloudEffect.shadowMapSize.x).Append('x')
 			  .Append(cloudEffect.shadowMapSize.y)
 			  .Append(", shadowStrength=").Append(cloudEffect.shadowStrength)
+			  // Shafts are a tap per RAYMARCH STEP, not per pixel, so they move the frame time by far
+			  // more than the ground shadows do and have to be attributable on their own.
+			  .Append(", shaftStrength=").Append(cloudEffect.shaftStrength)
 			  // The deck's downward-radiance field. Its own dispatch, so it moves the frame time on
 			  // its own - and it is a feature the baseline arm does not have, which is a thing the
 			  // RQ1 discussion has to account for rather than something a reader should infer.

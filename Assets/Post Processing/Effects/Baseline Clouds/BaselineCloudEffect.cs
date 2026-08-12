@@ -210,6 +210,12 @@ namespace Clouds
 			"the same one more cheaply, and part of the measured gap would be the absence.")]
 		[Range(0f, 1f)] public float shadowStrength = 0.85f;
 
+		[Tooltip("Light shafts, when this renderer's decks are the ones casting them. The shafts " +
+			"themselves live in the physically based atmosphere's raymarch, so this does nothing in " +
+			"a baseline-sky profile - but a PBR-sky/baseline-cloud profile is a real combination and " +
+			"it would otherwise read whatever the volumetric last published.")]
+		[Range(0f, 1f)] public float shaftStrength = 1f;
+
 		[Header("Cost")]
 		[Tooltip("Full shades every pixel; Half shades a quarter of them and upsamples with the same " +
 			"depth-aware filter the volumetric uses. The filter is shared code, so the gap between " +
@@ -347,6 +353,7 @@ namespace Clouds
 				{
 					publishedShadows = false;
 					Shader.SetGlobalFloat("cloudShadowStrength", 0f);
+					Shader.SetGlobalFloat("cloudShaftStrength", 0f);
 				}
 				return;
 			}
@@ -394,6 +401,11 @@ namespace Clouds
 
 			Shader.SetGlobalTexture("CloudShadowMap", shadowMap);
 			Shader.SetGlobalFloat("cloudShadowStrength", shadowStrength);
+			Shader.SetGlobalFloat("cloudShaftStrength", shaftStrength);
+			// The deck the atmosphere's raymarch intersects to find where a sun ray crosses cloud.
+			// Mid-deck between the two layers, which is the least wrong single radius for a pair.
+			Shader.SetGlobalFloat("cloudDeckRadius",
+				bodyRadius + (UpperActive ? (lower.altitude + upper.altitude) * 0.5f : lower.altitude));
 			publishedShadows = true;
 		}
 

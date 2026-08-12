@@ -392,6 +392,13 @@ namespace Clouds
 			"disabled - so a clouds-off benchmark profile gets an unshadowed ground for free.")]
 		[Range(0f, 1f)] public float shadowStrength = 0.85f;
 
+		[Tooltip("Light shafts: how strongly the deck shadows the AIR, not just the ground. Reads the " +
+			"same shadow map, but the atmosphere's raymarch applies it per step, which is what turns " +
+			"in-scattered light into beams. Separate from the shadow strength above because the two " +
+			"cost wildly different amounts - one tap per pixel against one tap per march step - and " +
+			"RQ2 wants them priced apart. 0 is exactly identity.")]
+		[Range(0f, 1f)] public float shaftStrength = 1f;
+
 		RenderTexture weatherMap;
 		RenderTexture weatherMapHigh;
 		RenderTexture shadowMap;
@@ -613,6 +620,7 @@ namespace Clouds
 				{
 					publishedShadows = false;
 					Shader.SetGlobalFloat("cloudShadowStrength", 0f);
+					Shader.SetGlobalFloat("cloudShaftStrength", 0f);
 				}
 				if (publishedSky)
 				{
@@ -893,6 +901,7 @@ namespace Clouds
 				{
 					publishedShadows = false;
 					Shader.SetGlobalFloat("cloudShadowStrength", 0f);
+					Shader.SetGlobalFloat("cloudShaftStrength", 0f);
 				}
 				return;
 			}
@@ -933,6 +942,11 @@ namespace Clouds
 
 			Shader.SetGlobalTexture("CloudShadowMap", shadowMap);
 			Shader.SetGlobalFloat("cloudShadowStrength", shadowStrength);
+			Shader.SetGlobalFloat("cloudShaftStrength", shaftStrength);
+			// Published beside the SHADOW map, not only beside the deck radiance map: the atmosphere's
+			// raymarch needs it to find where a sun ray crosses the deck, and shafts must work in
+			// profiles where the radiance map is off.
+			Shader.SetGlobalFloat("cloudDeckRadius", (InnerRadius + OuterRadius) * 0.5f);
 			publishedShadows = true;
 		}
 

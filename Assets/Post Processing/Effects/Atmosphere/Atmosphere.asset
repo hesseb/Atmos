@@ -50,7 +50,7 @@ MonoBehaviour:
   skyViewLutAltitude: 0
   skyViewHorizonV: 1
   aerialPerspectiveLUTCompute: {fileID: 7200000, guid: 5261cb094de7cb64189738546d046b7d, type: 3}
-  aerialPerspectiveLUTSize: 32
+  aerialPerspectiveLUTSize: 64
   aerialPerspectiveStrength: 0.529
   numSkyScatteringSteps: 256
   skyRenderCompute: {fileID: 7200000, guid: 768e75c0bfe7f084daefc455ceb6b5ac, type: 3}
