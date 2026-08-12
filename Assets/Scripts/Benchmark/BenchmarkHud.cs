@@ -279,11 +279,18 @@ public class BenchmarkHud : MonoBehaviour
 	/// </summary>
 	void ToggleFullscreen()
 	{
-		Screen.fullScreenMode = Screen.fullScreen
-			? FullScreenMode.Windowed
-			: FullScreenMode.FullScreenWindow;
-		Screen.fullScreen = !Screen.fullScreen;
-		lastMessage = Screen.fullScreen ? "fullscreen" : "windowed";
+		// ONE assignment. Setting the mode and then toggling Screen.fullScreen fought itself:
+		// assigning the mode already implies the flag, but the flag does not update until the end
+		// of the frame, so the second line read the stale value and undid the first.
+		bool goingFullscreen = Screen.fullScreenMode == FullScreenMode.Windowed;
+		Screen.fullScreenMode = goingFullscreen
+			? FullScreenMode.FullScreenWindow
+			: FullScreenMode.Windowed;
+
+		// Says what it did even in the editor, where it does nothing - the Game view is not a
+		// window Unity can take fullscreen, so this only has an effect in a player.
+		lastMessage = (goingFullscreen ? "fullscreen" : "windowed") +
+			(Application.isEditor ? " (player only)" : "");
 	}
 
 	void CycleBenchmark()
@@ -506,8 +513,9 @@ public class BenchmarkHud : MonoBehaviour
 			$"  {KeyName(cycleProfileKey)} profile  {KeyName(WorldScaleKey())} scale  " +
 			$"{KeyName(cycleGenusKey)} genus  {KeyName(cycleModeKey)} mode\n" +
 			$"  {KeyName(runKey)} run  {KeyName(cycleBenchmarkKey)} benchmark  " +
-			$"{KeyName(toggleOverlayKey)} hide  {KeyName(fullscreenKey)} fullscreen" +
-			(string.IsNullOrEmpty(lastMessage) ? "" : $"\n  {lastMessage}");
+			$"{KeyName(toggleOverlayKey)} hide  {KeyName(fullscreenKey)} fullscreen\n" +
+			CameraKeyLine() +
+			(string.IsNullOrEmpty(lastMessage) ? "" : $"  {lastMessage}");
 	}
 
 	/// <summary>
@@ -516,6 +524,22 @@ public class BenchmarkHud : MonoBehaviour
 	/// Resolved on demand rather than cached: the controller is not required for a benchmark,
 	/// and a run left as authored should show no scale line at all rather than a stale one.
 	/// </summary>
+	/// <summary>
+	/// The keys that are not on the function row: camera mode, reset, movement, abort.
+	///
+	/// Named from the components that own them rather than hardcoded, so a rebind cannot leave the
+	/// panel advertising a key that does nothing - which is exactly what the function row did after
+	/// the remap, because the scene still held the previous bindings and the labels print those.
+	/// </summary>
+	string CameraKeyLine()
+	{
+		TestbedCamera cam = runner != null ? runner.sceneRefs.testbedCamera : null;
+		if (cam == null) { return ""; }
+
+		return $"  {KeyName(cam.toggleModeKey)} {cam.mode}  {KeyName(cam.resetKey)} reset  " +
+			$"WASD/QE/RF move  {KeyName(abortKey)} abort run\n";
+	}
+
 	string WorldScaleName()
 	{
 		string status = WorldScale != null ? WorldScale.StatusLine : null;

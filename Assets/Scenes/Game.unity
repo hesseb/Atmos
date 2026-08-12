@@ -832,12 +832,14 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::BenchmarkHud
   runner: {fileID: 0}
-  cycleBenchmarkKey: 283
-  cycleModeKey: 284
-  runKey: 285
-  cycleProfileKey: 286
+  cycleBenchmarkKey: 287
+  fullscreenKey: 289
+  cycleGenusKey: 284
+  cycleModeKey: 285
+  runKey: 286
+  cycleProfileKey: 282
   abortKey: 27
-  toggleOverlayKey: 287
+  toggleOverlayKey: 288
   showOverlay: 1
   overlayFontSize: 17
   overlayTextColour: {r: 1, g: 1, b: 1, a: 1}
@@ -1591,7 +1593,7 @@ MonoBehaviour:
   cityLights: {fileID: 0}
   moon: {fileID: 0}
   terrainLoader: {fileID: 0}
-  cycleKey: 288
+  cycleKey: 283
   applyOnStart: 1
 --- !u!1 &1737174887
 GameObject:
@@ -1948,8 +1950,8 @@ MonoBehaviour:
   - 64
   - 256
   speedIndex: 2
-  slowerKey: 44
-  fasterKey: 46
+  slowerKey: 106
+  fasterKey: 107
   pauseKey: 112
   sunriseKey: 49
   noonKey: 50
