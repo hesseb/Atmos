@@ -77,8 +77,9 @@ public class TimeController : MonoBehaviour
 
 		if (Input.GetKeyDown(pauseKey) && solarSystem != null)
 		{
+			// No lastAction: the header already reads "paused" or the speed, so echoing it here
+			// printed the same state twice.
 			solarSystem.animate = !solarSystem.animate;
-			lastAction = solarSystem.animate ? "resumed" : "paused";
 		}
 
 		if (Input.GetKeyDown(slowerKey)) { StepSpeed(-1); }
@@ -98,7 +99,6 @@ public class TimeController : MonoBehaviour
 		if (speedSteps == null || speedSteps.Length == 0) { return; }
 		speedIndex = Mathf.Clamp(speedIndex + direction, 0, speedSteps.Length - 1);
 		ApplySpeed();
-		lastAction = $"speed {CurrentSpeed:0.##}x";
 	}
 
 	void ApplySpeed()

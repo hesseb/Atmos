@@ -107,6 +107,11 @@ public class BenchmarkHud : MonoBehaviour
 		if (runner == null) { runner = FindFirstObjectByType<BenchmarkRunner>(); }
 		// Found rather than wired, so merging the two overlays costs no scene edit.
 		if (time == null) { time = FindFirstObjectByType<TimeController>(); }
+
+		// All, rather than whichever benchmark happens to sit first in the list. Running a single
+		// one is the deliberate act; running the set is the default thing to want - and a default
+		// that silently picks one of several is a default you have to check before every run.
+		selected = AllIndex;
 	}
 
 	void OnEnable()
@@ -505,11 +510,11 @@ public class BenchmarkHud : MonoBehaviour
 		// is the state that decides what a keypress will do next.
 		return
 			TimeText() +
-			$"benchmark   {name}\n" +
-			$"mode        {runner.mode}{ModeNote()}\n" +
 			$"profile     {PreviewName()}\n" +
 			$"scale       {WorldScaleName()}\n" +
 			(clouds == null ? "" : $"genus       {clouds.genusOverride}\n") +
+			$"mode        {runner.mode}\n" +
+			$"benchmark   {name}\n" +
 			$"  {KeyName(cycleProfileKey)} profile  {KeyName(WorldScaleKey())} scale  " +
 			$"{KeyName(cycleGenusKey)} genus  {KeyName(cycleModeKey)} mode\n" +
 			$"  {KeyName(runKey)} run  {KeyName(cycleBenchmarkKey)} benchmark  " +
@@ -542,8 +547,10 @@ public class BenchmarkHud : MonoBehaviour
 
 	string WorldScaleName()
 	{
-		string status = WorldScale != null ? WorldScale.StatusLine : null;
-		return string.IsNullOrEmpty(status) ? "as authored" : status;
+		// ScaleLabel, not StatusLine: the long form carries the radius in km, the horizon air mass
+		// against Earth's and the density multiplier, which belong in the console when justifying a
+		// preset rather than on screen while flying around.
+		return WorldScale != null ? WorldScale.ScaleLabel : "as authored";
 	}
 
 	/// <summary>The scale key, so the panel names the real binding rather than a hardcoded F2.</summary>
@@ -581,8 +588,10 @@ public class BenchmarkHud : MonoBehaviour
 			? profiles[previewIndex].id
 			: "scene as authored";
 
-		RenderingManager rendering = runner.sceneRefs != null ? runner.sceneRefs.renderingManager : null;
-		return rendering != null ? $"{requested}   (sky: {rendering.ActiveMode})" : requested;
+		// The active sky mode used to be appended here. Every arm names its atmosphere, so it was
+		// restating the answer next to the question - and it pushed the value itself off to the
+		// right, which is the thing being read.
+		return requested;
 	}
 
 	string ProgressText()
@@ -596,16 +605,6 @@ public class BenchmarkHud : MonoBehaviour
 			$"{(fraction * 100f).ToString("F0", Ci)}%" +
 			(queue.Count > 0 ? $"   {queue.Count} queued" : "") +
 			$"\n  {KeyName(abortKey)} abort";
-	}
-
-	string ModeNote()
-	{
-		return runner.mode switch
-		{
-			BenchmarkRunMode.Capture => "   (images, no statistics)",
-			BenchmarkRunMode.SelfCheck => "   (repeats, writes noise floor)",
-			_ => "   (statistics, no images)"
-		};
 	}
 
 	static string KeyName(KeyCode key) => key == KeyCode.None ? "-" : key.ToString();
