@@ -20,6 +20,9 @@ public class BenchmarkSceneRefs
 	// Owns the sky command buffers and reports which sky is actually attached.
 	public RenderingManager renderingManager;
 	public BaselineSkyRenderer baselineSky;
+	// The drawn-mesh cloud delivery. A scene component rather than an asset, so a profile can
+	// switch deliveries without touching serialized state.
+	public Clouds.BaselineCloudShell baselineCloudShell;
 
 	public EarthOrbit Earth => solarSystem != null ? solarSystem.earth : null;
 
@@ -41,6 +44,13 @@ public class BenchmarkSceneRefs
 		if (renderingManager == null)
 		{
 			renderingManager = Object.FindFirstObjectByType<RenderingManager>();
+		}
+		if (baselineCloudShell == null)
+		{
+			// Include inactive: a profile that selects the mesh delivery needs a handle to it while
+			// it is disabled, which is its resting state whenever anything else is being measured.
+			baselineCloudShell = Object.FindFirstObjectByType<Clouds.BaselineCloudShell>(
+				FindObjectsInactive.Include);
 		}
 		if (baselineSky == null)
 		{

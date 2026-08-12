@@ -26,6 +26,19 @@ using UnityEngine;
 ///
 ///   baseline-gradient vs baseline-baked   identical shader path and cost; any visual
 ///                                         difference is purely down to how the LUT was made
+///
+/// The cloud series is arranged the same way and for the same reasons:
+///
+///   clouds-baseline-null      - pbr                       the cloud pass structure alone
+///   clouds-baseline-authored  - clouds-baseline-null      the cheap shading model
+///   clouds-full               - clouds-baseline-null      the march
+///   clouds-baseline-mesh      - clouds-baseline-authored  what the delivery mechanism is worth
+///
+/// and the two authoring methods are separated from the runtime cost, as with the sky:
+///
+///   clouds-baseline-authored vs -baked    identical shader path and cost; only the content
+///                                         differs, which separates a weaker technique from
+///                                         weaker art
 /// </summary>
 static class RendererProfiles
 {
@@ -123,9 +136,44 @@ static class RendererProfiles
 				cloudsOn: true, cloudMode: PostProcessRendererProfile.CloudOverride.Temporal));
 		}
 
+		// The baseline cloud series. All four sit on the physically based sky with the volumetric
+		// OFF, so the only thing varying is which cloud renderer runs - and `pbr` above, which has
+		// no clouds at all, is the control they are subtracted from.
+		Save(Build("clouds-baseline-authored", "Baseline clouds: a relief-shaded texture on two " +
+			"spheres, delivered as a post-process so the pass shape matches the volumetric's. The " +
+			"simple method RQ1 and RQ2 are phrased against.",
+			atmosphere, atmosphereOn: true, aerial, aerialOn: false,
+			clouds, PostProcessRendererProfile.SkyOverride.Off,
+			cloudsOn: false, cloudMode: PostProcessRendererProfile.CloudOverride.LeaveAlone,
+			baselineArm: PostProcessRendererProfile.BaselineCloudOverride.PostAuthored));
+
+		Save(Build("clouds-baseline-baked", "Same shader and same cost as clouds-baseline-authored, " +
+			"but the deck textures are baked off the volumetric. The content is then identical, so " +
+			"what is left against clouds-full is the technique rather than the art.",
+			atmosphere, atmosphereOn: true, aerial, aerialOn: false,
+			clouds, PostProcessRendererProfile.SkyOverride.Off,
+			cloudsOn: false, cloudMode: PostProcessRendererProfile.CloudOverride.LeaveAlone,
+			baselineArm: PostProcessRendererProfile.BaselineCloudOverride.PostBaked));
+
+		Save(Build("clouds-baseline-mesh", "The same baseline shading reached by rasterising a " +
+			"sphere per deck rather than a full-screen quad - what a game would actually ship. " +
+			"Differs from clouds-baseline-authored only in delivery.",
+			atmosphere, atmosphereOn: true, aerial, aerialOn: false,
+			clouds, PostProcessRendererProfile.SkyOverride.Off,
+			cloudsOn: false, cloudMode: PostProcessRendererProfile.CloudOverride.LeaveAlone,
+			baselineArm: PostProcessRendererProfile.BaselineCloudOverride.Mesh));
+
+		Save(Build("clouds-baseline-null", "Control: the cloud pass structure with a passthrough " +
+			"fragment. Subtract from pbr to price the target allocation, the two blits and the " +
+			"composite that any cloud renderer in this chain pays before shading anything.",
+			atmosphere, atmosphereOn: true, aerial, aerialOn: false,
+			clouds, PostProcessRendererProfile.SkyOverride.Off,
+			cloudsOn: false, cloudMode: PostProcessRendererProfile.CloudOverride.LeaveAlone,
+			baselineArm: PostProcessRendererProfile.BaselineCloudOverride.Null));
+
 		AssetDatabase.SaveAssets();
 		AssetDatabase.Refresh();
-		Debug.Log($"[Benchmark] wrote {(clouds != null ? 10 : 7)} renderer profiles to {Folder}\n" +
+		Debug.Log($"[Benchmark] wrote {(clouds != null ? 14 : 11)} renderer profiles to {Folder}\n" +
 			"  Assign them to the BenchmarkRunner's Profiles array in the order you want the " +
 			"summary's baseline column to be - the first entry is what deltas are measured from.");
 	}
@@ -135,13 +183,19 @@ static class RendererProfiles
 		AerialPerspectiveSimple aerial, bool aerialOn,
 		Clouds.CloudEffect clouds, PostProcessRendererProfile.SkyOverride sky,
 		bool cloudsOn = false,
-		PostProcessRendererProfile.CloudOverride cloudMode = PostProcessRendererProfile.CloudOverride.LeaveAlone)
+		PostProcessRendererProfile.CloudOverride cloudMode = PostProcessRendererProfile.CloudOverride.LeaveAlone,
+		PostProcessRendererProfile.BaselineCloudOverride baselineArm =
+			PostProcessRendererProfile.BaselineCloudOverride.Off)
 	{
 		var profile = ScriptableObject.CreateInstance<PostProcessRendererProfile>();
 		profile.id = id;
 		profile.description = description;
 		profile.sky = sky;
 		profile.clouds = cloudMode;
+		// Stated on EVERY profile, and defaulting to Off rather than LeaveAlone. A sky profile that
+		// did not mention the baseline clouds would measure the sky with whichever cloud arm the
+		// pass before it happened to leave running.
+		profile.baselineClouds = baselineArm;
 		profile.objects = new PostProcessRendererProfile.ObjectToggle[0];
 
 		// Both effects are listed on every profile, including where the value matches the
