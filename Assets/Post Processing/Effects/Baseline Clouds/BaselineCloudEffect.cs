@@ -352,8 +352,7 @@ namespace Clouds
 				if (publishedShadows)
 				{
 					publishedShadows = false;
-					Shader.SetGlobalFloat("cloudShadowStrength", 0f);
-					Shader.SetGlobalFloat("cloudShaftStrength", 0f);
+					CloudShadowGlobals.Retract();
 				}
 				return;
 			}
@@ -399,12 +398,12 @@ namespace Clouds
 
 			shadowCompute.Dispatch(kernel, Mathf.CeilToInt(width / 8f), Mathf.CeilToInt(height / 8f), 1);
 
-			Shader.SetGlobalTexture("CloudShadowMap", shadowMap);
-			Shader.SetGlobalFloat("cloudShadowStrength", shadowStrength);
-			Shader.SetGlobalFloat("cloudShaftStrength", shaftStrength);
-			// The deck the atmosphere's raymarch intersects to find where a sun ray crosses cloud.
+			// Same publisher the volumetric uses, so neither arm can leave the other's field behind
+			// and the atmosphere's computes get their binding either way.
+			//
+			// The deck radius is what the raymarch intersects to find where a sun ray crosses cloud.
 			// Mid-deck between the two layers, which is the least wrong single radius for a pair.
-			Shader.SetGlobalFloat("cloudDeckRadius",
+			CloudShadowGlobals.Publish(shadowMap, shadowStrength, shaftStrength,
 				bodyRadius + (UpperActive ? (lower.altitude + upper.altitude) * 0.5f : lower.altitude));
 			publishedShadows = true;
 		}

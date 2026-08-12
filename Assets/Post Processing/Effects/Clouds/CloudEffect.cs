@@ -550,7 +550,7 @@ namespace Clouds
 			// Where the surfaces should intersect a reflected ray to find the deck. Mid-shell: the
 			// map describes the whole column, so any single radius is a choice, and the middle is the
 			// least wrong one for a grazing ray.
-			Shader.SetGlobalFloat("cloudDeckRadius", (InnerRadius + OuterRadius) * 0.5f);
+			CloudShadowGlobals.PublishDeckRadius((InnerRadius + OuterRadius) * 0.5f);
 			publishedSky = true;
 		}
 
@@ -619,8 +619,7 @@ namespace Clouds
 				if (publishedShadows)
 				{
 					publishedShadows = false;
-					Shader.SetGlobalFloat("cloudShadowStrength", 0f);
-					Shader.SetGlobalFloat("cloudShaftStrength", 0f);
+					CloudShadowGlobals.Retract();
 				}
 				if (publishedSky)
 				{
@@ -900,8 +899,7 @@ namespace Clouds
 				if (publishedShadows)
 				{
 					publishedShadows = false;
-					Shader.SetGlobalFloat("cloudShadowStrength", 0f);
-					Shader.SetGlobalFloat("cloudShaftStrength", 0f);
+					CloudShadowGlobals.Retract();
 				}
 				return;
 			}
@@ -940,13 +938,15 @@ namespace Clouds
 
 			shadowCompute.Dispatch(kernel, Mathf.CeilToInt(width / 8f), Mathf.CeilToInt(height / 8f), 1);
 
-			Shader.SetGlobalTexture("CloudShadowMap", shadowMap);
-			Shader.SetGlobalFloat("cloudShadowStrength", shadowStrength);
-			Shader.SetGlobalFloat("cloudShaftStrength", shaftStrength);
-			// Published beside the SHADOW map, not only beside the deck radiance map: the atmosphere's
-			// raymarch needs it to find where a sun ray crosses the deck, and shafts must work in
+			// Through CloudShadowGlobals rather than Shader.SetGlobal directly, because the
+			// atmosphere's three COMPUTE consumers cannot read shader globals - a kernel's textures
+			// have to be bound per kernel. One writer, two representations, so they cannot drift.
+			//
+			// The deck radius is published beside the SHADOW map, not only beside the radiance map:
+			// the raymarch needs it to find where a sun ray crosses the deck, and shafts must work in
 			// profiles where the radiance map is off.
-			Shader.SetGlobalFloat("cloudDeckRadius", (InnerRadius + OuterRadius) * 0.5f);
+			CloudShadowGlobals.Publish(shadowMap, shadowStrength, shaftStrength,
+				(InnerRadius + OuterRadius) * 0.5f);
 			publishedShadows = true;
 		}
 

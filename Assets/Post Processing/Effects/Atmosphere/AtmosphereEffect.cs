@@ -602,6 +602,19 @@ public class AtmosphereEffect : PostProcessingEffect
 			if (aerialPerspectiveLUTCompute != null) { aerialPerspectiveLUTCompute.SetTexture(0, "MultipleScatteringLUT", multipleScatteringLUT); }
 		}
 
+		// The cloud deck, for the light shafts in raymarchSegment.
+		//
+		// Explicit, and it has to be: a compute does not receive Shader.SetGlobalTexture, so every
+		// kernel referencing CloudShadowMap must be bound by hand or the dispatch fails outright with
+		// "Property (CloudShadowMap) at kernel index (0) is not set". Fragment shaders pick the same
+		// map up from the globals for free, which is why this asymmetry is easy to miss.
+		//
+		// Bound every frame rather than once: the map is a RenderTexture the cloud renderer may
+		// recreate, and which renderer owns it can change between profiles.
+		CloudShadowGlobals.BindTo(skyViewLUTCompute, 0);
+		CloudShadowGlobals.BindTo(skyRenderCompute, 0);
+		CloudShadowGlobals.BindTo(aerialPerspectiveLUTCompute, 0);
+
 		if (skyViewLUTCompute != null && skyViewLUT != null)
 		{
 			skyViewLUTCompute.SetTexture(0, "SkyViewResult", skyViewLUT);
