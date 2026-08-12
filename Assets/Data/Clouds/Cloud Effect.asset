@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5db6ba36a5e28bf4d8d5056e037b7b12, type: 3}
   m_Name: Cloud Effect
   m_EditorClassIdentifier: Assembly-CSharp::Clouds.CloudEffect
-  enabled: 0
+  enabled: 1
   shader: {fileID: 4800000, guid: 499e1860038c91842aadc792298d713d, type: 3}
   shapeNoise: {fileID: 11700000, guid: 3b4e2d58ef15a90469fc9fa36d9affda, type: 2}
   detailNoise: {fileID: 11700000, guid: c26c036913c039c478adc32897544e1b, type: 2}
@@ -61,6 +61,7 @@ MonoBehaviour:
   ambientIntensity: 0.4
   ambientHorizon: 0.41
   ambientFallback: {r: 0.4, g: 0.45, b: 0.55, a: 1}
+  aerialStrength: 1
   nightAmbient: {r: 0.014239837, g: 0.014239837, b: 0.03773558, a: 1}
   lightMarchLength: 8
   lightAbsorption: 0.8
@@ -74,6 +75,11 @@ MonoBehaviour:
   silverSpread: 0.6
   moonIntensity: 2
   moonSilverIntensity: 2
+  skyCompute: {fileID: 7200000, guid: 68dfae8a85fe49243a7c99348ea5e30d, type: 3}
+  skyMapSize: {x: 256, y: 128}
+  skySteps: 8
+  skyDetailScale: 0.5
+  skyStrength: 0.628
   costMode: 1
   depthRejection: 64
   historyBlend: 0.2

@@ -321,7 +321,14 @@ public class PostProcessRendererProfile : RendererProfile
 			  .Append(cloudEffect.weatherMapSize.y)
 			  .Append(", shadowMap=").Append(cloudEffect.shadowMapSize.x).Append('x')
 			  .Append(cloudEffect.shadowMapSize.y)
-			  .Append(", shadowStrength=").Append(cloudEffect.shadowStrength);
+			  .Append(", shadowStrength=").Append(cloudEffect.shadowStrength)
+			  // The deck's downward-radiance field. Its own dispatch, so it moves the frame time on
+			  // its own - and it is a feature the baseline arm does not have, which is a thing the
+			  // RQ1 discussion has to account for rather than something a reader should infer.
+			  .Append(", skyMap=").Append(cloudEffect.skyMapSize.x).Append('x')
+			  .Append(cloudEffect.skyMapSize.y)
+			  .Append(", skySteps=").Append(cloudEffect.skySteps)
+			  .Append(", skyStrength=").Append(cloudEffect.skyStrength);
 		}
 
 		// The baseline's arm, read back off the renderer for the same reason the sky's variant is.

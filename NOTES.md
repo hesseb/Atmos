@@ -2156,3 +2156,81 @@ one build, and `DescribeSettings` records it. **Not yet verified visually** - th
 are the strength 0/1 pair at low sun toward the horizon, nadir as a control (should be pixel-identical,
 since `T ≈ 1` at a few units), and night, where a sign error in the downward branch would show as
 distant clouds getting *brighter* rather than fading to black.
+
+## Cloud-aware sky on the ocean and terrain
+
+Under full overcast at sunset the sea still went orange, as though the sun were shining on it.
+
+The direct sun was never the problem. `Ocean.shader` already multiplied both its glint transmittance
+and its sun visibility by `cloudShadow`, and `Terrain.shader` likewise. What had no cloud awareness
+at all was the **sky** — the zenith ambient, and the Fresnel reflection.
+
+The reflection is the one that mattered, and the reason is already written in the shader's own
+comment on the Fresnel term: water's F0 is 0.02 but approaches 1 at grazing incidence, "which is
+exactly where the sunset sits". So a low camera across water is showing nearly pure reflected sky,
+and that sky had no clouds in it. The deck was then drawn over the top, which is why the two
+disagreed. **A term can be correct and still be swamped by the one next to it** — the shadow was
+working the whole time.
+
+### What was built
+
+`CloudSkyMap.compute` bakes what the deck looks like from below: an equirect field of the radiance
+leaving its underside, plus how much sky it hides. It marches down through the shell using the same
+optical model the view march uses, and the ocean's reflection samples it **where the reflected ray
+meets the deck**, not overhead — at grazing angles those are tens of units apart, and the grazing
+case is the entire complaint.
+
+The terrain's overcast lighting falls out of the same lerp, which closes the separate open item that
+a bright overcast does not raise the ambient beneath it. No term of its own.
+
+### Two decisions worth carrying forward
+
+- **The map stores DISPLAY space, not radiance.** The plan said the opposite, on the grounds that
+  `SkyViewCommon.hlsl` documents storing radiance and tone mapping at the consumer. That is right for
+  the sky LUT and wrong here: the march assembles its colour in display space, and
+  `sampleSkyViewSafe` returns display space, so a radiance-valued map would have had the ocean
+  lerping between two quantities at different exposures. The reflected deck matching the drawn deck
+  is the entire point of the feature, so the convention gave way to it.
+- **The optical model had to be shared, and the assembly deliberately was not.** `cloudPhase`,
+  `cloudBeerPowder` and `cloudLightMarch` moved into `CloudLightingCommon.hlsl`; the per-sample
+  colour assembly stayed in each consumer. The view ray's radiance and the deck's downward radiance
+  are two different integrals, not one restated — different directions, different phase arguments,
+  and the view path carries a moon term and an aerial-perspective term that a downward query does
+  not. Sharing what is genuinely one thing and duplicating what is genuinely two is the split that
+  keeps both honest.
+
+### Infrastructure this forced
+
+`SurfaceLighting.hlsl` could not be included from a compute shader, so the bake could not call the
+same lighting functions the march does. Two incidental blockers, both now fixed:
+
+- It pulled in `DrawAtmosphereCommon.hlsl` **for `toneMap` alone**, and that header's `getBlueNoise`
+  reads `_ScreenParams` and samples with implicit derivatives. The tone map is uniforms and
+  arithmetic, so it split out into `ToneMapCommon.hlsl`.
+- `cloudShadow` sampled with `tex2D`. The map has no mip chain so `tex2Dlod` is identical, but
+  `tex2D` wants derivatives.
+
+Fallout worth remembering: **`Ocean.shader` and `Clouds.shader` were reaching `blueNoiseDither`
+through `SurfaceLighting` by accident**, and broke when it stopped including that header. Both now
+include it explicitly. This project's own headers warn against relying on a transitive include to
+satisfy a symbol you use; two shaders were doing it anyway.
+
+### The baseline does not get this, and that now compounds
+
+Deliberate scope choice, as with aerial perspective on clouds. But it is now **two** features the PBR
+arm has and the baseline does not: distant baseline clouds do not haze, and baseline cloud cover does
+not affect the sky the sea reflects. Both push the RQ1 gap in the same direction, and neither is a
+property of the technique being compared.
+
+This needs stating plainly in the RQ1 discussion rather than left for a reader to infer, and
+`DescribeSettings` now records `skyStrength` and the map's size and step count so any run can be
+checked for which arm had what. If the gap ends up looking large, these two are the first thing to
+subtract from it.
+
+### Still open
+
+Not yet verified beyond a first look. The checks that matter: `skyStrength` 0/1 at an overcast
+sunset from one pose; clear sky as a pixel-identical control; a cloud bank on the horizon with clear
+sky overhead, to confirm the reflected-ray lookup is not falling through to its zenith guard; and
+night, where a missing `max(0, ...)` would push the sea below black. Cost is unmeasured — the bake is
+its own dispatch with a six-sample cone light march per vertical step, so it is not free.
