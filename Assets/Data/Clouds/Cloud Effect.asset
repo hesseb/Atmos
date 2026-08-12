@@ -33,6 +33,11 @@ MonoBehaviour:
   baseHeightScale: 5.18
   baseHeightBias: 0.031
   weatherWindSpeed: 0.004
+  highCoverageScale: 1.6
+  highCoverageBias: -0.15
+  highCoverageContrast: 1.4
+  highFormScale: 0.9
+  highFormBias: 0
   bodyRadius: 150
   cloudBottomAltitude: 0.6
   cloudTopAltitude: 15.17
@@ -45,6 +50,16 @@ MonoBehaviour:
   baseVariation: 0.3
   bandThickness: 0.65
   edgeSoftness: 1
+  highStrength: 1
+  highBase: 0.696
+  highThickness: 0.169
+  highScale: 0.009
+  highDensityMultiplier: 0.17
+  highCoverageMultiplier: 0.79
+  highStretch: 4.5
+  highGranularity: 0.1
+  highWindDirection: {x: 1, y: 0, z: 0.35}
+  highWindSpeed: 0.001
   precipDensity: 1.2
   precipTypePush: 0.45
   precipBaseDrop: 0.2
@@ -80,6 +95,7 @@ MonoBehaviour:
   skySteps: 8
   skyDetailScale: 0.5
   skyStrength: 0.628
+  genusOverride: 0
   costMode: 1
   depthRejection: 64
   historyBlend: 0.2
@@ -89,3 +105,4 @@ MonoBehaviour:
   shadowAbsorption: 1.52
   shadowDetailScale: 0.5
   shadowStrength: 0.8
+  shaftStrength: 1

@@ -49,10 +49,13 @@
 			float4 params;
 			float aerialPerspectiveStrength;
 
-			// Remap a value from the range [minOld, maxOld] to [0, 1]
-			float remap01(float minOld, float maxOld, float val) {
-				return saturate((val - minOld) / (maxOld - minOld));
-			}
+			// remap01 used to be declared here, byte-identical to the one in Math.hlsl. Harmless
+			// while nothing brought the two together - and they never met, because this shader had
+			// no path to Math.hlsl until AtmosphereCommon started including CloudShadowCommon for
+			// the light shafts, which reaches GeoMath -> Math.
+			//
+			// Deleted rather than renamed: same signature, same body, so the shared one is the same
+			// function and keeping a second copy would only defer the next collision.
 
 			float3 getAtmoCol(float2 uv, float3 originalCol, float viewLength, float3 viewDir) {
 				float3 outputCol = originalCol;
