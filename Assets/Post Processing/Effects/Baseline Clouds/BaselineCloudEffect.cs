@@ -53,14 +53,66 @@ namespace Clouds
 			MipLevel = 3,
 		}
 
+		/// <summary>
+		/// One cloud deck. Two of them are stacked at different radii so they parallax against each
+		/// other, which is the depth cue a single flat overlay cannot give on a globe.
+		///
+		/// Each carries both texture sources, so switching Authored to Baked swaps both decks at
+		/// once and the comparison never ends up half in one condition and half in the other.
+		/// </summary>
+		[System.Serializable]
+		public class LayerSettings
+		{
+			public Texture2D authored;
+			public Texture2D baked;
+
+			[Tooltip("Height above sea level, world units. Keep both inside the volumetric's shell " +
+				"so the two renderers put their cloud in the same band - the A/B comparison needs " +
+				"that even more than it needs either to be correct on its own.")]
+			public float altitude;
+
+			[Tooltip("How far the height channel lifts the sheet. This is what produces parallax " +
+				"WITHIN a deck - the sheet is not flat, so its own features slide against one " +
+				"another as the camera moves. 0 makes it a decal.")]
+			[Range(0f, 8f)] public float thickness;
+
+			[Range(0f, 4f)] public float opacity;
+
+			[Tooltip("Broken versus overcast. A power on the stored coverage, so higher clears the " +
+				"thin edges and leaves the solid cores.")]
+			[Range(0.2f, 4f)] public float contrast;
+
+			[Tooltip("How pronounced the relief shading is. The stored normal is already unit " +
+				"length, so this re-steepens its tangent components and renormalises rather than " +
+				"scaling it, which would only change its length.")]
+			[Range(0f, 4f)] public float reliefStrength;
+
+			[Tooltip("Multiplies the wind speed for this deck. The two must differ, or they drift " +
+				"rigidly together and never separate - and the separation IS the parallax. Real " +
+				"decks at different altitudes sit in different winds, so this is wind shear rather " +
+				"than a cheat.")]
+			public float windScale;
+
+			public static LayerSettings Create(float altitude, float thickness, float opacity,
+				float contrast, float relief, float windScale)
+			{
+				return new LayerSettings
+				{
+					altitude = altitude,
+					thickness = thickness,
+					opacity = opacity,
+					contrast = contrast,
+					reliefStrength = relief,
+					windScale = windScale
+				};
+			}
+		}
+
 		[Header("Texture source")]
 		[Tooltip("Authored is the honest baseline. Baked is the volumetric flattened into the same " +
 			"format - a control condition where the content is identical, so what is left is the " +
 			"technique.")]
 		public TextureSource textureSource = TextureSource.Authored;
-
-		public Texture2D authoredLayer;
-		public Texture2D bakedLayer;
 
 		[Header("Shell")]
 		[Tooltip("Sea level, in world units. Its own field rather than the atmosphere's planetRadius " +
@@ -68,25 +120,17 @@ namespace Clouds
 			"working in exactly the profiles where it is.")]
 		public float bodyRadius = 150f;
 
-		[Tooltip("Height of the sheet above sea level. Sits inside the volumetric's shell so the two " +
-			"renderers put their clouds in the same place, which the A/B comparison needs.")]
-		public float layerAltitude = 4f;
+		[Tooltip("The lower, denser deck.")]
+		public LayerSettings lower = LayerSettings.Create(4f, 2.5f, 1.3f, 1.1f, 1f, 1f);
 
-		[Tooltip("How far the height channel lifts the sheet. This is what produces parallax within " +
-			"a layer - the sheet is not flat, so its features slide against one another as the " +
-			"camera moves. 0 makes it a decal.")]
-		[Range(0f, 8f)] public float layerThickness = 2.5f;
+		[Tooltip("The upper, thinner deck. Higher, sparser and flatter so it reads as high cloud " +
+			"rather than as a second copy of the same weather.")]
+		public LayerSettings upper = LayerSettings.Create(8f, 1.2f, 0.75f, 1.4f, 0.7f, 1.7f);
 
-		[Header("Look")]
-		[Range(0f, 4f)] public float opacity = 1.3f;
-
-		[Tooltip("Broken versus overcast. A power on the stored coverage, so higher clears the thin " +
-			"edges and leaves the solid cores.")]
-		[Range(0.2f, 4f)] public float contrast = 1.1f;
-
-		[Tooltip("How pronounced the relief shading is. The stored normal is already unit length, so " +
-			"this re-steepens its tangent components and renormalises rather than scaling it.")]
-		[Range(0f, 4f)] public float reliefStrength = 1f;
+		[Tooltip("Off drops to a single deck. A uniform branch in the shader, so the second deck " +
+			"then costs exactly nothing - which is what makes one layer against two a clean " +
+			"measurement of what the depth cue is worth.")]
+		public bool upperLayerEnabled = true;
 
 		[Header("Lighting")]
 		[Tooltip("Sun colour across sun elevation: t=0 is 90 degrees below the horizon, t=0.5 " +
@@ -140,12 +184,19 @@ namespace Clouds
 		Transform planet;
 		Light sun;
 
-		public Texture2D ActiveLayer => textureSource == TextureSource.Baked ? bakedLayer : authoredLayer;
+		/// <summary>Whichever of the deck's two textures the current source selects.</summary>
+		public Texture2D TextureFor(LayerSettings layer)
+		{
+			if (layer == null) { return null; }
+			return textureSource == TextureSource.Baked ? layer.baked : layer.authored;
+		}
 
-		float LayerRadius => bodyRadius + layerAltitude;
+		/// <summary>True when the upper deck is both wanted and available.</summary>
+		public bool UpperActive => upperLayerEnabled && TextureFor(upper) != null;
 
 		// Logged once rather than every frame, and reset whenever the effect is re-enabled.
-		bool warnedMissingLayer;
+		bool warnedMissingLower;
+		bool warnedMissingUpper;
 
 		/// <summary>
 		/// Finds the shader by name if the field is empty.
@@ -159,14 +210,15 @@ namespace Clouds
 		public override void OnEnable()
 		{
 			if (shader == null) { shader = Shader.Find("Hidden/BaselineClouds"); }
-			warnedMissingLayer = false;
+			warnedMissingLower = false;
+			warnedMissingUpper = false;
 			base.OnEnable();
 		}
 
 		protected override void RenderEffectToTarget(RenderTexture source, RenderTexture target)
 		{
-			Texture2D layer = ActiveLayer;
-			if (layer == null)
+			Texture2D lowerTex = TextureFor(lower);
+			if (lowerTex == null)
 			{
 				// Nothing baked or nothing wired: pass the frame through untouched rather than
 				// drawing something misleading.
@@ -175,18 +227,15 @@ namespace Clouds
 				// not being in the chain at all - and an enabled renderer that draws nothing is the
 				// one failure that looks exactly like success in a comparison this project keeps
 				// making by eye.
-				if (!warnedMissingLayer)
-				{
-					warnedMissingLayer = true;
-					Debug.LogWarning($"[Baseline clouds] '{name}' is enabled but its " +
-						$"{textureSource} layer texture is unassigned, so it is drawing nothing. " +
-						"Assign it on the effect asset, or bake it from Baseline Cloud Settings.",
-						this);
-				}
-
+				Warn(ref warnedMissingLower, "lower");
 				Graphics.Blit(source, target);
 				return;
 			}
+
+			// Wanted but unassigned is worth saying too: it silently halves the renderer, and a
+			// missing depth cue is exactly the sort of thing that gets written up as a property of
+			// the technique.
+			if (upperLayerEnabled && TextureFor(upper) == null) { Warn(ref warnedMissingUpper, "upper"); }
 
 			Advance();
 
@@ -194,7 +243,7 @@ namespace Clouds
 			int width = Mathf.Max(1, source.width / divisor);
 			int height = Mathf.Max(1, source.height / divisor);
 
-			SetProperties(layer, height);
+			SetProperties(height);
 
 			// Half format for the same reason the volumetric uses one: a lit cloud top is not
 			// bounded by 1, and an 8-bit target would clip it flat.
@@ -227,18 +276,17 @@ namespace Clouds
 			elapsed += Time.deltaTime * timeScale;
 		}
 
-		void SetProperties(Texture2D layer, int passHeight)
+		void SetProperties(int passHeight)
 		{
 			EnsureGradients();
 
-			material.SetTexture("BaselineCloudLayerA", layer);
-			material.SetFloat("baselineLayerRadiusA", LayerRadius);
-			material.SetFloat("baselineLayerThicknessA", layerThickness);
-			material.SetFloat("baselineLayerOpacityA", opacity);
-			material.SetFloat("baselineLayerContrastA", contrast);
-			material.SetFloat("baselineLayerReliefA", reliefStrength);
-			material.SetFloat("baselineLayerTexelsA", layer.width);
-			material.SetMatrix("baselineLayerDriftA", DriftMatrix(1f));
+			BindLayer("A", lower);
+			// The upper deck's uniforms are bound whether or not it is drawn - a stale texture bound
+			// to an unused sampler costs nothing, whereas leaving it unbound after a toggle would
+			// leave whatever was there last, which is the class of bug an omitted benchmark toggle
+			// produces.
+			BindLayer("B", upper);
+			material.SetInt("baselineLayerCount", UpperActive ? 2 : 1);
 
 			material.SetInt("baselineCloudDebugMode", (int)debugMode);
 
@@ -264,12 +312,43 @@ namespace Clouds
 		}
 
 		/// <summary>
+		/// One deck's uniforms, under the shader's A or B suffix.
+		///
+		/// A texture width of zero would put the mip footprint at infinity, so an unassigned deck
+		/// falls back to a sane one rather than reading black.
+		/// </summary>
+		void BindLayer(string suffix, LayerSettings layer)
+		{
+			Texture2D tex = TextureFor(layer);
+
+			material.SetTexture("BaselineCloudLayer" + suffix, tex);
+			material.SetFloat("baselineLayerRadius" + suffix, bodyRadius + layer.altitude);
+			material.SetFloat("baselineLayerThickness" + suffix, layer.thickness);
+			material.SetFloat("baselineLayerOpacity" + suffix, layer.opacity);
+			material.SetFloat("baselineLayerContrast" + suffix, layer.contrast);
+			material.SetFloat("baselineLayerRelief" + suffix, layer.reliefStrength);
+			material.SetFloat("baselineLayerTexels" + suffix, tex != null ? tex.width : 2048);
+			material.SetMatrix("baselineLayerDrift" + suffix, DriftMatrix(layer.windScale));
+		}
+
+		/// <summary>Once per enable, not once per frame.</summary>
+		void Warn(ref bool alreadyWarned, string which)
+		{
+			if (alreadyWarned) { return; }
+			alreadyWarned = true;
+
+			Debug.LogWarning($"[Baseline clouds] '{name}' is enabled but its {which} deck's " +
+				$"{textureSource} texture is unassigned, so that deck is drawing nothing. Assign " +
+				"it on the effect asset, or bake it from Baseline Cloud Settings.", this);
+		}
+
+		/// <summary>
 		/// World space into the layer's texture space. A rotation about a tilted axis, so the whole
 		/// pattern moves rigidly - a UV scroll would slide features along latitude lines and tear
 		/// them at the poles, which is the mistake the volumetric's weather map already documents.
 		///
-		/// <paramref name="speedScale"/> exists for stage 4: two layers drifting at the same rate
-		/// never separate, and the separation is the parallax.
+		/// The two decks must get DIFFERENT scales here. Drifting at the same rate they move
+		/// rigidly together and never separate, and the separation is the whole parallax.
 		/// </summary>
 		Matrix4x4 DriftMatrix(float speedScale)
 		{

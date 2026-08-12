@@ -159,10 +159,17 @@ float baselineLayerLod(BaselineLayer layer, float distance, float cosIncidence)
 ///
 /// `maxDistance` is the scene depth. Terrain rises above the sphere the layer sits on, so depth -
 /// not a ground intersection - is what actually occludes cloud, exactly as in the volumetric.
+///
+/// `hitDistance` comes back so the caller can order two layers front-to-back. Which one is nearer
+/// is not fixed: from above the deck the upper layer is in front, from below it is behind, and the
+/// camera crosses between them. Returns a huge distance on a miss so a missing layer sorts last
+/// without a special case.
 float4 baselineCloudLayer(
 	Texture2D<float4> layerTex, SamplerState layerSampler, BaselineLayer layer,
-	float3 rayOrigin, float3 rayDir, float maxDistance)
+	float3 rayOrigin, float3 rayDir, float maxDistance, out float hitDistance)
 {
+	hitDistance = 1e20;
+
 	float t = baselineLayerHit(layer.radius, rayOrigin, rayDir);
 	if (t < 0 || t >= maxDistance) { return float4(0, 0, 0, 1); }
 
@@ -201,6 +208,11 @@ float4 baselineCloudLayer(
 
 	float coverage = saturate(pow(saturate(s.a), layer.contrast) * layer.opacity);
 	if (coverage <= 0.001) { return float4(0, 0, 0, 1); }
+
+	// Only now, once there is actually cloud here: a layer whose texture is clear at this point
+	// must not sort in front of one that is not, or a hole in the top layer would still occlude the
+	// bottom one.
+	hitDistance = t;
 
 	// Beer through a slab: a grazing ray crosses more cloud than a perpendicular one, so the same
 	// sheet is more opaque toward the horizon. One line, and it is most of what stops a flat layer
@@ -245,6 +257,28 @@ float4 baselineCloudLayer(
 	float3 colour = lerp(baseColour, topColour, viewingTop);
 
 	return float4(colour * alpha, 1 - alpha);
+}
+
+/// Two layers composited in view order.
+///
+/// Sorted per pixel rather than assumed, because which layer is in front is not a constant: from
+/// above the deck the upper one is nearer, from below it is behind, and the camera crosses between
+/// them. Assuming an order puts the high cirrus in front of the cumulus it should be behind for
+/// every pixel below the deck - and near the horizon both orders appear in the same frame.
+///
+/// This is where the depth cue comes from. Two sheets at different radii subtend different angles
+/// from a moving camera, so they slide across one another exactly as real cloud decks do. A single
+/// flat overlay cannot do it on a globe at all, which is why the plan spends a second texture tap
+/// on it rather than making the one layer denser.
+float4 baselineCombineLayers(float4 a, float aDistance, float4 b, float bDistance)
+{
+	bool aFirst = aDistance <= bDistance;
+	float4 near = aFirst ? a : b;
+	float4 far = aFirst ? b : a;
+
+	// Compositing far under near, both premultiplied: the background survives both, and the far
+	// layer's own contribution is dimmed by whatever the near one hides.
+	return float4(near.rgb + far.rgb * near.a, near.a * far.a);
 }
 
 #endif

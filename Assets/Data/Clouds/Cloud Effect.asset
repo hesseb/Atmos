@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5db6ba36a5e28bf4d8d5056e037b7b12, type: 3}
   m_Name: Cloud Effect
   m_EditorClassIdentifier: Assembly-CSharp::Clouds.CloudEffect
-  enabled: 1
+  enabled: 0
   shader: {fileID: 4800000, guid: 499e1860038c91842aadc792298d713d, type: 3}
   shapeNoise: {fileID: 11700000, guid: 3b4e2d58ef15a90469fc9fa36d9affda, type: 2}
   detailNoise: {fileID: 11700000, guid: c26c036913c039c478adc32897544e1b, type: 2}
