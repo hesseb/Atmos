@@ -42,15 +42,6 @@ public class TimeController : MonoBehaviour
 
 	public bool inputEnabled = true;
 
-	/// <summary>The last thing a time key did, for the shared overlay to echo.</summary>
-	public string LastAction { get; private set; } = "";
-
-	string lastAction
-	{
-		get => LastAction;
-		set => LastAction = value;
-	}
-
 	EarthOrbit Earth => solarSystem != null ? solarSystem.earth : null;
 
 	Vector3 ObserverUp
@@ -77,8 +68,7 @@ public class TimeController : MonoBehaviour
 
 		if (Input.GetKeyDown(pauseKey) && solarSystem != null)
 		{
-			// No lastAction: the header already reads "paused" or the speed, so echoing it here
-			// printed the same state twice.
+			// Nothing is echoed anywhere: the overlay shows state, and "paused" is already in it.
 			solarSystem.animate = !solarSystem.animate;
 		}
 
@@ -143,15 +133,12 @@ public class TimeController : MonoBehaviour
 
 	void SetSunElevation(float elevationDegrees, bool rising, string label)
 	{
-		if (SetSunElevation(elevationDegrees, rising))
+		if (!SetSunElevation(elevationDegrees, rising))
 		{
-			lastAction = label;
-		}
-		else
-		{
-			// Genuinely informative rather than an error: at high latitude the sun may
-			// never reach this elevation at this time of year.
-			lastAction = $"{label} unreachable at this latitude/season";
+			// Genuinely informative rather than an error: at high latitude the sun may never reach
+			// this elevation at this time of year. To the console, because the overlay shows STATE
+			// now rather than echoing actions - and a preset that did nothing has no state to show.
+			Debug.LogWarning($"[Time] {label} unreachable at this latitude/season.", this);
 		}
 	}
 
@@ -162,7 +149,6 @@ public class TimeController : MonoBehaviour
 
 		float dayT = SolarTime.SolveDayTForExtreme(Earth, ObserverUp, solarSystem.yearT, highest);
 		solarSystem.SetTimes(dayT, solarSystem.monthT, solarSystem.yearT);
-		lastAction = highest ? "noon" : "midnight";
 	}
 
 	public float CurrentSunElevation

@@ -60,7 +60,6 @@ public class BenchmarkHud : MonoBehaviour
 
 	readonly List<BenchmarkDefinition> queue = new List<BenchmarkDefinition>();
 	bool advanceQueue;
-	string lastMessage = "";
 
 	// Batch state, used only when All is selected. Each benchmark still writes its own run
 	// folder - they have different plans and frame counts - but they land inside one parent
@@ -143,7 +142,6 @@ public class BenchmarkHud : MonoBehaviour
 				queue.Clear();
 				advanceQueue = false;
 				runner.Abort();
-				lastMessage = "aborted";
 
 				// Abort does not raise onCompleted, so the batch has to be closed here. The
 				// aborted run wrote nothing, but earlier ones in the batch did - summarising
@@ -188,13 +186,13 @@ public class BenchmarkHud : MonoBehaviour
 		List<RendererProfile> profiles = LivePreviewProfiles();
 		if (profiles.Count == 0)
 		{
-			lastMessage = "no renderer profiles on the runner";
+			Debug.LogWarning("[Benchmark] no renderer profiles on the runner - point its Profiles " +
+				"array at one of the generated sets.", this);
 			return;
 		}
 
 		if (!runner.sceneRefs.Resolve(out string error))
 		{
-			lastMessage = "cannot preview: " + error;
 			Debug.LogWarning($"[Benchmark] {error}", this);
 			return;
 		}
@@ -209,14 +207,12 @@ public class BenchmarkHud : MonoBehaviour
 		if (previewIndex >= profiles.Count)
 		{
 			previewIndex = -1;
-			lastMessage = "preview: scene as authored";
 			return;
 		}
 
 		RendererProfile profile = profiles[previewIndex];
 		previewScope = new RestoreScope();
 		profile.Apply(runner.sceneRefs, previewScope);
-		lastMessage = $"preview: {profile.id}";
 	}
 
 	/// <summary>Undoes the live preview. Safe to call when nothing is previewed.</summary>
@@ -253,14 +249,14 @@ public class BenchmarkHud : MonoBehaviour
 		Clouds.CloudEffect clouds = FindClouds();
 		if (clouds == null)
 		{
-			lastMessage = "no CloudEffect in the post-processing chain";
+			Debug.LogWarning("[Benchmark] no CloudEffect in the post-processing chain, so there is " +
+				"no genus override to cycle.", this);
 			return;
 		}
 
 		var values = (Clouds.CloudEffect.Genus[])System.Enum.GetValues(typeof(Clouds.CloudEffect.Genus));
 		int next = (System.Array.IndexOf(values, clouds.genusOverride) + 1) % values.Length;
 		clouds.genusOverride = values[next];
-		lastMessage = $"genus: {clouds.genusOverride}";
 	}
 
 	Clouds.CloudEffect FindClouds()
@@ -292,20 +288,22 @@ public class BenchmarkHud : MonoBehaviour
 			? FullScreenMode.FullScreenWindow
 			: FullScreenMode.Windowed;
 
-		// Says what it did even in the editor, where it does nothing - the Game view is not a
-		// window Unity can take fullscreen, so this only has an effect in a player.
-		lastMessage = (goingFullscreen ? "fullscreen" : "windowed") +
-			(Application.isEditor ? " (player only)" : "");
+		// Only the editor no-op is worth saying. Everything else this key does is visible in the
+		// window itself, which is why nothing is echoed to the overlay.
+		if (Application.isEditor)
+		{
+			Debug.Log("[Benchmark] fullscreen only takes effect in a player - the Game view " +
+				"is not a window Unity can take fullscreen.", this);
+		}
 	}
 
 	void CycleBenchmark()
 	{
 		int count = Available.Count;
-		if (count == 0) { lastMessage = "no benchmarks in availableBenchmarks"; return; }
+		if (count == 0) { Debug.LogWarning("[Benchmark] no benchmarks in availableBenchmarks.", this); return; }
 
 		// One past the end is "All", so the list always offers it even with a single entry.
 		selected = (selected + 1) % (count + 1);
-		lastMessage = "";
 	}
 
 	void CycleMode()
@@ -316,13 +314,12 @@ public class BenchmarkHud : MonoBehaviour
 			BenchmarkRunMode.Capture => BenchmarkRunMode.SelfCheck,
 			_ => BenchmarkRunMode.Timing
 		};
-		lastMessage = "";
 	}
 
 	void Run()
 	{
 		List<BenchmarkDefinition> definitions = Available;
-		if (definitions.Count == 0) { lastMessage = "no benchmarks in availableBenchmarks"; return; }
+		if (definitions.Count == 0) { Debug.LogWarning("[Benchmark] no benchmarks in availableBenchmarks.", this); return; }
 
 		// Before anything else. A run pins the environment by snapshotting current values, so
 		// starting one with a preview applied would record the previewed state as the thing to
@@ -355,7 +352,6 @@ public class BenchmarkHud : MonoBehaviour
 		}
 
 		queueLengthAtStart = queue.Count;
-		lastMessage = "";
 		StartNextInQueue();
 	}
 
@@ -378,7 +374,7 @@ public class BenchmarkHud : MonoBehaviour
 			// whole queue on one bad entry.
 			Debug.LogWarning($"[Benchmark] '{next.id}' did not start; skipping to the next " +
 				"queued benchmark.", this);
-			lastMessage = $"skipped {next.id}";
+			Debug.LogWarning($"[Benchmark] skipped {next.id}.", this);
 		}
 
 		// Queue drained without anything starting.
@@ -391,7 +387,6 @@ public class BenchmarkHud : MonoBehaviour
 
 		if (queue.Count > 0) { advanceQueue = true; return; }
 
-		lastMessage = "run complete";
 		FinishBatch();
 	}
 
@@ -419,7 +414,6 @@ public class BenchmarkHud : MonoBehaviour
 			BenchmarkWriter.WriteBatchSummary(batchFolder, batchEntries, runner.machineLabel);
 			Debug.Log($"[Benchmark] batch complete: {batchEntries.Count} benchmark(s) " +
 				$"summarised in {batchFolder}", this);
-			lastMessage = $"batch complete ({batchEntries.Count})";
 		}
 
 		// Restored even on abort, so a later single run does not silently write into the
@@ -489,7 +483,6 @@ public class BenchmarkHud : MonoBehaviour
 			$"solar {SolarTime.FormatHours(time.CurrentLocalSolarHours)}   {speed}\n" +
 			$"  1 sunrise  2 noon  3 sunset  4 midnight  5 golden\n" +
 			$"  {KeyName(time.slowerKey)}{KeyName(time.fasterKey)} speed   {KeyName(time.pauseKey)} pause\n" +
-			(string.IsNullOrEmpty(time.LastAction) ? "" : $"  {time.LastAction}\n") +
 			"\n";
 	}
 
@@ -519,8 +512,7 @@ public class BenchmarkHud : MonoBehaviour
 			$"{KeyName(cycleGenusKey)} genus  {KeyName(cycleModeKey)} mode\n" +
 			$"  {KeyName(runKey)} run  {KeyName(cycleBenchmarkKey)} benchmark  " +
 			$"{KeyName(toggleOverlayKey)} hide  {KeyName(fullscreenKey)} fullscreen\n" +
-			CameraKeyLine() +
-			(string.IsNullOrEmpty(lastMessage) ? "" : $"  {lastMessage}");
+			CameraKeyLine();
 	}
 
 	/// <summary>
