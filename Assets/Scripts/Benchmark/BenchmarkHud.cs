@@ -41,7 +41,17 @@ public class BenchmarkHud : MonoBehaviour
 	public KeyCode cycleBenchmarkKey = KeyCode.F6;
 	public KeyCode toggleOverlayKey = KeyCode.F7;
 	public KeyCode fullscreenKey = KeyCode.F8;
+	public KeyCode cycleResolutionKey = KeyCode.F9;
 	public KeyCode abortKey = KeyCode.Escape;
+
+	[Tooltip("Cycled by the resolution key. These drive the runner's targetResolution, so the " +
+		"resolution you looked at and the one a run pins are the same value.")]
+	public Vector2Int[] resolutions =
+	{
+		new Vector2Int(1920, 1080),
+		new Vector2Int(2560, 1440),
+		new Vector2Int(3840, 2160),
+	};
 
 	[Header("Overlay")]
 	public bool showOverlay = true;
@@ -172,6 +182,7 @@ public class BenchmarkHud : MonoBehaviour
 		if (Input.GetKeyDown(cycleGenusKey)) { CycleGenus(); }
 		if (Input.GetKeyDown(runKey)) { Run(); }
 		if (Input.GetKeyDown(fullscreenKey)) { ToggleFullscreen(); }
+		if (Input.GetKeyDown(cycleResolutionKey)) { CycleResolution(); }
 	}
 
 	// ------------------------------------------------------------------ live preview
@@ -278,6 +289,42 @@ public class BenchmarkHud : MonoBehaviour
 	/// thing being measured - so a key that flips it mid-session would quietly invalidate a
 	/// comparison across the flip. This mode does not.
 	/// </summary>
+	/// <summary>
+	/// Steps the render resolution, and does it by setting the runner's targetResolution.
+	///
+	/// Not a separate Screen.SetResolution of its own: the runner pins that value at the start of
+	/// every run, so a resolution set independently would be silently replaced the moment a
+	/// benchmark started - and the images would then be at a different resolution from the one that
+	/// was being looked at when the pose was chosen. Driving the same field is the same argument as
+	/// the profile preview applying real profile assets.
+	///
+	/// BenchmarkWriter already compares the achieved resolution against this and records the
+	/// mismatch, so a run at the wrong size reports itself rather than quietly counting.
+	/// </summary>
+	void CycleResolution()
+	{
+		if (resolutions == null || resolutions.Length == 0)
+		{
+			Debug.LogWarning("[Benchmark] no resolutions configured to cycle.", this);
+			return;
+		}
+
+		int index = System.Array.IndexOf(resolutions, runner.targetResolution);
+		runner.targetResolution = resolutions[(index + 1) % resolutions.Length];
+
+		// The editor ignores Screen.SetResolution - the Game view size wins - which is the same
+		// reason BenchmarkEnvironment skips pinning there and warns instead.
+		if (Application.isEditor)
+		{
+			Debug.Log($"[Benchmark] target resolution {runner.targetResolution.x}x" +
+				$"{runner.targetResolution.y}. The editor ignores it; the Game view size wins, so " +
+				"this only takes effect in a player.", this);
+			return;
+		}
+
+		Screen.SetResolution(runner.targetResolution.x, runner.targetResolution.y, Screen.fullScreenMode);
+	}
+
 	void ToggleFullscreen()
 	{
 		// ONE assignment. Setting the mode and then toggling Screen.fullScreen fought itself:
@@ -508,10 +555,12 @@ public class BenchmarkHud : MonoBehaviour
 			(clouds == null ? "" : $"genus       {clouds.genusOverride}\n") +
 			$"mode        {runner.mode}\n" +
 			$"benchmark   {name}\n" +
+			$"resolution  {ResolutionName()}\n" +
 			$"  {KeyName(cycleProfileKey)} profile  {KeyName(WorldScaleKey())} scale  " +
 			$"{KeyName(cycleGenusKey)} genus  {KeyName(cycleModeKey)} mode\n" +
 			$"  {KeyName(runKey)} run  {KeyName(cycleBenchmarkKey)} benchmark  " +
-			$"{KeyName(toggleOverlayKey)} hide  {KeyName(fullscreenKey)} fullscreen\n" +
+			$"{KeyName(toggleOverlayKey)} hide  {KeyName(fullscreenKey)} fullscreen  " +
+			$"{KeyName(cycleResolutionKey)} resolution\n" +
 			CameraKeyLine();
 	}
 
@@ -535,6 +584,24 @@ public class BenchmarkHud : MonoBehaviour
 
 		return $"  {KeyName(cam.toggleModeKey)} {cam.mode}  {KeyName(cam.resetKey)} reset  " +
 			$"WASD/QE/RF move  {KeyName(abortKey)} abort run\n";
+	}
+
+	/// <summary>
+	/// The target resolution, and the real one when they differ.
+	///
+	/// They differ constantly in the editor, where Screen.SetResolution is ignored and the Game
+	/// view size wins - and a panel that showed only the target would then be quietly describing a
+	/// frame nobody is rendering. BenchmarkWriter treats the same mismatch as significant enough to
+	/// record in run.json.
+	/// </summary>
+	string ResolutionName()
+	{
+		Vector2Int target = runner.targetResolution;
+		bool matches = Screen.width == target.x && Screen.height == target.y;
+
+		return matches
+			? $"{target.x}x{target.y}"
+			: $"{target.x}x{target.y}  (actual {Screen.width}x{Screen.height})";
 	}
 
 	string WorldScaleName()
