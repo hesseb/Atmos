@@ -33,9 +33,12 @@
 // A shader that wants blueNoiseDither must include DrawAtmosphereCommon itself. Ocean.shader and
 // Clouds.shader both used to get it through here by accident, and both now say so.
 #include "Assets/Post Processing/Effects/Atmosphere/Shader Common/ToneMapCommon.hlsl"
-// For pointToUV, used by the cloud shadow lookup. Both consumers already include it, but relying on
-// their include order to satisfy this header would be a trap for the next one.
+// For pointToUV. Both consumers already include it, but relying on their include order to satisfy
+// this header would be a trap for the next one.
 #include "Assets/Scripts/Shader Common/GeoMath.hlsl"
+// The cloud deck's occlusion, for surfaces and for the air. Its own header because
+// AtmosphereCommon.hlsl needs it too and cannot include this one - see the note there.
+#include "Assets/Post Processing/Effects/Atmosphere/Shader Common/CloudShadowCommon.hlsl"
 
 // Deliberately absent: AtmosphereCommon.hlsl. It is the only declaration of the global `dirToSun`,
 // and including it here would shadow the local sun direction of every forward shader that includes
@@ -79,27 +82,6 @@ float3 sampleLightColour(float3 sphereNormal, float3 lightDir) {
 	return sampleTransmittanceLUT(TransmittanceLUT, seaLevelPosition(sphereNormal), lightDir);
 }
 
-/// Sunlight reaching the globe after passing through the cloud shell, as a multiplier. 1 where
-/// there is no cloud overhead, and 1 outright when clouds are off.
-///
-/// Published by CloudEffect from Camera.onPreCull, so it is current by the time forward opaque
-/// runs. Equirectangular and indexed the same way as everything else on this globe, which is why it
-/// costs one tap and no new plumbing.
-///
-/// Deliberately NOT folded into sampleLightColour: that function is also called with the moon's
-/// direction, and this map is baked for the sun. The call sites apply it to their sun terms only.
-sampler2D CloudShadowMap;
-float cloudShadowStrength;
-
-/// tex2Dlod, not tex2D. The map is a RenderTexture with no mip chain, so mip 0 is the only level
-/// there is and the two are identical here - but tex2D needs derivatives, which do not exist in a
-/// compute shader, and this header is now included by one.
-float cloudShadow(float3 sphereNormal) {
-	if (cloudShadowStrength <= 0) { return 1; }
-	float shadow = tex2Dlod(CloudShadowMap, float4(pointToUV(sphereNormal), 0, 0)).r;
-	return lerp(1, shadow, cloudShadowStrength);
-}
-
 /// What the cloud deck looks like from below, and how much sky it hides.
 ///
 /// The counterpart to cloudShadow, and the reason it is needed: cloudShadow darkens the direct SUN
@@ -120,10 +102,6 @@ float cloudShadow(float3 sphereNormal) {
 /// baseline modes the deck falls back to the same authored ambient the clouds themselves use.
 sampler2D CloudSkyMap;
 float cloudSkyStrength;
-
-/// Radius the deck is treated as sitting at, for the reflected-ray lookup below. Mid-shell: the map
-/// describes a whole column, so any single radius is a choice.
-float cloudDeckRadius;
 
 float4 sampleCloudSky(float3 sphereNormal) {
 	if (cloudSkyStrength <= 0) { return 0; }
