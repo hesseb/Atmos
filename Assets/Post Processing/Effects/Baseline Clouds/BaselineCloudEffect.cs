@@ -144,6 +144,25 @@ namespace Clouds
 
 		float LayerRadius => bodyRadius + layerAltitude;
 
+		// Logged once rather than every frame, and reset whenever the effect is re-enabled.
+		bool warnedMissingLayer;
+
+		/// <summary>
+		/// Finds the shader by name if the field is empty.
+		///
+		/// The base class leaves `shader` to be assigned by hand, which is right for a generic
+		/// effect but not for this one: there is exactly one shader it can ever use. Left unassigned
+		/// it falls back to Unlit/Texture and the effect silently does nothing, which is precisely
+		/// how this first failed to appear. An explicit assignment still wins - this only fills a
+		/// hole.
+		/// </summary>
+		public override void OnEnable()
+		{
+			if (shader == null) { shader = Shader.Find("Hidden/BaselineClouds"); }
+			warnedMissingLayer = false;
+			base.OnEnable();
+		}
+
 		protected override void RenderEffectToTarget(RenderTexture source, RenderTexture target)
 		{
 			Texture2D layer = ActiveLayer;
@@ -151,6 +170,20 @@ namespace Clouds
 			{
 				// Nothing baked or nothing wired: pass the frame through untouched rather than
 				// drawing something misleading.
+				//
+				// Said out loud, because a silent passthrough is indistinguishable from the effect
+				// not being in the chain at all - and an enabled renderer that draws nothing is the
+				// one failure that looks exactly like success in a comparison this project keeps
+				// making by eye.
+				if (!warnedMissingLayer)
+				{
+					warnedMissingLayer = true;
+					Debug.LogWarning($"[Baseline clouds] '{name}' is enabled but its " +
+						$"{textureSource} layer texture is unassigned, so it is drawing nothing. " +
+						"Assign it on the effect asset, or bake it from Baseline Cloud Settings.",
+						this);
+				}
+
 				Graphics.Blit(source, target);
 				return;
 			}
