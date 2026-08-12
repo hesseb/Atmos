@@ -13,13 +13,6 @@ using UnityEngine;
 public class PostProcessRendererProfile : RendererProfile
 {
 	[System.Serializable]
-	public struct EffectToggle
-	{
-		public PostProcessingEffect effect;
-		public bool enabled;
-	}
-
-	[System.Serializable]
 	public struct ObjectToggle
 	{
 		// Scene path, e.g. "Game/World/Baseline Sky". A ScriptableObject asset cannot hold
@@ -28,81 +21,84 @@ public class PostProcessRendererProfile : RendererProfile
 		public bool active;
 	}
 
-	/// <summary>Which sky this profile wants. Orthogonal to the effect toggles, because the
-	/// sky is drawn from a command buffer rather than from the post-processing chain.</summary>
-	public enum SkyOverride
+	/// <summary>
+	/// What the ATMOSPHERE is doing: the sky and the aerial perspective together.
+	///
+	/// One value rather than a list of effect toggles, and that is the point of the refactor. Sky and
+	/// aerial perspective are one feature implemented twice - the physically based path does both
+	/// inside AtmosphereEffect, the cheap path pairs a gradient sky with exponential fog - so a
+	/// profile that could set them independently could also express combinations that correspond to
+	/// no renderer, and every profile had to remember to state all three toggles or silently inherit
+	/// the previous pass's.
+	///
+	/// There is deliberately no LeaveAlone. A benchmark pass that inherits anything is not a
+	/// controlled condition, and the omission that made it possible is the thing being removed.
+	/// </summary>
+	public enum AtmosphereArm
 	{
-		/// <summary>Inherit whatever the scene is set to.</summary>
-		LeaveAlone,
-		/// <summary>Baseline renderer off. The physically based sky draws if its effect is
-		/// enabled; otherwise nothing draws a sky at all.</summary>
+		/// <summary>Nothing draws a sky and there is no aerial perspective. An ablation, not a
+		/// baseline - it renders a black sky.</summary>
 		Off,
-		/// <summary>Hand-authored gradient LUT.</summary>
+		/// <summary>The sky pass with a passthrough fragment. Subtract from Off to price the pass
+		/// structure itself.</summary>
+		Null,
+		/// <summary>The null sky plus cheap aerial perspective - structurally identical to the
+		/// baselines, so subtracting it isolates the sky shading alone.</summary>
+		NullWithAerial,
+		/// <summary>Hand-authored gradient LUT, plus exponential fog.</summary>
 		Gradient,
-		/// <summary>Gradient LUT baked off the physically based renderer. Same cost as
-		/// Gradient; the difference is the authoring method.</summary>
+		/// <summary>Same shader and same cost as Gradient, but the LUT is baked off the physically
+		/// based renderer. Isolates authoring from cost.</summary>
 		GradientBaked,
+		/// <summary>A single static cubemap that cannot respond to the sun moving. The literal
+		/// reading of "textured skybox".</summary>
 		Cubemap,
-		/// <summary>The measurement control: the sky pass with no shading.</summary>
-		Null
+		/// <summary>Raymarched sky with multiple scattering, plus the scattering-LUT aerial
+		/// perspective.</summary>
+		Pbr,
 	}
 
-	/// <summary>Which cost strategy the clouds should use. Orthogonal to the effect toggle,
-	/// which only decides whether they draw at all.</summary>
-	public enum CloudOverride
+	/// <summary>
+	/// What the CLOUDS are doing: which renderer, which delivery, which content.
+	///
+	/// Also one value, for the same reason - the volumetric and the two baseline deliveries are
+	/// mutually exclusive, and expressing them as independent toggles is what let both baseline
+	/// deliveries draw at once while looking very nearly correct.
+	/// </summary>
+	public enum CloudArm
 	{
-		/// <summary>Inherit whatever the scene is set to.</summary>
-		LeaveAlone,
-		/// <summary>Marches every pixel every frame. The upper bound.</summary>
-		Full,
-		/// <summary>Quarter of the pixels, depth-aware upsample.</summary>
-		Half,
-		/// <summary>Full resolution, a quarter of the pixels marched per frame, rest reprojected.</summary>
-		Temporal
-	}
-
-	/// <summary>Which baseline cloud arm this profile wants. Orthogonal to CloudOverride, which
-	/// is the VOLUMETRIC renderer's cost mode - the two renderers are separate and a profile has
-	/// to be able to say something about each.</summary>
-	public enum BaselineCloudOverride
-	{
-		/// <summary>Inherit whatever the scene is set to.</summary>
-		LeaveAlone,
-		/// <summary>Both baseline deliveries off.</summary>
 		Off,
-		/// <summary>Post-process delivery, procedurally authored textures. The honest baseline.</summary>
-		PostAuthored,
-		/// <summary>Post-process delivery, textures baked off the volumetric. Same shader and same
-		/// cost as PostAuthored; the difference is purely the content, which is what separates
-		/// "the technique is weaker" from "the art is weaker".</summary>
-		PostBaked,
-		/// <summary>Drawn-mesh delivery. Same shading, reached by rasterising a sphere instead of a
+		/// <summary>The cloud pass structure with a passthrough fragment. Subtract to price the
+		/// target allocation, the two blits and the composite that any cloud renderer here pays
+		/// before shading anything.</summary>
+		Null,
+		/// <summary>Baseline, post-process delivery, procedurally authored textures. The honest
+		/// simple method.</summary>
+		BaselineAuthored,
+		/// <summary>Baseline, post-process delivery, textures baked off the volumetric. Same shader
+		/// and same cost as BaselineAuthored, so what differs is the content - which separates "the
+		/// technique is weaker" from "the art is weaker".</summary>
+		BaselineBaked,
+		/// <summary>Baseline shading reached by rasterising a sphere per deck instead of a
 		/// full-screen quad - what a game would actually ship.</summary>
-		Mesh,
-		/// <summary>The measurement control: the cloud pass structure with no shading.</summary>
-		Null
+		BaselineMesh,
+		VolumetricHalf,
+		VolumetricTemporal,
+		VolumetricFull,
 	}
 
-	[Tooltip("Effects to force on or off. Effects not listed keep whatever the scene has.")]
-	public EffectToggle[] effects;
+
 
 	[Tooltip("Scene objects to activate or deactivate, by hierarchy path.")]
 	public ObjectToggle[] objects;
 
-	[Tooltip("Which sky to draw. Every profile should state this explicitly - LeaveAlone " +
-		"inherits whatever the previous pass happened to leave, which is how state leaks " +
-		"between passes.")]
-	public SkyOverride sky = SkyOverride.LeaveAlone;
+[Tooltip("What the atmosphere does. One value rather than three toggles, so a profile cannot " +
+		"express a combination no renderer corresponds to, and cannot inherit one by omission.")]
+	public AtmosphereArm atmosphereArm = AtmosphereArm.Pbr;
 
-	[Tooltip("Which cloud cost strategy to use. Only meaningful when the cloud effect is enabled; " +
-		"whether clouds draw at all is the effect toggle's job. Every profile should state this " +
-		"explicitly for the same reason the sky does.")]
-	public CloudOverride clouds = CloudOverride.LeaveAlone;
-
-	[Tooltip("Which baseline cloud arm to run. Separate from the cloud override above, which is " +
-		"the volumetric's cost mode - they are two different renderers. State this explicitly on " +
-		"every profile for the same reason as the others.")]
-	public BaselineCloudOverride baselineClouds = BaselineCloudOverride.LeaveAlone;
+	[Tooltip("What the clouds do. Mutually exclusive by construction - which is what stops both " +
+		"baseline deliveries drawing at once while looking very nearly correct.")]
+	public CloudArm cloudArm = CloudArm.Off;
 
 	/// <summary>
 	/// One of the volumetric renderer's feature dials, forced to a value.
@@ -133,19 +129,8 @@ public class PostProcessRendererProfile : RendererProfile
 	[Tooltip("Volumetric feature dials, for ablation arms. -1 on each leaves the scene alone.")]
 	public FeatureDials dials = FeatureDials.Untouched;
 
-	public override void Apply(BenchmarkSceneRefs refs, RestoreScope scope)
+public override void Apply(BenchmarkSceneRefs refs, RestoreScope scope)
 	{
-		if (effects != null)
-		{
-			foreach (EffectToggle toggle in effects)
-			{
-				if (toggle.effect == null) { continue; }
-
-				PostProcessingEffect effect = toggle.effect;
-				scope.Set(() => effect.enabled, v => effect.enabled = v, toggle.enabled);
-			}
-		}
-
 		if (objects != null)
 		{
 			foreach (ObjectToggle toggle in objects)
@@ -167,10 +152,149 @@ public class PostProcessRendererProfile : RendererProfile
 			}
 		}
 
-		ApplySkyOverride(refs, scope);
-		ApplyCloudOverride(refs, scope);
-		ApplyBaselineCloudOverride(refs, scope);
+		ApplyAtmosphereArm(refs, scope);
+		ApplyCloudArm(refs, scope);
 		ApplyFeatureDials(refs, scope);
+	}
+
+	/// <summary>
+	/// Sets every atmosphere renderer, on every arm - not only the one being turned on.
+	///
+	/// That is the whole reason the arm is one value. Three of these are independent objects, so
+	/// leaving any of them alone lets a previous pass's choice survive into this one, and two skies
+	/// drawing at once looks almost right.
+	/// </summary>
+	void ApplyAtmosphereArm(BenchmarkSceneRefs refs, RestoreScope scope)
+	{
+		bool wantsPbr = atmosphereArm == AtmosphereArm.Pbr;
+		bool wantsBaselineSky = atmosphereArm != AtmosphereArm.Off && !wantsPbr;
+		bool wantsAerial = atmosphereArm == AtmosphereArm.NullWithAerial ||
+						   atmosphereArm == AtmosphereArm.Gradient ||
+						   atmosphereArm == AtmosphereArm.GradientBaked ||
+						   atmosphereArm == AtmosphereArm.Cubemap;
+
+		AtmosphereEffect atmosphere = FindAtmosphere(refs);
+		if (atmosphere != null)
+		{
+			scope.Set(() => atmosphere.enabled, v => atmosphere.enabled = v, wantsPbr);
+		}
+		else if (wantsPbr)
+		{
+			Debug.LogWarning($"[Benchmark] profile '{id}' asks for the physically based atmosphere, " +
+				"but there is no AtmosphereEffect in the post-processing chain.", this);
+		}
+
+		AerialPerspectiveSimple aerial = FindAerial(refs);
+		if (aerial != null)
+		{
+			scope.Set(() => aerial.enabled, v => aerial.enabled = v, wantsAerial);
+		}
+		else if (wantsAerial)
+		{
+			Debug.LogWarning($"[Benchmark] profile '{id}' asks for cheap aerial perspective, but " +
+				"there is no AerialPerspectiveSimple in the chain - this arm is then one feature " +
+				"short of the physically based path.", this);
+		}
+
+		BaselineSkyRenderer baseline = refs.baselineSky;
+		if (baseline == null)
+		{
+			if (wantsBaselineSky)
+			{
+				Debug.LogWarning($"[Benchmark] profile '{id}' asks for sky '{atmosphereArm}', but " +
+					"there is no BaselineSkyRenderer in the scene.", this);
+			}
+			return;
+		}
+
+		// Variant before the enable, so switching arms never briefly attaches the wrong sky.
+		if (wantsBaselineSky)
+		{
+			BaselineSkyRenderer.Variant variant;
+			switch (atmosphereArm)
+			{
+				case AtmosphereArm.Cubemap: variant = BaselineSkyRenderer.Variant.Cubemap; break;
+				case AtmosphereArm.GradientBaked: variant = BaselineSkyRenderer.Variant.GradientBaked; break;
+				case AtmosphereArm.Null:
+				case AtmosphereArm.NullWithAerial: variant = BaselineSkyRenderer.Variant.Null; break;
+				default: variant = BaselineSkyRenderer.Variant.Gradient; break;
+			}
+			scope.Set(() => baseline.variant, v => baseline.variant = v, variant);
+		}
+
+		// A component, so Unity discards this on exiting play mode even if the scope somehow does
+		// not run - unlike the effect flags above, which are asset state.
+		scope.Set(() => baseline.enabled, v => baseline.enabled = v, wantsBaselineSky);
+	}
+
+	/// <summary>
+	/// Sets all three cloud renderers, on every arm. Same reasoning as the atmosphere: they are
+	/// independent objects and only one of them should ever be drawing.
+	/// </summary>
+	void ApplyCloudArm(BenchmarkSceneRefs refs, RestoreScope scope)
+	{
+		bool wantsVolumetric = cloudArm == CloudArm.VolumetricHalf ||
+							   cloudArm == CloudArm.VolumetricTemporal ||
+							   cloudArm == CloudArm.VolumetricFull;
+		bool wantsMesh = cloudArm == CloudArm.BaselineMesh;
+		bool wantsBaselinePost = cloudArm == CloudArm.BaselineAuthored ||
+								 cloudArm == CloudArm.BaselineBaked ||
+								 cloudArm == CloudArm.Null;
+
+		Clouds.CloudEffect volumetric = FindClouds(refs);
+		if (volumetric != null)
+		{
+			if (wantsVolumetric)
+			{
+				Clouds.CloudEffect.CostMode mode =
+					cloudArm == CloudArm.VolumetricFull ? Clouds.CloudEffect.CostMode.Full :
+					cloudArm == CloudArm.VolumetricTemporal ? Clouds.CloudEffect.CostMode.Temporal :
+					Clouds.CloudEffect.CostMode.Half;
+				scope.Set(() => volumetric.costMode, v => volumetric.costMode = v, mode);
+			}
+			scope.Set(() => volumetric.enabled, v => volumetric.enabled = v, wantsVolumetric);
+		}
+		else if (wantsVolumetric)
+		{
+			Debug.LogWarning($"[Benchmark] profile '{id}' asks for the volumetric clouds, but there " +
+				"is no CloudEffect in the post-processing chain.", this);
+		}
+
+		Clouds.BaselineCloudEffect baseline = FindBaselineClouds(refs);
+		if (baseline != null)
+		{
+			// Source and variant before the enable, so switching arms never briefly draws the
+			// previous arm's content.
+			if (wantsBaselinePost)
+			{
+				var source = cloudArm == CloudArm.BaselineBaked
+					? Clouds.BaselineCloudEffect.TextureSource.Baked
+					: Clouds.BaselineCloudEffect.TextureSource.Authored;
+				scope.Set(() => baseline.textureSource, v => baseline.textureSource = v, source);
+
+				var variant = cloudArm == CloudArm.Null
+					? Clouds.BaselineCloudEffect.Variant.Null
+					: Clouds.BaselineCloudEffect.Variant.Shaded;
+				scope.Set(() => baseline.variant, v => baseline.variant = v, variant);
+			}
+			scope.Set(() => baseline.enabled, v => baseline.enabled = v, wantsBaselinePost);
+		}
+		else if (wantsBaselinePost)
+		{
+			Debug.LogWarning($"[Benchmark] profile '{id}' asks for baseline clouds, but there is no " +
+				"BaselineCloudEffect in the post-processing chain.", this);
+		}
+
+		Clouds.BaselineCloudShell shell = refs.baselineCloudShell;
+		if (shell != null)
+		{
+			scope.Set(() => shell.enabled, v => shell.enabled = v, wantsMesh);
+		}
+		else if (wantsMesh)
+		{
+			Debug.LogWarning($"[Benchmark] profile '{id}' asks for the drawn-mesh cloud delivery, " +
+				"but there is no BaselineCloudShell in the scene - nothing will draw.", this);
+		}
 	}
 
 	/// <summary>
@@ -207,116 +331,7 @@ public class PostProcessRendererProfile : RendererProfile
 		}
 	}
 
-	/// <summary>
-	/// Selects one of the baseline's arms: which delivery, which texture source, or the control.
-	///
-	/// Both deliveries are switched on every branch rather than only the one being turned on. They
-	/// are independent - a post-process effect flag and a scene component - so leaving one alone
-	/// lets a previous pass's choice survive, and the two drawing at once would silently measure
-	/// their sum while looking almost correct.
-	/// </summary>
-	void ApplyBaselineCloudOverride(BenchmarkSceneRefs refs, RestoreScope scope)
-	{
-		if (baselineClouds == BaselineCloudOverride.LeaveAlone) { return; }
 
-		Clouds.BaselineCloudEffect effect = FindBaselineClouds(refs);
-		Clouds.BaselineCloudShell shell = refs.baselineCloudShell;
-
-		if (effect == null)
-		{
-			Debug.LogWarning($"[Benchmark] profile '{id}' asks for baseline clouds " +
-				$"'{baselineClouds}', but there is no BaselineCloudEffect in the post-processing " +
-				"chain.", this);
-			return;
-		}
-
-		bool wantsMesh = baselineClouds == BaselineCloudOverride.Mesh;
-		bool wantsPost = baselineClouds == BaselineCloudOverride.PostAuthored ||
-						 baselineClouds == BaselineCloudOverride.PostBaked ||
-						 baselineClouds == BaselineCloudOverride.Null;
-
-		// Source and variant before the enable, so switching arms never briefly draws the previous
-		// arm's content - the same ordering the sky override uses for its variant.
-		if (baselineClouds != BaselineCloudOverride.Off)
-		{
-			var source = baselineClouds == BaselineCloudOverride.PostBaked
-				? Clouds.BaselineCloudEffect.TextureSource.Baked
-				: Clouds.BaselineCloudEffect.TextureSource.Authored;
-			scope.Set(() => effect.textureSource, v => effect.textureSource = v, source);
-
-			var variant = baselineClouds == BaselineCloudOverride.Null
-				? Clouds.BaselineCloudEffect.Variant.Null
-				: Clouds.BaselineCloudEffect.Variant.Shaded;
-			scope.Set(() => effect.variant, v => effect.variant = v, variant);
-		}
-
-		scope.Set(() => effect.enabled, v => effect.enabled = v, wantsPost);
-
-		if (shell != null)
-		{
-			scope.Set(() => shell.enabled, v => shell.enabled = v, wantsMesh);
-		}
-		else if (wantsMesh)
-		{
-			Debug.LogWarning($"[Benchmark] profile '{id}' asks for the drawn-mesh cloud delivery, " +
-				"but there is no BaselineCloudShell in the scene - nothing will draw.", this);
-		}
-	}
-
-	void ApplyCloudOverride(BenchmarkSceneRefs refs, RestoreScope scope)
-	{
-		if (clouds == CloudOverride.LeaveAlone) { return; }
-
-		Clouds.CloudEffect effect = FindClouds(refs);
-		if (effect == null)
-		{
-			Debug.LogWarning($"[Benchmark] profile '{id}' asks for cloud mode '{clouds}', but there " +
-				"is no CloudEffect in the post-processing chain.", this);
-			return;
-		}
-
-		Clouds.CloudEffect.CostMode mode;
-		switch (clouds)
-		{
-			case CloudOverride.Full: mode = Clouds.CloudEffect.CostMode.Full; break;
-			case CloudOverride.Temporal: mode = Clouds.CloudEffect.CostMode.Temporal; break;
-			default: mode = Clouds.CloudEffect.CostMode.Half; break;
-		}
-
-		scope.Set(() => effect.costMode, v => effect.costMode = v, mode);
-	}
-
-	void ApplySkyOverride(BenchmarkSceneRefs refs, RestoreScope scope)
-	{
-		if (sky == SkyOverride.LeaveAlone) { return; }
-
-		BaselineSkyRenderer baseline = refs.baselineSky;
-		if (baseline == null)
-		{
-			Debug.LogWarning($"[Benchmark] profile '{id}' asks for sky '{sky}', but there is no " +
-				"BaselineSkyRenderer in the scene - the sky will be whatever the scene has.", this);
-			return;
-		}
-
-		// Variant first, so that enabling the renderer never briefly attaches the wrong sky.
-		if (sky != SkyOverride.Off)
-		{
-			BaselineSkyRenderer.Variant variant;
-			switch (sky)
-			{
-				case SkyOverride.Cubemap: variant = BaselineSkyRenderer.Variant.Cubemap; break;
-				case SkyOverride.GradientBaked: variant = BaselineSkyRenderer.Variant.GradientBaked; break;
-				case SkyOverride.Null: variant = BaselineSkyRenderer.Variant.Null; break;
-				default: variant = BaselineSkyRenderer.Variant.Gradient; break;
-			}
-
-			scope.Set(() => baseline.variant, v => baseline.variant = v, variant);
-		}
-
-		// A component, so Unity discards this on exiting play mode even if the scope somehow
-		// does not run - unlike the effect flags above, which are asset state.
-		scope.Set(() => baseline.enabled, v => baseline.enabled = v, sky != SkyOverride.Off);
-	}
 
 	public override string DescribeSettings(BenchmarkSceneRefs refs)
 	{
@@ -427,6 +442,17 @@ public class PostProcessRendererProfile : RendererProfile
 			  : (refs.baselineCloudShell.isActiveAndEnabled ? "on" : "off"));
 
 		return sb.ToString();
+	}
+
+static AerialPerspectiveSimple FindAerial(BenchmarkSceneRefs refs)
+	{
+		if (refs.postProcessing == null || refs.postProcessing.effects == null) { return null; }
+
+		foreach (PostProcessingEffect effect in refs.postProcessing.effects)
+		{
+			if (effect is AerialPerspectiveSimple aerial) { return aerial; }
+		}
+		return null;
 	}
 
 	static Clouds.BaselineCloudEffect FindBaselineClouds(BenchmarkSceneRefs refs)

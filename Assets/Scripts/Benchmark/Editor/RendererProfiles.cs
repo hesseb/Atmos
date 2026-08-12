@@ -1,282 +1,144 @@
 using UnityEditor;
 using UnityEngine;
 
+using Arm = PostProcessRendererProfile.AtmosphereArm;
+using Cloud = PostProcessRendererProfile.CloudArm;
+
 /// <summary>
-/// Authors the full set of renderer profiles.
+/// Authors the renderer profiles, as three named sets.
 ///
-/// Generated in code rather than hand-authored so the set stays internally consistent - the
-/// important property is that **every profile states every switch explicitly**. A profile
-/// that omits a toggle inherits whatever the previous pass left behind, which is how one
-/// pass's configuration silently contaminates the next.
+/// A profile is now a PAIR - one atmosphere arm, one cloud arm - so this file no longer hand-writes
+/// combinations of toggles and no profile can inherit a switch by omission. That was the whole
+/// hazard the old set was arranged around, and it is gone by construction rather than by discipline.
 ///
-/// The set is not just "physically based versus cheap". It is arranged so the cost of the
-/// sky pass can be decomposed rather than merely totalled:
+/// Three sets, because they answer different questions and only one of them belongs in a run you
+/// would put in the report:
 ///
-///   nullsky - noatmo               the sky pass structure: two full-screen blits, temp RT
-///   nullsky-aerial - nullsky       the cheap aerial perspective pass
-///   baseline - nullsky-aerial      the cheap sky shading, and nothing else
-///   pbr - baseline                 the headline RQ2 number
+///   Report      the renderers a reader cares about. Ten passes, and the thesis table maps onto it
+///               one-to-one.
+///   Controls    null arms and the mesh delivery. Instruments, not results: they exist so a number
+///               can be decomposed into pass structure versus shading.
+///   Ablations   one volumetric feature turned off apiece, so each can be priced on its own.
 ///
-/// The `nullsky-aerial` arm is not redundant. Subtracting plain `nullsky` from a baseline
-/// bundles the entire aerial perspective pass in with the sky shading and reports the sum as
-/// if it were the shading cost - measured at 0.162 ms when the shading alone is a fraction
-/// of that.
+/// Point the BenchmarkRunner at whichever set you are running. F5's live preview cycles that same
+/// array, so the interactive renderer swap and the measured one cannot disagree - they are the same
+/// assets.
 ///
-/// and so the two authoring methods for the same runtime cost can be separated:
+/// The subtraction each set supports:
 ///
-///   baseline-gradient vs baseline-baked   identical shader path and cost; any visual
-///                                         difference is purely down to how the LUT was made
-///
-/// The cloud series is arranged the same way and for the same reasons:
-///
-///   clouds-baseline-null      - pbr                       the cloud pass structure alone
-///   clouds-baseline-authored  - clouds-baseline-null      the cheap shading model
-///   clouds-full               - clouds-baseline-null      the march
-///   clouds-baseline-mesh      - clouds-baseline-authored  what the delivery mechanism is worth
-///
-/// and the two authoring methods are separated from the runtime cost, as with the sky:
-///
-///   clouds-baseline-authored vs -baked    identical shader path and cost; only the content
-///                                         differs, which separates a weaker technique from
-///                                         weaker art
+///   controls/atmos-null      - report/null            the sky pass structure
+///   controls/atmos-null-ap   - controls/atmos-null    the cheap aerial perspective pass
+///   report/base-atmos        - controls/atmos-null-ap the cheap sky shading alone
+///   report/pbr-atmos         - report/base-atmos      the headline RQ2 sky number
+///   controls/clouds-null     - report/pbr-atmos       the cloud pass structure
+///   report/...base-clouds-*  - controls/clouds-null   the cheap cloud shading model
+///   report/...pbr-clouds-*   - controls/clouds-null   the march
+///   ablations/*              - report/pbr-clouds-full one feature apiece
 /// </summary>
 static class RendererProfiles
 {
-	const string Folder = "Assets/Data/RenderingProfiles";
+	const string Root = "Assets/Data/RenderingProfiles";
 
 	[MenuItem("Testbed/Benchmark/Create Renderer Profiles")]
 	static void Create()
 	{
-		System.IO.Directory.CreateDirectory(Folder);
-
-		AtmosphereEffect atmosphere = FindEffect<AtmosphereEffect>();
-		AerialPerspectiveSimple aerial = FindEffect<AerialPerspectiveSimple>();
-		Clouds.CloudEffect clouds = FindEffect<Clouds.CloudEffect>();
-
-		if (clouds == null)
-		{
-			Debug.LogWarning("[Benchmark] no CloudEffect asset found - the cloud profiles will be " +
-				"skipped, and the sky profiles will not state a cloud toggle, so whatever the " +
-				"previous pass left enabled will survive into them.");
-		}
-
-		if (atmosphere == null)
-		{
-			Debug.LogError("[Benchmark] no AtmosphereEffect asset found.");
-			return;
-		}
-		if (aerial == null)
-		{
-			Debug.LogWarning("[Benchmark] no AerialPerspectiveSimple asset found - the baseline " +
-				"profiles will not enable cheap aerial perspective, which makes them one " +
-				"feature short of the physically based path.");
-		}
-
-		Save(Build("pbr", "Physically based: raymarched sky plus scattering-LUT aerial perspective.",
-			atmosphere, atmosphereOn: true, aerial, aerialOn: false,
-			clouds, PostProcessRendererProfile.SkyOverride.Off));
-
-		Save(Build("baseline-gradient", "Cheap sky from a hand-authored gradient LUT, plus " +
-			"exponential distance fog. The baseline the report's RQ2 is phrased against.",
-			atmosphere, atmosphereOn: false, aerial, aerialOn: true,
-			clouds, PostProcessRendererProfile.SkyOverride.Gradient));
-
-		Save(Build("baseline-baked", "Same shader and same cost as baseline-gradient, but the " +
-			"LUT is baked off the physically based renderer. Isolates authoring from cost.",
-			atmosphere, atmosphereOn: false, aerial, aerialOn: true,
-			clouds, PostProcessRendererProfile.SkyOverride.GradientBaked));
-
-		Save(Build("baseline-cubemap", "Cheapest sky: a single static cubemap that cannot " +
-			"respond to the sun moving. The literal reading of 'textured skybox'.",
-			atmosphere, atmosphereOn: false, aerial, aerialOn: true,
-			clouds, PostProcessRendererProfile.SkyOverride.Cubemap));
-
-		Save(Build("nullsky", "Control: the sky pass with a passthrough fragment and no aerial " +
-			"perspective. Subtract from noatmo to price the sky pass structure itself.",
-			atmosphere, atmosphereOn: false, aerial, aerialOn: false,
-			clouds, PostProcessRendererProfile.SkyOverride.Null));
-
-		// The structural twin of the baselines: same two passes, same draw call count, no sky
-		// shading. Without it, `baseline - nullsky` silently bundles the whole aerial
-		// perspective pass in with the sky shading and reports the sum as the shading cost.
-		Save(Build("nullsky-aerial", "Control: the sky pass with a passthrough fragment, plus " +
-			"cheap aerial perspective. Structurally identical to the baselines, so subtracting " +
-			"it isolates the sky shading alone.",
-			atmosphere, atmosphereOn: false, aerial, aerialOn: true,
-			clouds, PostProcessRendererProfile.SkyOverride.Null));
-
-		Save(Build("noatmo", "Control: no sky pass at all, and no aerial perspective. This is " +
-			"an ablation rather than a baseline - it renders a black sky.",
-			atmosphere, atmosphereOn: false, aerial, aerialOn: false,
-			clouds, PostProcessRendererProfile.SkyOverride.Off));
-
-		// The cloud series. All three sit on the physically based sky so the only thing varying
-		// between them is the cost strategy, and `pbr` above - which has clouds off - is the
-		// control they are subtracted from. Without it the cloud cost cannot be separated from
-		// the sky's.
-		if (clouds != null)
-		{
-			Save(Build("clouds-full", "Volumetric clouds marching every pixel every frame. The " +
-				"upper bound, and the reference image the cheaper modes are judged against.",
-				atmosphere, atmosphereOn: true, aerial, aerialOn: false,
-				clouds, PostProcessRendererProfile.SkyOverride.Off,
-				cloudsOn: true, cloudMode: PostProcessRendererProfile.CloudOverride.Full));
-
-			Save(Build("clouds-half", "Volumetric clouds marching a quarter of the pixels, " +
-				"upsampled with a depth-aware filter. Same march, lower resolution.",
-				atmosphere, atmosphereOn: true, aerial, aerialOn: false,
-				clouds, PostProcessRendererProfile.SkyOverride.Off,
-				cloudsOn: true, cloudMode: PostProcessRendererProfile.CloudOverride.Half));
-
-			Save(Build("clouds-temporal", "Volumetric clouds at full resolution with a quarter of " +
-				"the pixels marched per frame and the rest reprojected. Cheapest, and the only " +
-				"one carrying frame-to-frame state.",
-				atmosphere, atmosphereOn: true, aerial, aerialOn: false,
-				clouds, PostProcessRendererProfile.SkyOverride.Off,
-				cloudsOn: true, cloudMode: PostProcessRendererProfile.CloudOverride.Temporal));
-		}
-
-		// The baseline cloud series. All four sit on the physically based sky with the volumetric
-		// OFF, so the only thing varying is which cloud renderer runs - and `pbr` above, which has
-		// no clouds at all, is the control they are subtracted from.
-		Save(Build("clouds-baseline-authored", "Baseline clouds: a relief-shaded texture on two " +
-			"spheres, delivered as a post-process so the pass shape matches the volumetric's. The " +
-			"simple method RQ1 and RQ2 are phrased against.",
-			atmosphere, atmosphereOn: true, aerial, aerialOn: false,
-			clouds, PostProcessRendererProfile.SkyOverride.Off,
-			cloudsOn: false, cloudMode: PostProcessRendererProfile.CloudOverride.LeaveAlone,
-			baselineArm: PostProcessRendererProfile.BaselineCloudOverride.PostAuthored));
-
-		Save(Build("clouds-baseline-baked", "Same shader and same cost as clouds-baseline-authored, " +
-			"but the deck textures are baked off the volumetric. The content is then identical, so " +
-			"what is left against clouds-full is the technique rather than the art.",
-			atmosphere, atmosphereOn: true, aerial, aerialOn: false,
-			clouds, PostProcessRendererProfile.SkyOverride.Off,
-			cloudsOn: false, cloudMode: PostProcessRendererProfile.CloudOverride.LeaveAlone,
-			baselineArm: PostProcessRendererProfile.BaselineCloudOverride.PostBaked));
-
-		Save(Build("clouds-baseline-mesh", "The same baseline shading reached by rasterising a " +
-			"sphere per deck rather than a full-screen quad - what a game would actually ship. " +
-			"Differs from clouds-baseline-authored only in delivery.",
-			atmosphere, atmosphereOn: true, aerial, aerialOn: false,
-			clouds, PostProcessRendererProfile.SkyOverride.Off,
-			cloudsOn: false, cloudMode: PostProcessRendererProfile.CloudOverride.LeaveAlone,
-			baselineArm: PostProcessRendererProfile.BaselineCloudOverride.Mesh));
-
-		Save(Build("clouds-baseline-null", "Control: the cloud pass structure with a passthrough " +
-			"fragment. Subtract from pbr to price the target allocation, the two blits and the " +
-			"composite that any cloud renderer in this chain pays before shading anything.",
-			atmosphere, atmosphereOn: true, aerial, aerialOn: false,
-			clouds, PostProcessRendererProfile.SkyOverride.Off,
-			cloudsOn: false, cloudMode: PostProcessRendererProfile.CloudOverride.LeaveAlone,
-			baselineArm: PostProcessRendererProfile.BaselineCloudOverride.Null));
-
-		// Feature ablations. Each differs from clouds-full by EXACTLY ONE dial, so subtracting gives
-		// that feature's cost on its own. Without them a clouds-full number is the sum of four
-		// features with no way to decompose it - the same argument that put the null arms in, applied
-		// to features rather than to pass structure.
+		// --- Report: the table in the thesis --------------------------------------------------
 		//
-		// They are deliberately not a single "everything off" arm: the four cost time in different
-		// shapes - a tap per raymarch step, a whole extra dispatch, a tap per march step, a second
-		// density layer - and a combined arm would only give their sum, which is what clouds-full
-		// already reports.
-		if (clouds != null)
-		{
-			Save(Build("clouds-full-noshafts", "clouds-full with the light shafts off. Subtract to " +
-				"price occluding the atmosphere's in-scatter, which is one texture tap per raymarch " +
-				"step across roughly 8.4 million steps in the sky pass alone.",
-				atmosphere, atmosphereOn: true, aerial, aerialOn: false,
-				clouds, PostProcessRendererProfile.SkyOverride.Off,
-				cloudsOn: true, cloudMode: PostProcessRendererProfile.CloudOverride.Full,
-				baselineArm: PostProcessRendererProfile.BaselineCloudOverride.Off,
-				dials: Dials(shaft: 0)));
+		// Ordered cheapest-first so the runner's delta column reads down the page, and so the first
+		// entry - which is what deltas are measured from - is the arm with nothing in it.
+		Save("Report", "null", Arm.Off, Cloud.Off,
+			"Nothing draws a sky and there are no clouds. The floor everything else is measured from.");
 
-			Save(Build("clouds-full-nodecksky", "clouds-full without the deck radiance map. Subtract " +
-				"to price a whole extra dispatch - the one that lets the sea and the land see the " +
-				"cloud base instead of a clear sky.",
-				atmosphere, atmosphereOn: true, aerial, aerialOn: false,
-				clouds, PostProcessRendererProfile.SkyOverride.Off,
-				cloudsOn: true, cloudMode: PostProcessRendererProfile.CloudOverride.Full,
-				baselineArm: PostProcessRendererProfile.BaselineCloudOverride.Off,
-				dials: Dials(sky: 0)));
+		Save("Report", "base-atmos", Arm.GradientBaked, Cloud.Off,
+			"Cheap sky from a LUT baked off the physically based renderer, plus exponential fog. " +
+			"Baked rather than hand-authored so the sky comparison is of the technique, not the art.");
 
-			Save(Build("clouds-full-noaerial", "clouds-full without aerial perspective on the clouds. " +
-				"Subtract to price one transmittance tap per cloud march step.",
-				atmosphere, atmosphereOn: true, aerial, aerialOn: false,
-				clouds, PostProcessRendererProfile.SkyOverride.Off,
-				cloudsOn: true, cloudMode: PostProcessRendererProfile.CloudOverride.Full,
-				baselineArm: PostProcessRendererProfile.BaselineCloudOverride.Off,
-				dials: Dials(aerial: 0)));
+		Save("Report", "base-atmos+base-clouds-authored", Arm.GradientBaked, Cloud.BaselineAuthored,
+			"The all-cheap arm: textured sky, textured clouds, both authored. What a strategy game " +
+			"ships today.");
 
-			Save(Build("clouds-full-nohighband", "clouds-full without the ice layer. Subtract to price " +
-				"the second density layer that carries Cirrus, Cirrocumulus and Cirrostratus - three " +
-				"of the ten genera RQ1 scores.",
-				atmosphere, atmosphereOn: true, aerial, aerialOn: false,
-				clouds, PostProcessRendererProfile.SkyOverride.Off,
-				cloudsOn: true, cloudMode: PostProcessRendererProfile.CloudOverride.Full,
-				baselineArm: PostProcessRendererProfile.BaselineCloudOverride.Off,
-				dials: Dials(high: 0)));
-		}
+		Save("Report", "base-atmos+base-clouds-baked", Arm.GradientBaked, Cloud.BaselineBaked,
+			"The same, with cloud textures baked off the volumetric. Same cost as the authored arm, " +
+			"so any difference between the two is content rather than technique.");
+
+		Save("Report", "pbr-atmos", Arm.Pbr, Cloud.Off,
+			"Raymarched sky with multiple scattering and scattering-LUT aerial perspective, no " +
+			"clouds. The control every cloud arm subtracts from.");
+
+		Save("Report", "pbr-atmos+base-clouds-authored", Arm.Pbr, Cloud.BaselineAuthored,
+			"Physically based sky over cheap clouds - the mixed arm, and the one a project with a " +
+			"cloud budget but not a sky budget would actually pick.");
+
+		Save("Report", "pbr-atmos+base-clouds-baked", Arm.Pbr, Cloud.BaselineBaked,
+			"The same with baked cloud content, so the cloud comparison against the volumetric arms " +
+			"is technique-only.");
+
+		Save("Report", "pbr-atmos+pbr-clouds-half", Arm.Pbr, Cloud.VolumetricHalf,
+			"Volumetric clouds marching a quarter of the pixels, upsampled with a depth-aware " +
+			"filter. Same march, lower resolution.");
+
+		Save("Report", "pbr-atmos+pbr-clouds-temporal", Arm.Pbr, Cloud.VolumetricTemporal,
+			"Full resolution with a quarter of the pixels marched per frame and the rest " +
+			"reprojected. Cheapest, and the only arm carrying frame-to-frame state.");
+
+		Save("Report", "pbr-atmos+pbr-clouds-full", Arm.Pbr, Cloud.VolumetricFull,
+			"Every pixel marched every frame. The honest upper bound and the reference image the " +
+			"cheaper modes are judged against.");
+
+		// --- Controls: instruments, not results -----------------------------------------------
+		//
+		// Some of what a pass costs is not shading: a render target, two blits, the bandwidth of
+		// writing and reading a buffer. Subtracting these is what turns a frame time into a claim
+		// about a technique.
+		Save("Controls", "atmos-null", Arm.Null, Cloud.Off,
+			"The sky pass with a passthrough fragment and no aerial perspective. Subtract from " +
+			"report/null to price the sky pass structure itself.");
+
+		Save("Controls", "atmos-null-ap", Arm.NullWithAerial, Cloud.Off,
+			"The null sky plus cheap aerial perspective - structurally identical to the baseline " +
+			"arms, so subtracting it isolates the sky shading alone. Without it, base-atmos minus " +
+			"atmos-null bundles the whole aerial perspective pass in with the shading.");
+
+		Save("Controls", "clouds-null", Arm.Pbr, Cloud.Null,
+			"The cloud pass structure with a passthrough fragment. Subtract from report/pbr-atmos " +
+			"to price the target allocation, the two blits and the composite that any cloud " +
+			"renderer in this chain pays before shading anything.");
+
+		Save("Controls", "base-clouds-mesh", Arm.Pbr, Cloud.BaselineMesh,
+			"The baseline's shading reached by rasterising a sphere per deck rather than a " +
+			"full-screen quad. Differs from the post-process arm only in delivery, so the gap is " +
+			"what the delivery mechanism is worth.");
+
+		// --- Ablations: one volumetric feature apiece -----------------------------------------
+		//
+		// Each differs from report/pbr-atmos+pbr-clouds-full by exactly one dial. Deliberately not
+		// one combined "everything off" arm, which would only report their sum - which the full arm
+		// already does.
+		Save("Ablations", "no-shafts", Arm.Pbr, Cloud.VolumetricFull,
+			"Light shafts off. One texture tap per raymarch step, across roughly 8.4 million steps " +
+			"in the sky pass alone.", Dials(shaft: 0));
+
+		Save("Ablations", "no-deck-sky", Arm.Pbr, Cloud.VolumetricFull,
+			"The deck radiance map off. A whole extra dispatch - the one that lets the sea and the " +
+			"land see the cloud base instead of a clear sky.", Dials(sky: 0));
+
+		Save("Ablations", "no-cloud-aerial", Arm.Pbr, Cloud.VolumetricFull,
+			"Aerial perspective on the clouds off. One transmittance tap per cloud march step.",
+			Dials(aerial: 0));
+
+		Save("Ablations", "no-high-band", Arm.Pbr, Cloud.VolumetricFull,
+			"The ice layer off. A second density layer, carrying the three genera - Cirrus, " +
+			"Cirrocumulus, Cirrostratus - that the low band cannot reach.", Dials(high: 0));
 
 		AssetDatabase.SaveAssets();
 		AssetDatabase.Refresh();
-		Debug.Log($"[Benchmark] wrote {(clouds != null ? 18 : 11)} renderer profiles to {Folder}\n" +
-			"  Assign them to the BenchmarkRunner's Profiles array in the order you want the " +
-			"summary's baseline column to be - the first entry is what deltas are measured from.");
-	}
 
-	static PostProcessRendererProfile Build(string id, string description,
-		AtmosphereEffect atmosphere, bool atmosphereOn,
-		AerialPerspectiveSimple aerial, bool aerialOn,
-		Clouds.CloudEffect clouds, PostProcessRendererProfile.SkyOverride sky,
-		bool cloudsOn = false,
-		// Half rather than LeaveAlone as the default. LeaveAlone was harmless while every profile
-		// also stated the cloud EFFECT toggle - a cost mode cannot matter if the effect is off - but
-		// it is exactly the omission the header warns about, and it becomes live the moment a
-		// profile enables clouds without naming a mode.
-		PostProcessRendererProfile.CloudOverride cloudMode = PostProcessRendererProfile.CloudOverride.Half,
-		PostProcessRendererProfile.BaselineCloudOverride baselineArm =
-			PostProcessRendererProfile.BaselineCloudOverride.Off,
-		PostProcessRendererProfile.FeatureDials? dials = null)
-	{
-		var profile = ScriptableObject.CreateInstance<PostProcessRendererProfile>();
-		profile.id = id;
-		profile.description = description;
-		profile.sky = sky;
-		profile.clouds = cloudMode;
-		// Stated on EVERY profile, and defaulting to Off rather than LeaveAlone. A sky profile that
-		// did not mention the baseline clouds would measure the sky with whichever cloud arm the
-		// pass before it happened to leave running.
-		profile.baselineClouds = baselineArm;
-
-		// Untouched unless this is an ablation arm. Forcing the dials to the scene's values instead
-		// would be indistinguishable from leaving them alone until someone retunes the asset, at
-		// which point every profile would silently pin the old number.
-		profile.dials = dials ?? PostProcessRendererProfile.FeatureDials.Untouched;
-		profile.objects = new PostProcessRendererProfile.ObjectToggle[0];
-
-		// Both effects are listed on every profile, including where the value matches the
-		// scene default. Leaving one out would let a previous pass's value survive.
-		var effects = new System.Collections.Generic.List<PostProcessRendererProfile.EffectToggle>
-		{
-			new PostProcessRendererProfile.EffectToggle { effect = atmosphere, enabled = atmosphereOn }
-		};
-
-		if (aerial != null)
-		{
-			effects.Add(new PostProcessRendererProfile.EffectToggle { effect = aerial, enabled = aerialOn });
-		}
-
-		// Listed on every profile, not only the cloud ones. An omitted toggle inherits whatever the
-		// previous pass left behind, so a sky profile that did not mention clouds would silently
-		// measure the sky with whichever clouds the pass before it happened to enable.
-		if (clouds != null)
-		{
-			effects.Add(new PostProcessRendererProfile.EffectToggle { effect = clouds, enabled = cloudsOn });
-		}
-
-		profile.effects = effects.ToArray();
-		return profile;
+		Debug.Log("[Benchmark] wrote 18 renderer profiles under " + Root + "\n" +
+			"  Report/ 10, Controls/ 4, Ablations/ 4. Point the BenchmarkRunner's Profiles array at " +
+			"one set - F5's live preview cycles the same array, so the interactive swap and the " +
+			"measured one are the same assets.\n" +
+			"  Profiles from the previous flat layout are now orphaned and can be deleted once the " +
+			"runner no longer references them.");
 	}
 
 	/// <summary>One dial forced, the rest left alone. -1 is "untouched".</summary>
@@ -292,27 +154,29 @@ static class RendererProfiles
 		};
 	}
 
-	static void Save(PostProcessRendererProfile profile)
+	static void Save(string set, string id, Arm atmosphere, Cloud clouds, string description,
+		PostProcessRendererProfile.FeatureDials? dials = null)
 	{
-		string path = $"{Folder}/{profile.id}.asset";
+		string folder = $"{Root}/{set}";
+		System.IO.Directory.CreateDirectory(folder);
 
-		// Two assets predate this generator and are named PBR.asset and NoAtmo.asset while carrying
-		// the ids pbr and noatmo. Save() overwrites in place and never renames, so the Inspector has
-		// been showing one name while run.json records another. Renamed on sight rather than left,
-		// because the mismatch makes a profile hard to find from a result file.
-		foreach (string legacy in new[] { "PBR", "NoAtmo" })
-		{
-			if (!string.Equals(legacy, profile.id, System.StringComparison.OrdinalIgnoreCase)) { continue; }
-			string legacyPath = $"{Folder}/{legacy}.asset";
-			if (legacyPath != path && AssetDatabase.LoadAssetAtPath<PostProcessRendererProfile>(legacyPath) != null)
-			{
-				AssetDatabase.RenameAsset(legacyPath, profile.id);
-			}
-		}
+		var profile = ScriptableObject.CreateInstance<PostProcessRendererProfile>();
+		profile.id = id;
+		profile.description = description;
+		profile.atmosphereArm = atmosphere;
+		profile.cloudArm = clouds;
+		profile.objects = new PostProcessRendererProfile.ObjectToggle[0];
 
-		// Overwrite in place: CreateAsset mints a new GUID, which would null out every
-		// reference to the profile - most obviously the BenchmarkRunner's Profiles array -
-		// each time this menu item is used. Regenerating the set is meant to be routine.
+		// Untouched unless this is an ablation arm. Pinning the dials to the scene's current values
+		// instead would be indistinguishable from leaving them alone right up until someone retunes
+		// the asset, at which point every profile would silently hold the old number.
+		profile.dials = dials ?? PostProcessRendererProfile.FeatureDials.Untouched;
+
+		string path = $"{folder}/{id}.asset";
+
+		// Overwrite in place: CreateAsset mints a new GUID, which would null out every reference to
+		// the profile - most obviously the BenchmarkRunner's Profiles array - each time this menu
+		// item is used. Regenerating the set is meant to be routine.
 		var existing = AssetDatabase.LoadAssetAtPath<PostProcessRendererProfile>(path);
 		if (existing != null)
 		{
@@ -324,17 +188,7 @@ static class RendererProfiles
 			return;
 		}
 
-		profile.name = profile.id;
+		profile.name = id;
 		AssetDatabase.CreateAsset(profile, path);
-	}
-
-	static T FindEffect<T>() where T : PostProcessingEffect
-	{
-		foreach (string guid in AssetDatabase.FindAssets($"t:{typeof(T).Name}"))
-		{
-			var effect = AssetDatabase.LoadAssetAtPath<T>(AssetDatabase.GUIDToAssetPath(guid));
-			if (effect != null) { return effect; }
-		}
-		return null;
 	}
 }
