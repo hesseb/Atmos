@@ -31,7 +31,10 @@ public class TestbedCamera : MonoBehaviour
 	public TerrainHeightSettings heightSettings;
 
 	[Header("Mode")]
-	public Mode mode = Mode.Orbit;
+	// Free fly by default. Orbit is the better framing for a strategy-game screenshot, but fly is
+	// the mode you want when checking whether something looks right from an arbitrary angle, which
+	// is most of what this testbed is for.
+	public Mode mode = Mode.FreeFly;
 	public KeyCode toggleModeKey = KeyCode.Tab;
 	// Harness sets this false to take exclusive control of the pose.
 	public bool inputEnabled = true;

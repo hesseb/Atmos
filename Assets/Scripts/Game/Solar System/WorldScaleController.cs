@@ -57,7 +57,7 @@ public class WorldScaleController : MonoBehaviour
 	public LodMeshLoader terrainLoader;
 
 	[Tooltip("Cycles to the next preset. F5 and F6 belong to the benchmark HUD.")]
-	public KeyCode cycleKey = KeyCode.F7;
+	public KeyCode cycleKey = KeyCode.F2;
 
 	[Tooltip("Apply the first preset on start. Off leaves the scene exactly as authored, which " +
 		"is what a measurement run wants - a benchmark should not silently inherit a scale.")]
@@ -398,6 +398,17 @@ public class WorldScaleController : MonoBehaviour
 
 	/// <summary>Compact scale readout for the HUD, or null when the scene is as authored.</summary>
 	public string StatusLine => Current != null ? Summary(Current) : null;
+
+	/// <summary>
+	/// Just the scale, for the overlay.
+	///
+	/// Separate from Summary rather than replacing it: the long form - radius in km, horizon air
+	/// mass against Earth's, density multiplier - is exactly what you want in the console when
+	/// justifying a preset, and exactly what you do not want on screen while flying around.
+	/// </summary>
+	public string ScaleLabel => Current != null
+		? $"x{Current.planetScale.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)}"
+		: "as authored";
 
 	/// <summary>One line for the log and the HUD - the numbers the presets actually differ in.</summary>
 	public string Summary(WorldScalePreset preset)

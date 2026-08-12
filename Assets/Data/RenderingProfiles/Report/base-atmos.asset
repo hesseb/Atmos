@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 13efd33617756b745aaee9745ba00065, type: 3}
+  m_Name: base-atmos
+  m_EditorClassIdentifier: Assembly-CSharp::PostProcessRendererProfile
+  id: base-atmos
+  description: Cheap sky from a LUT baked off the physically based renderer, plus
+    exponential fog. Baked rather than hand-authored so the sky comparison is of
+    the technique, not the art.
+  objects: []
+  atmosphereArm: 4
+  cloudArm: 0
+  dials:
+    shaftStrength: -1
+    skyStrength: -1
+    aerialStrength: -1
+    highStrength: -1
