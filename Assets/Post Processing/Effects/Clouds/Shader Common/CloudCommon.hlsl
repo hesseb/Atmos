@@ -32,6 +32,11 @@ SamplerState samplerCloudDetailNoise;
 Texture2D<float4> CloudWeatherMapTex;
 SamplerState samplerCloudWeatherMapTex;
 
+/// The ice layer's weather: R coverage, G form. Its own field because high cloud arrives on its own
+/// weather - a cirrus shield runs ahead of a front and has nothing to do with the cumulus below it.
+Texture2D<float4> CloudWeatherMapHighTex;
+SamplerState samplerCloudWeatherMapHighTex;
+
 // ---------------------------------------------------------------------------------------------
 // Shell
 // ---------------------------------------------------------------------------------------------
@@ -164,12 +169,17 @@ float cloudDetailResolution;
 float3 cloudShapeWind;
 float3 cloudDetailWind;
 
-/// The vertical profile, blended between three genera.
+/// The vertical profile of the low/mid layer, blended along the FORM axis.
 ///
-/// This is the control RQ1 scores. THESIS.md makes the cloud-genera table the rubric - "which
-/// genera can each renderer produce, and are they recognisable" - so the cloud-type axis has to
-/// move the silhouette, not just the density. Stratus is a thin sheet hugging the base; cumulus
-/// occupies the middle with room to billow; cumulonimbus reaches nearly the whole shell.
+/// This is half of the control RQ1 scores. THESIS.md 3.5 makes the cloud-genera table the rubric,
+/// and that table is two-dimensional: altitude BAND crossed with form. This function is the form
+/// half - sheet, heap, tower - and it works in the layer's OWN normalised height, so where the layer
+/// sits is the band half and is decided by the base offset in sampleCloudDensity.
+///
+/// That factoring is what reaches the mid band. Altostratus, Altocumulus and Nimbostratus are not
+/// new shapes; they are these shapes with their floor at 2000-6000 m, which is what the taxonomy
+/// says they are. Only the high band needs a genuinely different profile, because ice behaves
+/// differently from droplets - see sampleCloudHigh.
 float cloudHeightGradient(float h, float type)
 {
 	// smoothstep rather than a linear remap: a linear ramp meets its plateau at a corner, and that
@@ -212,16 +222,115 @@ float cloudLod(float stepSize, float scale, float resolution)
 	return max(0, log2(max(1, stepSize * scale * resolution)));
 }
 
-/// Cloud density at a world position.
-///
-/// `cheap` skips the detail erosion, which is the expensive half - used by the light march, where
-/// the extra fidelity is invisible. `stepSize` is how far the caller moves between samples, and
-/// selects the mip - see cloudLod.
-float sampleCloudDensity(float3 pos, bool cheap, float stepSize)
-{
-	float shellHeight = cloudHeightFraction(pos);
-	if (shellHeight <= 0 || shellHeight >= 1) { return 0; }
+// ---------------------------------------------------------------------------------------------
+// The high band: cirrus, cirrocumulus, cirrostratus
+// ---------------------------------------------------------------------------------------------
 
+/// 0 removes the layer outright, and exactly - so its cost and its contribution can both be priced
+/// against one build, the same shape as cloudAerialStrength and the deck radiance map's strength.
+float cloudHighStrength;
+
+/// Where the ice layer sits in the shell and how thick it is, as fractions of it. The high band is
+/// above 6000 m; at 0.91 km per world unit, with a shell running 0.91 to 9.1 km, that is shell
+/// height 0.64 and up - so the defaults put it there rather than merely "near the top".
+float cloudHighBase;
+float cloudHighThickness;
+
+float cloudHighScale;
+float cloudHighDensityMultiplier;
+float cloudHighCoverageMultiplier;
+
+/// How far the sample coordinate is stretched along the wind for the fibrous form. This is what
+/// makes cirrus read as ice rather than as thin cumulus: the streaks are the visual signature of
+/// the genus, and an unstretched sample gives faint puffs instead.
+float cloudHighStretch;
+
+/// How much the granular form leans on the volume's cellular channels rather than its Perlin-Worley
+/// one. Cirrocumulus is a field of small cells, and the Worley FBM already describes exactly that.
+float cloudHighGranularity;
+
+float3 cloudHighWindDir;
+float3 cloudHighWind;
+
+/// Density of the ice layer.
+///
+/// Deliberately NOT the low layer's model with different constants. Three things differ, and each is
+/// a property of ice rather than a tuning choice:
+///
+///   - The sample coordinate is stretched along the wind, so features elongate into fibres.
+///   - There is no detail erosion. That is the expensive half of the low layer's density function,
+///     and it is also wrong here: it carves billowy cauliflower edges, which is the one thing
+///     cirrus does not have.
+///   - Density is far lower. Cirrus is optically thin - the sun is visible through it.
+///
+/// Returns 0 outside its own altitude range before touching a volume, which is what makes a second
+/// layer affordable: the two bands do not overlap, so a sample is inside at most one of them.
+float sampleCloudHigh(float3 pos, float shellHeight, float stepSize)
+{
+	if (cloudHighStrength <= 0) { return 0; }
+
+	float h = (shellHeight - cloudHighBase) / max(1e-4, cloudHighThickness);
+	if (h <= 0 || h >= 1) { return 0; }
+
+	float2 uv = pointToUV(normalize(pos));
+	float4 weather = CloudWeatherMapHighTex.SampleLevel(samplerCloudWeatherMapHighTex, uv, 0);
+
+	float coverage = saturate(weather.r * cloudHighCoverageMultiplier);
+	if (coverage <= 0) { return 0; }
+
+	float form = weather.g;
+
+	// Tent weights across fibrous -> granular -> veil, the same construction the low layer's form
+	// axis uses, so only two are ever active at once.
+	float wFibrous = saturate(1 - form * 2);
+	float wGranular = saturate(1 - abs(form - 0.5) * 2);
+	float wVeil = saturate(form * 2 - 1);
+
+	// Thin, with soft shoulders. smoothstep rather than a linear ramp for the reason the low layer
+	// documents: a linear ramp meets its plateau at a corner, and the corner is a visible crease.
+	float profile = smoothstep(0.0, 0.35, h) * (1 - smoothstep(0.55, 1.0, h));
+
+	// Fibrous stretches hard along the wind. Granular does not stretch at all, because cells are
+	// round. The veil stretches a little, which is what makes a cirrostratus sheet look combed
+	// rather than merely flat.
+	float stretch = wFibrous * cloudHighStretch
+					+ wGranular * 1.0
+					+ wVeil * (1 + (cloudHighStretch - 1) * 0.25);
+
+	// Granular is small-scale; the veil is large-scale and nearly continuous.
+	float scale = cloudHighScale * (wFibrous * 1.0 + wGranular * 2.6 + wVeil * 0.55);
+
+	// Anisotropy, in the sphere's own space. Scaling the along-wind component DOWN makes the noise
+	// vary more slowly in that direction, which is what elongates a feature along it.
+	float along = dot(pos, cloudHighWindDir);
+	float3 q = (pos - cloudHighWindDir * along) + cloudHighWindDir * (along / max(1e-3, stretch));
+
+	float4 shape = CloudShapeNoise.SampleLevel(
+		samplerCloudShapeNoise, q * scale + cloudHighWind,
+		cloudLod(stepSize, scale, cloudShapeResolution));
+
+	float worleyFbm = shape.g * 0.625 + shape.b * 0.25 + shape.a * 0.125;
+
+	// The cellular channels for the granular form, the Perlin-Worley one for the other two.
+	float base = lerp(shape.r, worleyFbm, wGranular * cloudHighGranularity);
+
+	// The veil wants near-total cover, which is what separates cirrostratus from cirrus: the same
+	// noise, thresholded so much lower that it stops being streaks and becomes a sheet.
+	float effectiveCoverage = saturate(coverage * (1 + wVeil * 0.9));
+
+	float density = cloudRemap(base, 1.0 - effectiveCoverage, 1.0, 0.0, 1.0) * effectiveCoverage;
+	if (density <= 0) { return 0; }
+
+	return density * profile * cloudHighDensityMultiplier * cloudHighStrength;
+}
+
+/// Density of the low/mid layer - the droplet clouds, seven of the ten genera.
+///
+/// Takes `shellHeight` rather than deriving it, so sampleCloudDensity can compute it once and hand
+/// it to both layers. `cheap` skips the detail erosion, which is the expensive half - used by the
+/// light march, where the extra fidelity is invisible.
+float sampleCloudLow(float3 pos, float shellHeight, bool cheap, float stepSize)
+{
 	float4 weather = sampleCloudWeather(pos);
 	float coverage = saturate(weather.r * cloudCoverageMultiplier);
 	if (coverage <= 0) { return 0; }
@@ -242,7 +351,13 @@ float sampleCloudDensity(float3 pos, bool cheap, float stepSize)
 	// Below the base this gives h = 0, and every gradient is zero there, so the region under the
 	// cloud empties out without a separate test.
 	float baseOffset = saturate(weather.a * cloudBaseVariation - precipitation * cloudPrecipBaseDrop);
-	float h = saturate((shellHeight - baseOffset) / max(0.05, cloudBandThickness));
+
+	// Clamped so the band cannot run off the top of the shell once its floor is raised into the mid
+	// altitudes - which is what Altostratus, Altocumulus and Nimbostratus need. A no-op at the low
+	// band's settings, where base plus thickness already stays under 1, so the existing look is
+	// untouched: this generalises the band rather than retuning it.
+	float thickness = min(max(0.05, cloudBandThickness), 1.0 - baseOffset);
+	float h = saturate((shellHeight - baseOffset) / max(0.05, thickness));
 
 	float gradient = cloudHeightGradient(h, type);
 	if (gradient <= 0) { return 0; }
@@ -287,6 +402,30 @@ float sampleCloudDensity(float3 pos, bool cheap, float stepSize)
 	density = cloudRemap(density, erosion * cloudDetailWeight, 1.0, 0.0, 1.0);
 
 	return max(0, density) * cloudDensityMultiplier;
+}
+
+/// Cloud density at a world position: both layers.
+///
+/// Two of them, because THESIS.md 3.5's genera table - which is RQ1's rubric - is two-dimensional,
+/// altitude band crossed with form, and one layer with one form axis can only walk one row of it.
+///
+/// max(), not a sum. The two occupy different altitudes and occlude one another rather than
+/// accumulating, and max keeps the result bounded so the existing extinction tuning still holds.
+/// A sum would also make cirrus over cumulus denser than either, which is backwards - thin ice above
+/// a deck does not thicken it.
+///
+/// The shell-height test is done ONCE here and handed to both, which is also what makes the second
+/// layer cheap: each returns zero outside its own altitude range before touching a volume, and the
+/// two ranges do not overlap, so a sample is inside at most one of them.
+float sampleCloudDensity(float3 pos, bool cheap, float stepSize)
+{
+	float shellHeight = cloudHeightFraction(pos);
+	if (shellHeight <= 0 || shellHeight >= 1) { return 0; }
+
+	float low = sampleCloudLow(pos, shellHeight, cheap, stepSize);
+	float high = sampleCloudHigh(pos, shellHeight, stepSize);
+
+	return max(low, high);
 }
 
 #endif

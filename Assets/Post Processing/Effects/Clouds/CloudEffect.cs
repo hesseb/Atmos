@@ -95,6 +95,22 @@ namespace Clouds
 			"scroll - a scroll would slide features along latitude lines and tear them at the poles.")]
 		public float weatherWindSpeed = 0.004f;
 
+		[Header("High cloud weather")]
+		[Tooltip("The ice layer's own coverage field. Its own scales because high cloud arrives on " +
+			"its own weather - a cirrus shield runs ahead of a front and has nothing to do with the " +
+			"cumulus underneath it. Tying them would collapse the band axis RQ1 scores.")]
+		[Range(0.2f, 12f)] public float highCoverageScale = 1.6f;
+
+		[Tooltip("Cirrus is usually sparse, so this sits negative by default.")]
+		[Range(-0.5f, 0.5f)] public float highCoverageBias = -0.15f;
+
+		[Range(0.2f, 4f)] public float highCoverageContrast = 1.4f;
+
+		[Tooltip("Which of the three ice genera this region tends toward: fibrous Cirrus, granular " +
+			"Cirrocumulus, or a Cirrostratus veil.")]
+		[Range(0.1f, 6f)] public float highFormScale = 0.9f;
+		[Range(-0.5f, 0.5f)] public float highFormBias = 0f;
+
 		[Header("Shell")]
 		[Tooltip("Sea level, in world units. Its own field rather than the atmosphere's planetRadius " +
 			"global, which is zero whenever the atmosphere is off - and the clouds have to keep " +
@@ -129,6 +145,42 @@ namespace Clouds
 			"below 1 - coverage - halfway down the ramp at coverage 0.5. Higher thins the top and " +
 			"bottom into scattered cloud instead of ending them at a surface.")]
 		[Range(0f, 1f)] public float edgeSoftness = 0.7f;
+
+		[Header("High band - the ice layer")]
+		[Tooltip("Cirrus, Cirrocumulus and Cirrostratus - three of the ten genera THESIS.md makes " +
+			"RQ1's rubric, and the three the single low layer could never reach. 0 removes the layer " +
+			"exactly, so its cost and its contribution can both be priced against one build.")]
+		[Range(0f, 1f)] public float highStrength = 1f;
+
+		[Tooltip("Where the ice layer's floor sits, as a fraction of the shell. The high band starts " +
+			"at 6000 m; at 0.91 km per world unit and a shell running 0.91 to 9.1 km, that is 0.64 - " +
+			"so the default puts it in the band the taxonomy names rather than merely near the top.")]
+		[Range(0f, 0.95f)] public float highBase = 0.64f;
+
+		[Tooltip("Thin, because cirrus is. A thick ice layer reads as high fog rather than as cirrus.")]
+		[Range(0.02f, 0.4f)] public float highThickness = 0.22f;
+
+		[Range(0.001f, 0.5f)] public float highScale = 0.05f;
+
+		[Tooltip("Far lower than the low layer's. Cirrus is optically thin - the sun is visible " +
+			"through it, and that translucency is most of what identifies it.")]
+		[Range(0f, 2f)] public float highDensityMultiplier = 0.28f;
+
+		[Range(0f, 3f)] public float highCoverageMultiplier = 1f;
+
+		[Tooltip("How far the sample coordinate is stretched along the wind for the fibrous form. " +
+			"This is what makes cirrus read as ice rather than as thin cumulus - the streaks are the " +
+			"visual signature of the genus, and an unstretched sample gives faint puffs instead.")]
+		[Range(1f, 16f)] public float highStretch = 7f;
+
+		[Tooltip("How far the granular form leans on the volume's cellular channels. Cirrocumulus is " +
+			"a field of small cells, which is what the Worley FBM already describes.")]
+		[Range(0f, 1f)] public float highGranularity = 0.8f;
+
+		[Tooltip("Direction the fibres run, and the direction the ice layer drifts. High cloud sits " +
+			"in a different wind from the deck below it, so this is its own.")]
+		public Vector3 highWindDirection = new Vector3(1f, 0f, 0.35f);
+		public float highWindSpeed = 0.05f;
 
 		[Header("Precipitation")]
 		[Tooltip("Rain-bearing cloud is thicker, taller and hangs lower. One field drives all three, " +
@@ -309,6 +361,7 @@ namespace Clouds
 		[Range(0f, 1f)] public float shadowStrength = 0.85f;
 
 		RenderTexture weatherMap;
+		RenderTexture weatherMapHigh;
 		RenderTexture shadowMap;
 		RenderTexture skyMap;
 
@@ -550,6 +603,28 @@ namespace Clouds
 				DestroyImmediate(weatherMap);
 				weatherMap = null;
 			}
+			if (weatherMapHigh != null)
+			{
+				weatherMapHigh.Release();
+				DestroyImmediate(weatherMapHigh);
+				weatherMapHigh = null;
+			}
+		}
+
+		/// <summary>One weather field's target. Both layers are the same size and format.</summary>
+		RenderTexture CreateWeatherTarget(int width, int height, string label)
+		{
+			var rt = new RenderTexture(width, height, 0, GraphicsFormat.R8G8B8A8_UNorm)
+			{
+				enableRandomWrite = true,
+				// Longitude wraps, latitude does not - the same split the city light field uses.
+				wrapModeU = TextureWrapMode.Repeat,
+				wrapModeV = TextureWrapMode.Clamp,
+				filterMode = FilterMode.Bilinear,
+				name = label
+			};
+			rt.Create();
+			return rt;
 		}
 
 		protected override void RenderEffectToTarget(RenderTexture source, RenderTexture target)
@@ -644,16 +719,8 @@ namespace Clouds
 				weatherMap.width != width || weatherMap.height != height)
 			{
 				ReleaseWeatherMap();
-				weatherMap = new RenderTexture(width, height, 0, GraphicsFormat.R8G8B8A8_UNorm)
-				{
-					enableRandomWrite = true,
-					// Longitude wraps, latitude does not - the same split the city light field uses.
-					wrapModeU = TextureWrapMode.Repeat,
-					wrapModeV = TextureWrapMode.Clamp,
-					filterMode = FilterMode.Bilinear,
-					name = "Cloud Weather Map"
-				};
-				weatherMap.Create();
+				weatherMap = CreateWeatherTarget(width, height, "Cloud Weather Map");
+				weatherMapHigh = CreateWeatherTarget(width, height, "Cloud Weather Map High");
 			}
 
 			// Advanced on the scene's clock, not the wall clock: paused means paused, and scrubbing
@@ -667,6 +734,8 @@ namespace Clouds
 
 			int kernel = weatherCompute.FindKernel("CSWeatherMap");
 			weatherCompute.SetTexture(kernel, "Result", weatherMap);
+			// One dispatch writes both layers, so they cannot drift out of step.
+			weatherCompute.SetTexture(kernel, "ResultHigh", weatherMapHigh);
 			weatherCompute.SetVector("weatherMapSize", new Vector2(width, height));
 			weatherCompute.SetInt("octaves", weatherOctaves);
 			weatherCompute.SetFloat("lacunarity", weatherLacunarity);
@@ -682,6 +751,11 @@ namespace Clouds
 			weatherCompute.SetFloat("typeBias", typeBias);
 			weatherCompute.SetFloat("precipitationScale", precipitationScale);
 			weatherCompute.SetFloat("precipitationBias", precipitationBias);
+			weatherCompute.SetFloat("highCoverageScale", highCoverageScale);
+			weatherCompute.SetFloat("highCoverageBias", highCoverageBias);
+			weatherCompute.SetFloat("highCoverageContrast", highCoverageContrast);
+			weatherCompute.SetFloat("highFormScale", highFormScale);
+			weatherCompute.SetFloat("highFormBias", highFormBias);
 			weatherCompute.SetVector("windOffset", new Vector4(weatherOffset, weatherOffset * 0.3f, weatherOffset * 0.7f, 0));
 
 			weatherCompute.Dispatch(kernel, Mathf.CeilToInt(width / 8f), Mathf.CeilToInt(height / 8f), 1);
@@ -690,6 +764,12 @@ namespace Clouds
 		/// <summary>Public so the baseline's capture bake can march the same shell.</summary>
 		public float InnerRadius => bodyRadius + cloudBottomAltitude;
 		public float OuterRadius => bodyRadius + Mathf.Max(cloudBottomAltitude + 0.01f, cloudTopAltitude);
+
+		/// <summary>Unit direction the ice layer's fibres run along.</summary>
+		Vector3 HighWindDir =>
+			highWindDirection.sqrMagnitude > 1e-6f ? highWindDirection.normalized : Vector3.right;
+
+		Vector3 HighWind => HighWindDir * (elapsed * highWindSpeed);
 
 		Vector3 ShapeWind
 		{
@@ -739,6 +819,7 @@ namespace Clouds
 			compute.SetTexture(kernel, "CloudShapeNoise", shapeNoise);
 			compute.SetTexture(kernel, "CloudDetailNoise", detailNoise);
 			compute.SetTexture(kernel, "CloudWeatherMapTex", weatherMap);
+			compute.SetTexture(kernel, "CloudWeatherMapHighTex", weatherMapHigh);
 
 			compute.SetFloat("cloudInnerRadius", InnerRadius);
 			compute.SetFloat("cloudOuterRadius", OuterRadius);
@@ -758,6 +839,17 @@ namespace Clouds
 			compute.SetFloat("cloudPrecipBaseDrop", precipBaseDrop);
 			compute.SetVector("cloudShapeWind", ShapeWind);
 			compute.SetVector("cloudDetailWind", DetailWind);
+
+					compute.SetFloat("cloudHighStrength", highStrength);
+			compute.SetFloat("cloudHighBase", highBase);
+			compute.SetFloat("cloudHighThickness", highThickness);
+			compute.SetFloat("cloudHighScale", highScale);
+			compute.SetFloat("cloudHighDensityMultiplier", highDensityMultiplier);
+			compute.SetFloat("cloudHighCoverageMultiplier", highCoverageMultiplier);
+			compute.SetFloat("cloudHighStretch", highStretch);
+			compute.SetFloat("cloudHighGranularity", highGranularity);
+			compute.SetVector("cloudHighWindDir", HighWindDir);
+			compute.SetVector("cloudHighWind", HighWind);
 		}
 
 		void RenderShadowMap()
@@ -823,6 +915,7 @@ namespace Clouds
 			material.SetTexture("CloudShapeNoise", shapeNoise);
 			material.SetTexture("CloudDetailNoise", detailNoise);
 			material.SetTexture("CloudWeatherMapTex", weatherMap);
+			material.SetTexture("CloudWeatherMapHighTex", weatherMapHigh);
 
 			material.SetFloat("cloudInnerRadius", InnerRadius);
 			material.SetFloat("cloudOuterRadius", OuterRadius);
@@ -846,6 +939,17 @@ namespace Clouds
 			// system, the noise is the air moving through it.
 			material.SetVector("cloudShapeWind", ShapeWind);
 			material.SetVector("cloudDetailWind", DetailWind);
+
+			material.SetFloat("cloudHighStrength", highStrength);
+			material.SetFloat("cloudHighBase", highBase);
+			material.SetFloat("cloudHighThickness", highThickness);
+			material.SetFloat("cloudHighScale", highScale);
+			material.SetFloat("cloudHighDensityMultiplier", highDensityMultiplier);
+			material.SetFloat("cloudHighCoverageMultiplier", highCoverageMultiplier);
+			material.SetFloat("cloudHighStretch", highStretch);
+			material.SetFloat("cloudHighGranularity", highGranularity);
+			material.SetVector("cloudHighWindDir", HighWindDir);
+			material.SetVector("cloudHighWind", HighWind);
 
 			material.SetFloat("cloudStepSize", stepSize);
 			// CameraRegion leaves the clouds rendering and shows the region as a corner swatch, so
