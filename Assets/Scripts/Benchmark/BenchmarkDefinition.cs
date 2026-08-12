@@ -116,6 +116,18 @@ public struct BenchmarkSegment
 public class BenchmarkDefinition : ScriptableObject
 {
 	public string id = "benchmark";
+
+	/// <summary>
+	/// Whether "All" queues this one.
+	///
+	/// Exists for the smoke test, whose own description says it has too few frames to be
+	/// meaningful. Once All became the default selection, that benchmark started costing time on
+	/// every full run and dropping a row into the batch summary that reads like a result. Leaving
+	/// it out of availableBenchmarks instead would also make it unreachable from the cycle key,
+	/// which is the one thing it is for.
+	/// </summary>
+	public bool includeInAll = true;
+
 	[TextArea(2, 5)] public string description;
 
 	[Header("Phase lengths (frames)")]
