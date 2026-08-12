@@ -94,6 +94,65 @@ struct BaselineLayer
 	float4x4 drift;
 };
 
+// A is the lower deck, B the upper. Declared here rather than in each consumer so the shading path,
+// the shadow pass and (stage 6) the mesh delivery all read the same bindings - the same rule
+// CloudCommon.hlsl states for the volumetric's density model. A shadow that disagreed with the
+// cloud casting it produces a plausible offset rather than an obvious fault.
+Texture2D<float4> BaselineCloudLayerA;
+SamplerState samplerBaselineCloudLayerA;
+
+Texture2D<float4> BaselineCloudLayerB;
+SamplerState samplerBaselineCloudLayerB;
+
+float baselineLayerRadiusA;
+float baselineLayerThicknessA;
+float baselineLayerOpacityA;
+float baselineLayerContrastA;
+float baselineLayerReliefA;
+float baselineLayerTexelsA;
+float4x4 baselineLayerDriftA;
+
+float baselineLayerRadiusB;
+float baselineLayerThicknessB;
+float baselineLayerOpacityB;
+float baselineLayerContrastB;
+float baselineLayerReliefB;
+float baselineLayerTexelsB;
+float4x4 baselineLayerDriftB;
+
+/// 1 or 2. A uniform, so the second deck costs exactly nothing when it is off - which is what makes
+/// one deck against two a clean measurement of what the depth cue is worth.
+int baselineLayerCount;
+
+/// Sea level. Needed by the shadow pass, which starts its ray at the ground.
+float baselineBodyRadius;
+
+BaselineLayer baselineLayerA()
+{
+	BaselineLayer layer;
+	layer.radius = baselineLayerRadiusA;
+	layer.thickness = baselineLayerThicknessA;
+	layer.opacity = baselineLayerOpacityA;
+	layer.contrast = baselineLayerContrastA;
+	layer.reliefStrength = baselineLayerReliefA;
+	layer.texelsAcross = baselineLayerTexelsA;
+	layer.drift = baselineLayerDriftA;
+	return layer;
+}
+
+BaselineLayer baselineLayerB()
+{
+	BaselineLayer layer;
+	layer.radius = baselineLayerRadiusB;
+	layer.thickness = baselineLayerThicknessB;
+	layer.opacity = baselineLayerOpacityB;
+	layer.contrast = baselineLayerContrastB;
+	layer.reliefStrength = baselineLayerReliefB;
+	layer.texelsAcross = baselineLayerTexelsB;
+	layer.drift = baselineLayerDriftB;
+	return layer;
+}
+
 /// Local copy of the ray-sphere test rather than an include of CloudCommon.hlsl.
 ///
 /// Including that header would drag the entire volumetric density model - three texture bindings
@@ -143,11 +202,35 @@ float baselineCloudPixelAngle;
 /// Divided by the incidence cosine, because a grazing view stretches a pixel's footprint along the
 /// surface without changing its angular size. Without that, the horizon aliases while everything
 /// else is clean.
-float baselineLayerLod(BaselineLayer layer, float distance, float cosIncidence)
+float baselineLodForFootprint(BaselineLayer layer, float footprint)
 {
-	float footprint = distance * baselineCloudPixelAngle / max(0.05, cosIncidence);
 	float texelWorld = layer.radius * 6.28318530718 / max(1.0, layer.texelsAcross);
 	return max(0, log2(max(1e-6, footprint / texelWorld)));
+}
+
+float baselineLayerLod(BaselineLayer layer, float distance, float cosIncidence)
+{
+	return baselineLodForFootprint(layer, distance * baselineCloudPixelAngle / max(0.05, cosIncidence));
+}
+
+/// How much this deck hides, at a point on it.
+///
+/// Shared by the shading path and the shadow pass so the two cannot disagree about where a cloud
+/// is. `up` is the outward unit normal at the point, `cosIncidence` the cosine between the ray and
+/// that normal - a grazing ray crosses more cloud than a perpendicular one, which is as true of a
+/// sun ray casting a shadow at dusk as it is of a view ray at the horizon.
+float baselineLayerCoverage(
+	Texture2D<float4> layerTex, SamplerState layerSampler, BaselineLayer layer,
+	float3 up, float cosIncidence, float lod, out float4 texel)
+{
+	float3 pTex = mul((float3x3)layer.drift, up);
+	texel = layerTex.SampleLevel(layerSampler, pointToUV(pTex), lod);
+
+	float coverage = saturate(pow(saturate(texel.a), layer.contrast) * layer.opacity);
+
+	// Beer through a slab. Textbook (Real-Time Rendering, 4th ed.), which keeps the baseline
+	// citeable as a named technique rather than an ad hoc approximation.
+	return 1 - pow(max(1e-4, 1 - coverage), 1.0 / max(0.08, cosIncidence));
 }
 
 /// The layer's contribution along a ray.
@@ -176,15 +259,11 @@ float4 baselineCloudLayer(
 	float3 up = normalize(rayOrigin + rayDir * t);
 	float3x3 drift = (float3x3)layer.drift;
 
-	// Everything below happens in TEXTURE space - the sphere as the bake saw it. The drift rotation
-	// is applied to the sample point going in and undone on the normal coming out, which keeps the
-	// relief attached to the clouds as they move rather than lighting a stationary shell.
-	float3 pTex = mul(drift, up);
-
 	float cosIncidence = abs(dot(rayDir, up));
-	float lod = baselineLayerLod(layer, t, cosIncidence);
 
-	float4 s = layerTex.SampleLevel(layerSampler, pointToUV(pTex), lod);
+	float4 s;
+	float alpha = baselineLayerCoverage(
+		layerTex, layerSampler, layer, up, cosIncidence, baselineLayerLod(layer, t, cosIncidence), s);
 
 	// One parallax refinement. The height channel says how far above the base sphere this bit of
 	// cloud actually reaches, so re-intersecting at that radius puts the sample where the cloud top
@@ -200,25 +279,24 @@ float4 baselineCloudLayer(
 		{
 			t = lifted;
 			up = normalize(rayOrigin + rayDir * t);
-			pTex = mul(drift, up);
 			cosIncidence = abs(dot(rayDir, up));
-			s = layerTex.SampleLevel(layerSampler, pointToUV(pTex), baselineLayerLod(layer, t, cosIncidence));
+			alpha = baselineLayerCoverage(
+				layerTex, layerSampler, layer, up, cosIncidence,
+				baselineLayerLod(layer, t, cosIncidence), s);
 		}
 	}
 
-	float coverage = saturate(pow(saturate(s.a), layer.contrast) * layer.opacity);
-	if (coverage <= 0.001) { return float4(0, 0, 0, 1); }
+	if (alpha <= 0.001) { return float4(0, 0, 0, 1); }
 
 	// Only now, once there is actually cloud here: a layer whose texture is clear at this point
 	// must not sort in front of one that is not, or a hole in the top layer would still occlude the
 	// bottom one.
 	hitDistance = t;
 
-	// Beer through a slab: a grazing ray crosses more cloud than a perpendicular one, so the same
-	// sheet is more opaque toward the horizon. One line, and it is most of what stops a flat layer
-	// reading as flat - without it the deck simply stops at the horizon instead of thickening into
-	// it. Textbook (Real-Time Rendering, 4th ed.), which keeps the baseline citeable.
-	float alpha = 1 - pow(max(1e-4, 1 - coverage), 1.0 / max(0.08, cosIncidence));
+	// Everything below happens in TEXTURE space - the sphere as the bake saw it. The drift rotation
+	// is applied to the sample point going in and undone on the normal coming out, which keeps the
+	// relief attached to the clouds as they move rather than lighting a stationary shell.
+	float3 pTex = mul(drift, up);
 
 	// Tangent-space normal, unpacked and re-steepened. Scaling xy and renormalising rather than
 	// scaling the unpacked vector: the stored normal is already unit length, so multiplying it

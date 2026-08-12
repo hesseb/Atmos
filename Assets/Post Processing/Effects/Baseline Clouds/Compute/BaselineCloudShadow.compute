@@ -1,0 +1,97 @@
+#pragma kernel CSBaselineCloudShadow
+
+#include "Assets/Scripts/Shader Common/GeoMath.hlsl"
+#include "Assets/Post Processing/Effects/Baseline Clouds/Shader Common/BaselineCloudCommon.hlsl"
+
+// How much sunlight reaches each point on the globe after passing through the baseline's cloud
+// decks.
+//
+// Publishes the SAME globals the volumetric's shadow pass does - CloudShadowMap and
+// cloudShadowStrength, transmittance in R, equirectangular and indexed by pointToUV. So
+// Terrain.shader and Ocean.shader need no change at all: cloudShadow() in SurfaceLighting.hlsl
+// already samples them, and neither surface shader can tell which renderer wrote the map.
+//
+// That matters for more than tidiness. Without ground shadows the baseline would be missing a
+// FEATURE rather than merely rendering the same feature more cheaply, and part of the measured gap
+// against the volumetric would be attributable to the absence rather than to the technique - which
+// is exactly the confound the whole comparison is built to avoid.
+//
+// The cost difference here is its own clean sub-comparison, and a stark one. The volumetric marches
+// ten steps of a full density evaluation per texel; this takes one texture tap per deck. Same
+// output, same consumers, same resolution.
+
+RWTexture2D<float4> Result;
+
+float2 shadowMapSize;
+float3 shadowSunDir;
+
+/// Widens the footprint each deck is read at, beyond what the map itself can represent. 1 matches
+/// the map exactly. The volumetric's shadow pass needs the same control for the same reason:
+/// reading finer detail than a fixed global grid can carry does not add detail, it aliases, and
+/// because the decks drift every frame the aliasing moves - which is flicker rather than noise.
+float shadowDetailScale;
+
+/// Transmittance through one deck, along the ray from `origin` toward the sun.
+///
+/// Geometric rather than a straight-down projection: the shadow is cast where the SUN RAY crosses
+/// the deck, so at low sun it lands far from the cloud above it, which is most of what makes long
+/// evening shadows read as belonging to the clouds that cast them.
+float baselineDeckTransmittance(
+	Texture2D<float4> layerTex, SamplerState layerSampler, BaselineLayer layer,
+	float3 origin, float texelWorldSize)
+{
+	// From the ground the origin is inside the deck's sphere, so this is the exit hit - the point
+	// where the sun ray leaves through the sheet.
+	float t = baselineLayerHit(layer.radius, origin, shadowSunDir);
+	if (t < 0) { return 1; }
+
+	float3 up = normalize(origin + shadowSunDir * t);
+	float cosIncidence = abs(dot(shadowSunDir, up));
+
+	float4 texel;
+	float alpha = baselineLayerCoverage(
+		layerTex, layerSampler, layer, up, cosIncidence,
+		baselineLodForFootprint(layer, texelWorldSize * shadowDetailScale), texel);
+
+	return 1 - alpha;
+}
+
+[numthreads(8, 8, 1)]
+void CSBaselineCloudShadow(uint3 id : SV_DispatchThreadID)
+{
+	uint2 size = (uint2)shadowMapSize;
+	if (id.x >= size.x || id.y >= size.y) { return; }
+
+	float2 uv = (id.xy + 0.5) / shadowMapSize;
+	float3 sphereNormal = uvToPointOnSphere(uv);
+
+	// Nothing to shadow once the sun is below the local horizon, and tracing anyway would send the
+	// ray down through the planet and pick up cloud on the far side.
+	if (dot(sphereNormal, shadowSunDir) <= 0)
+	{
+		Result[id.xy] = 1;
+		return;
+	}
+
+	float3 origin = sphereNormal * baselineBodyRadius;
+
+	// Read at the footprint of a SHADOW MAP TEXEL, not at the deck texture's own resolution. This
+	// map is a fixed grid over the whole globe and cannot represent anything finer than two texels,
+	// so reading the 2048-wide deck at mip 0 into a 512-wide map is asking for detail the
+	// destination cannot hold. Pre-filter to what the consumer can carry - the same principle the
+	// volumetric's shadow pass and its light march both had to be corrected to follow.
+	float texelWorldSize = 6.28318530718 * baselineBodyRadius / max(1, shadowMapSize.x);
+
+	float transmittance = baselineDeckTransmittance(
+		BaselineCloudLayerA, samplerBaselineCloudLayerA, baselineLayerA(), origin, texelWorldSize);
+
+	// Multiplied, not added: two decks in the way of the same sun ray attenuate in series, and the
+	// product is what puts a doubly-shadowed patch under both.
+	if (baselineLayerCount > 1)
+	{
+		transmittance *= baselineDeckTransmittance(
+			BaselineCloudLayerB, samplerBaselineCloudLayerB, baselineLayerB(), origin, texelWorldSize);
+	}
+
+	Result[id.xy] = transmittance;
+}

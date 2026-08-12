@@ -279,6 +279,9 @@ namespace Clouds
 		RenderTexture weatherMap;
 		RenderTexture shadowMap;
 
+		// Whether the shadow globals currently belong to THIS effect - see RenderMaps.
+		bool publishedShadows;
+
 		// Ping-ponged: this frame resolves into one while reading the other.
 		readonly RenderTexture[] history = new RenderTexture[2];
 		int historyIndex;
@@ -370,7 +373,18 @@ namespace Clouds
 				// Tell the surface shaders there is nothing overhead, so the ground is unshadowed
 				// whenever the clouds are off. This is what makes a clouds-off benchmark profile
 				// correct without the profile having to know anything about shadows.
-				Shader.SetGlobalFloat("cloudShadowStrength", 0f);
+				//
+				// Only retract what THIS effect published, though. PostProcessingManager calls
+				// OnEnable on every effect in the chain regardless of its `enabled` flag, so the
+				// baseline cloud renderer also has a pre-cull callback registered at all times.
+				// Zeroing unconditionally would let whichever of the two is DISABLED wipe the
+				// strength the enabled one had just set, with callback order deciding the winner -
+				// ground shadows that flicker or never appear, and nothing wrong in either renderer.
+				if (publishedShadows)
+				{
+					publishedShadows = false;
+					Shader.SetGlobalFloat("cloudShadowStrength", 0f);
+				}
 				return;
 			}
 
@@ -600,7 +614,11 @@ namespace Clouds
 		{
 			if (shadowCompute == null || shadowStrength <= 0f)
 			{
-				Shader.SetGlobalFloat("cloudShadowStrength", 0f);
+				if (publishedShadows)
+				{
+					publishedShadows = false;
+					Shader.SetGlobalFloat("cloudShadowStrength", 0f);
+				}
 				return;
 			}
 
@@ -640,6 +658,7 @@ namespace Clouds
 
 			Shader.SetGlobalTexture("CloudShadowMap", shadowMap);
 			Shader.SetGlobalFloat("cloudShadowStrength", shadowStrength);
+			publishedShadows = true;
 		}
 
 		void ResolveSun()

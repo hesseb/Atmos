@@ -59,66 +59,15 @@ Shader "Hidden/BaselineClouds"
 
 			sampler2D _CameraDepthTexture;
 
-			// A is the lower deck, B the upper. Two textures rather than one sampled twice: the
-			// second layer has to be different weather, or the pair reads as one sheet with a
-			// ghost rather than as two decks.
-			Texture2D<float4> BaselineCloudLayerA;
-			SamplerState samplerBaselineCloudLayerA;
-
-			Texture2D<float4> BaselineCloudLayerB;
-			SamplerState samplerBaselineCloudLayerB;
-
-			float baselineLayerRadiusA;
-			float baselineLayerThicknessA;
-			float baselineLayerOpacityA;
-			float baselineLayerContrastA;
-			float baselineLayerReliefA;
-			float baselineLayerTexelsA;
-			float4x4 baselineLayerDriftA;
-
-			float baselineLayerRadiusB;
-			float baselineLayerThicknessB;
-			float baselineLayerOpacityB;
-			float baselineLayerContrastB;
-			float baselineLayerReliefB;
-			float baselineLayerTexelsB;
-			float4x4 baselineLayerDriftB;
-
-			/// 1 or 2. A uniform, so the second layer costs exactly nothing when it is off - which
-			/// is what makes one-layer against two a clean measurement of what the depth cue costs.
-			int baselineLayerCount;
+			// The deck textures, their parameters and the two builders all live in
+			// BaselineCloudCommon.hlsl, so this shader, the shadow compute and the mesh delivery
+			// read the same bindings and cannot drift apart.
 
 			/// 0 off, 1 opacity, 2 world normal, 3 mip level, 4 tint the decks apart.
 			///
 			/// Small on purpose - the baseline has almost no internal state to inspect, which is
 			/// itself part of what RQ3 is comparing.
 			int baselineCloudDebugMode;
-
-			BaselineLayer layerA()
-			{
-				BaselineLayer layer;
-				layer.radius = baselineLayerRadiusA;
-				layer.thickness = baselineLayerThicknessA;
-				layer.opacity = baselineLayerOpacityA;
-				layer.contrast = baselineLayerContrastA;
-				layer.reliefStrength = baselineLayerReliefA;
-				layer.texelsAcross = baselineLayerTexelsA;
-				layer.drift = baselineLayerDriftA;
-				return layer;
-			}
-
-			BaselineLayer layerB()
-			{
-				BaselineLayer layer;
-				layer.radius = baselineLayerRadiusB;
-				layer.thickness = baselineLayerThicknessB;
-				layer.opacity = baselineLayerOpacityB;
-				layer.contrast = baselineLayerContrastB;
-				layer.reliefStrength = baselineLayerReliefB;
-				layer.texelsAcross = baselineLayerTexelsB;
-				layer.drift = baselineLayerDriftB;
-				return layer;
-			}
 
 			float4 frag(v2f i) : SV_Target
 			{
@@ -130,7 +79,7 @@ Shader "Hidden/BaselineClouds"
 				// intersection - is what actually occludes cloud, exactly as in the volumetric.
 				float sceneDepth = LinearEyeDepth(SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, i.uv)) * viewLength;
 
-				BaselineLayer a = layerA();
+				BaselineLayer a = baselineLayerA();
 
 				// Modes 1-3 inspect one tap of deck A and replace the frame. Mode 4 is different: it
 				// leaves both decks rendering and only tints them, because the question it answers -
@@ -169,7 +118,7 @@ Shader "Hidden/BaselineClouds"
 				{
 					float distanceB;
 					float4 upper = baselineCloudLayer(
-						BaselineCloudLayerB, samplerBaselineCloudLayerB, layerB(),
+						BaselineCloudLayerB, samplerBaselineCloudLayerB, baselineLayerB(),
 						rayOrigin, rayDir, sceneDepth, distanceB);
 
 					if (baselineCloudDebugMode == 4) { upper.rgb *= float3(0.25, 0.55, 1.0); }
