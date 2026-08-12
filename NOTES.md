@@ -2073,3 +2073,86 @@ Everything under the volumetric's "Open" list still stands. Additionally:
   and widening to 2.5/9 is the lever if not.
 - **No measurements taken yet.** The profiles exist and the subtraction algebra is arranged, but
   nothing has been run - that, and the report, come once everything is assembled.
+
+## Aerial perspective on the volumetric clouds
+
+Closes the item that has sat under "Open before the next milestone" since the volumetric milestone:
+distant clouds stayed crisp and saturated against terrain that had already gone blue, which reads as
+a compositing error rather than a rendering choice.
+
+### Why the existing LUT could not be used
+
+The aerial perspective LUT is screen-space, indexed by `(uv, depthT)`, where `depthT` is normalised
+per ray against a span that `AerialPerspective.compute` and `Atmosphere.shader` derive identically.
+That span is capped at the planet's tangent distance, and the cap is load-bearing: without it
+adjacent texels either side of the horizon differ in span by ~4.8x, and at 32³ bilinear interpolation
+smears that jump across ~80 pixels at 1440p as a serrated bright band.
+
+The comment justifying the cap says it only truncates rays that miss the planet, "and those are sky,
+where the composite takes its sky branch and never reads this LUT." **Clouds are exactly those rays.**
+From 10 units up the cap is **55.7** units; a horizon-grazing ray crosses the outer cloud shell again
+at **~105**. So the clouds that most need haze sit past the end of the depth axis. Extending the span
+brings the band back, and a second cloud-specific LUT would add a per-frame dispatch to the very
+measurement the feature exists to inform.
+
+A comment that says "no consumer needs this" is only true until a consumer does. The cap was correct
+and still is; what aged was the claim attached to it.
+
+### What was done instead
+
+Transmittance from Bruneton's ratio identity over the **existing** 2D LUT, in-scatter from the
+**existing** sky-view LUT. `AerialPerspective.compute`, `Atmosphere.shader` and `SkyViewCommon.hlsl`
+are untouched, so the terrain path cannot regress.
+
+```
+ray misses the ground:   T(cam→P) = T(cam,  d) / T(P,  d)
+ray hits the ground:     T(cam→P) = T(P,   -d) / T(cam, -d)
+```
+
+The case split is the load-bearing part, and the reason this is a shared function rather than four
+lines at the call site. Bruneton's mapping stores only rays that miss the ground, and
+`sampleTransmittanceLUT` returns exactly **0** for a below-horizon direction. Reversing the direction
+turns a descending ray into an ascending one, so both branches only ever ask the LUT about rays it
+actually holds. Asking it directly about a downward ray returns zero and blacks the cloud out
+entirely - a failure that would have looked like the clouds vanishing rather than like a lookup being
+out of domain.
+
+Split into a `begin`/`at` pair rather than one call. The direction test and one of the two lookups are
+loop-invariant along a ray, so hoisting them explicitly halves the per-step tap count instead of
+leaving it to whether the compiler notices. The single-call form still exists, implemented in terms of
+the pair, so there is one implementation of the identity.
+
+Applied **per march sample**, not once on the composited result. A horizon ray's cloud spans roughly
+6 to 105 units, so a single representative depth is wrong by a factor of seventeen across one pixel -
+and the march records no depth and has no spare channel to put one in, which is why the temporal pass
+reprojects against a mid-shell sphere proxy. Living inside the loop also means `Half` and `Temporal`
+inherit it with no further work.
+
+### Limitations, stated rather than hidden
+
+- **The in-scatter is approximate.** The exact form is `L_sky(cam) - T * L_sky(pos)`, one extra tap.
+  It is unavailable: `sampleSkyView` reads `skyViewLutRadius`, a **uniform** baked at
+  `skyViewLutAltitude = 0`, so both terms return the same value for the same direction and the
+  difference collapses to `L_sky * (1 - T)`. Exact at both ends - no haze on a near cloud, a distant
+  one fading entirely into the sky it is seen against - and approximate in between. Making it exact
+  means adding altitude to a LUT four other consumers read.
+- **The sky-view LUT holds the upper hemisphere only** (`skyViewHorizonV = 1`), so a downward view ray
+  clamps to the horizon row. Largely self-cancelling: downward rays reach cloud at short range where
+  `(1 - T) ≈ 0` and the term contributes nothing, and it only grows on near-horizon rays where the LUT
+  is best sampled.
+- **Single scattering along the view ray.** The multiple-scattering LUT feeds the sky-view radiance
+  this borrows, but the segment transmittance is pure extinction.
+- **The baseline clouds have no aerial perspective.** A deliberate scope choice, and now a real
+  confound: distant baseline clouds stay crisp where distant PBR clouds haze, so part of the measured
+  visual gap is a feature one arm was given and the other was not - the same reasoning that put ground
+  shadows *into* the baseline, decided the other way here. It needs a sentence in the RQ1 discussion.
+  Reversing it is textbook exponential fog toward a sun-elevation `Gradient` in
+  `BaselineCloudCommon.hlsl`, matching `AerialPerspectiveSimple`; roughly a dozen lines.
+
+### Still open
+
+`cloudAerialStrength` is identity at 0 rather than merely small, so the feature can be priced against
+one build, and `DescribeSettings` records it. **Not yet verified visually** - the checks that matter
+are the strength 0/1 pair at low sun toward the horizon, nadir as a control (should be pixel-identical,
+since `T ≈ 1` at a few units), and night, where a sign error in the downward branch would show as
+distant clouds getting *brighter* rather than fading to black.
