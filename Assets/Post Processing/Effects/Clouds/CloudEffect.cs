@@ -251,6 +251,29 @@ namespace Clouds
 			"moon read as lit rather than as a silhouette.")]
 		[Range(0f, 24f)] public float moonSilverIntensity = 2f;
 
+		[Header("Sky under the deck")]
+		[Tooltip("What the cloud base looks like from below, and how much sky it hides, as an " +
+			"equirectangular field. Without it the ocean and the terrain darken their direct sun " +
+			"under cloud but still reflect and are lit by a CLEAR sky - which is why an overcast " +
+			"sunset still turned the sea orange.")]
+		public ComputeShader skyCompute;
+
+		[Tooltip("Lower than the shadow map, because this pass is the expensive one: every vertical " +
+			"step pays for a six-sample cone light march. A cloud base carries no high-frequency " +
+			"detail, so it can afford to be coarse.")]
+		public Vector2Int skyMapSize = new Vector2Int(256, 128);
+
+		[Range(2, 32)] public int skySteps = 8;
+
+		[Tooltip("Widens the footprint the density is read at, relative to what this map can " +
+			"represent. Same control and same reason as the shadow map's - reading finer detail " +
+			"than a fixed global grid can carry aliases, and the drift makes it crawl.")]
+		[Range(0.5f, 4f)] public float skyDetailScale = 1f;
+
+		[Tooltip("How strongly cloud replaces the sky the surfaces see. 0 is identity, which is what " +
+			"prices the feature; it is also what happens when the clouds are off.")]
+		[Range(0f, 1f)] public float skyStrength = 1f;
+
 		[Header("Cost")]
 		[Tooltip("Full marches every pixel - the honest upper bound and the cleanest image. Half " +
 			"marches a quarter of the pixels and upsamples with a depth-aware filter. Both are the " +
@@ -287,9 +310,11 @@ namespace Clouds
 
 		RenderTexture weatherMap;
 		RenderTexture shadowMap;
+		RenderTexture skyMap;
 
 		// Whether the shadow globals currently belong to THIS effect - see RenderMaps.
 		bool publishedShadows;
+		bool publishedSky;
 
 		// Ping-ponged: this frame resolves into one while reading the other.
 		readonly RenderTexture[] history = new RenderTexture[2];
@@ -329,6 +354,7 @@ namespace Clouds
 			Camera.onPreCull -= RenderMaps;
 			ReleaseWeatherMap();
 			ReleaseShadowMap();
+			ReleaseSkyMap();
 			ReleaseHistory();
 		}
 
@@ -360,6 +386,115 @@ namespace Clouds
 				};
 				history[i].Create();
 			}
+		}
+
+		void ReleaseSkyMap()
+		{
+			if (skyMap == null) { return; }
+			skyMap.Release();
+			DestroyImmediate(skyMap);
+			skyMap = null;
+		}
+
+		/// <summary>
+		/// The deck's underside, into the globals the surface shaders read.
+		///
+		/// Same shape as RenderShadowMap, and it retracts only what it published for the same reason:
+		/// both cloud renderers keep a pre-cull callback registered whether or not they are enabled,
+		/// so an unconditional zero would let the disabled one wipe the enabled one's field.
+		/// </summary>
+		void RenderSkyMap()
+		{
+			if (!enabled || skyCompute == null || skyStrength <= 0f)
+			{
+				if (publishedSky)
+				{
+					publishedSky = false;
+					Shader.SetGlobalFloat("cloudSkyStrength", 0f);
+				}
+				return;
+			}
+
+			int width = Mathf.Max(8, skyMapSize.x);
+			int height = Mathf.Max(8, skyMapSize.y);
+
+			if (skyMap == null || !skyMap.IsCreated() ||
+				skyMap.width != width || skyMap.height != height)
+			{
+				ReleaseSkyMap();
+				// Half float, not RGBA8: a lit deck is not bounded by 1 and an 8-bit target would
+				// clip it flat - the same reason the cloud march's own target is ARGBHalf.
+				skyMap = new RenderTexture(width, height, 0, GraphicsFormat.R16G16B16A16_SFloat)
+				{
+					enableRandomWrite = true,
+					wrapModeU = TextureWrapMode.Repeat,   // longitude wraps
+					wrapModeV = TextureWrapMode.Clamp,    // latitude does not
+					filterMode = FilterMode.Bilinear,
+					name = "Cloud Sky Map"
+				};
+				skyMap.Create();
+			}
+
+			ResolveSun();
+			Vector3 sunDir = sunLight != null ? -sunLight.transform.forward : Vector3.up;
+
+			int kernel = skyCompute.FindKernel("CSCloudSkyMap");
+			BindDensity(skyCompute, kernel);
+			skyCompute.SetTexture(kernel, "Result", skyMap);
+			skyCompute.SetVector("cloudSkyMapSize", new Vector2(width, height));
+			skyCompute.SetVector("cloudSkySunDir", sunDir);
+			skyCompute.SetInt("cloudSkySteps", skySteps);
+			skyCompute.SetFloat("cloudSkyDetailScale", skyDetailScale);
+
+			// The march's own lighting parameters, bound identically. These have to stay in step with
+			// SetProperties below, exactly as BindDensity does - a divergence would read as the sea
+			// reflecting a deck that does not match the one drawn above it.
+			BindDeckLighting(skyCompute);
+
+			skyCompute.Dispatch(kernel, Mathf.CeilToInt(width / 8f), Mathf.CeilToInt(height / 8f), 1);
+
+			Shader.SetGlobalTexture("CloudSkyMap", skyMap);
+			Shader.SetGlobalFloat("cloudSkyStrength", skyStrength);
+			// Where the surfaces should intersect a reflected ray to find the deck. Mid-shell: the
+			// map describes the whole column, so any single radius is a choice, and the middle is the
+			// least wrong one for a grazing ray.
+			Shader.SetGlobalFloat("cloudDeckRadius", (InnerRadius + OuterRadius) * 0.5f);
+			publishedSky = true;
+		}
+
+		/// <summary>
+		/// The lighting terms the deck bake shares with the view march.
+		///
+		/// Sets exactly the names SetProperties sets on the material, for the same reason BindDensity
+		/// exists: two consumers of one model have to be handed the same numbers, and the failure of
+		/// a divergence here is a plausible image rather than an obvious fault.
+		/// </summary>
+		void BindDeckLighting(ComputeShader compute)
+		{
+			float gate = Shader.GetGlobalFloat("skyReflectionStrength");
+			Color sunColour = sunLight != null ? sunLight.color : Color.white;
+			Color gradient = Color.Lerp(sunColour, Color.white, gate);
+
+			compute.SetVector("cloudSunColour", new Vector4(gradient.r, gradient.g, gradient.b, 1));
+			compute.SetFloat("cloudSunIntensity", sunIntensity);
+			compute.SetFloat("cloudSunTransmittanceWeight", sunTransmittanceWeight);
+			compute.SetFloat("cloudAmbientIntensity", ambientIntensity);
+			compute.SetFloat("cloudAmbientHorizon", ambientHorizon);
+			compute.SetVector("cloudAmbientFallback", new Vector4(ambientFallback.r, ambientFallback.g, ambientFallback.b, 1));
+			compute.SetVector("cloudNightAmbient", new Vector4(nightAmbient.r, nightAmbient.g, nightAmbient.b, 1));
+			compute.SetFloat("cloudSilverIntensity", silverIntensity);
+			compute.SetFloat("cloudExtinction", extinction);
+
+			// The optical model's own parameters, which CloudLightingCommon.hlsl owns.
+			compute.SetFloat("cloudLightMarchLength", lightMarchLength);
+			compute.SetFloat("cloudLightAbsorption", lightAbsorption);
+			compute.SetFloat("cloudConeSpread", coneSpread);
+			compute.SetFloat("cloudLightMarchDetail", lightMarchDetail);
+			compute.SetFloat("cloudPowderStrength", powderStrength);
+			compute.SetFloat("cloudPhaseForward", phaseForward);
+			compute.SetFloat("cloudPhaseBackward", phaseBackward);
+			compute.SetFloat("cloudPhaseBlend", phaseBlend);
+			compute.SetFloat("cloudSilverSpread", silverSpread);
 		}
 
 		void ReleaseShadowMap()
@@ -394,11 +529,17 @@ namespace Clouds
 					publishedShadows = false;
 					Shader.SetGlobalFloat("cloudShadowStrength", 0f);
 				}
+				if (publishedSky)
+				{
+					publishedSky = false;
+					Shader.SetGlobalFloat("cloudSkyStrength", 0f);
+				}
 				return;
 			}
 
 			RenderWeatherMap();
 			RenderShadowMap();
+			RenderSkyMap();
 		}
 
 		void ReleaseWeatherMap()

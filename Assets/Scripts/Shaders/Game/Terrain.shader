@@ -222,7 +222,13 @@ Shader "Custom/Terrain"
 				// physically is: an irradiance the surface reflects. The ocean needs the opposite
 				// treatment for a reason that does not apply here - _OceanCol is a baked
 				// lit-appearance map rather than an albedo, so multiplying it squared its blue.
-				float3 skyAmbient = sampleSkyViewSafe(pointOnUnitSphere, pointOnUnitSphere, sunDir) * _SkyAmbientWeight;
+				// Blended toward the deck overhead before the weight is applied. Under an overcast
+				// the land is not lit by the blue above the cloud, it is lit by the cloud - which is
+				// also what closes the open item that a bright overcast does not raise the ambient
+				// beneath it. It falls out of the same lerp rather than needing a term of its own.
+				float3 skyAmbient = applyCloudSky(
+					sampleSkyViewSafe(pointOnUnitSphere, pointOnUnitSphere, sunDir),
+					sampleCloudSky(pointOnUnitSphere)) * _SkyAmbientWeight;
 
 				float3 shading = saturate(saturate(dot(worldNormal, sunDir) + _BrightnessAdd)) * _BrightnessMul * sunColour;
 				// The lake specular was a white scalar added straight to RGB - the same thing the
