@@ -13,160 +13,73 @@ MonoBehaviour:
   m_Name: SkyBakeStamp
   m_EditorClassIdentifier: Assembly-CSharp::SkyBakeStamp
   entries:
-  - assetPath: Assets/Data/Baseline Clouds/Cloud Layer Lower Baked.png
-    recipe: 2
-    hash: 0x3f2b9e89b7a5bd61
-    bakedUtc: 2026-08-11 23:54:36Z
+  - assetPath: Assets/Post Processing/Effects/Baseline Sky/Textures/SkyCubemap.asset
+    recipe: 0
+    hash: 0x0a6dba691e1335be
+    bakedUtc: 2026-08-12 21:40:44Z
     inputs: 'bodyRadius=150
 
-      cloudBottomAltitude=0.6
+      atmosphereThickness=110
 
-      cloudTopAltitude=15.17
+      wavelengthsRGB.x=680
 
-      shapeScale=0.038
+      wavelengthsRGB.y=550
 
-      detailScale=0.09
+      wavelengthsRGB.z=440
 
-      detailWeight=0.312
+      wavelengthScale=593.483
 
-      densityMultiplier=1.28
+      rayleighDensityAvg=0.08
 
-      coverageMultiplier=0.61
+      mieCoefficient=0.3996
 
-      typeOffset=-0.035
+      mieDensityAvg=0.012
 
-      baseVariation=0.3
+      mieAbsorption=0.44
 
-      bandThickness=0.65
+      mieAsymmetry=0.8
 
-      edgeSoftness=1
+      densityMultiplier=3
 
-      precipDensity=1.2
+      sunIlluminance=12.566371
 
-      precipTypePush=0.45
+      ozonePeakDensityAltitude=0.25
 
-      precipBaseDrop=0.2
+      ozoneDensityFalloff=6.66667
 
-      weatherMapSize.x=512
+      ozoneStrength=1
 
-      weatherMapSize.y=256
+      ozoneAbsorption.x=0.65
 
-      weatherOctaves=3
+      ozoneAbsorption.y=1.881
 
-      weatherLacunarity=3.18
+      ozoneAbsorption.z=0.085
 
-      weatherGain=0.685
+      transmittanceLUTSize.x=256
 
-      weatherRangeGain=2.64
+      transmittanceLUTSize.y=64
 
-      coverageScale=2.01
+      multipleScatteringStrength=1
 
-      coverageBias=-0.083
+      multipleScatteringLUTSize.x=32
 
-      coverageContrast=1.79
+      multipleScatteringLUTSize.y=32
 
-      typeScale=2.24
+      groundAlbedo=0.1
 
-      typeBias=0
+      bakeAltitude=12
 
-      typeContrast=4
+      bakeSunElevationDegrees=25
 
-      precipitationScale=4.72
+      bakeScatteringSteps=512
 
-      precipitationBias=-0.155
-
-      baseHeightScale=5.18
-
-      baseHeightBias=0.031
-
-      resolution=2048
-
-      captureSteps=96
-
-      captureAbsorption=1.5
-
-      upperLayer=0
-
-'
-  - assetPath: Assets/Data/Baseline Clouds/Cloud Layer Upper Baked.png
-    recipe: 2
-    hash: 0x3f2b9e89b7a5bd61
-    bakedUtc: 2026-08-11 23:54:36Z
-    inputs: 'bodyRadius=150
-
-      cloudBottomAltitude=0.6
-
-      cloudTopAltitude=15.17
-
-      shapeScale=0.038
-
-      detailScale=0.09
-
-      detailWeight=0.312
-
-      densityMultiplier=1.28
-
-      coverageMultiplier=0.61
-
-      typeOffset=-0.035
-
-      baseVariation=0.3
-
-      bandThickness=0.65
-
-      edgeSoftness=1
-
-      precipDensity=1.2
-
-      precipTypePush=0.45
-
-      precipBaseDrop=0.2
-
-      weatherMapSize.x=512
-
-      weatherMapSize.y=256
-
-      weatherOctaves=3
-
-      weatherLacunarity=3.18
-
-      weatherGain=0.685
-
-      weatherRangeGain=2.64
-
-      coverageScale=2.01
-
-      coverageBias=-0.083
-
-      coverageContrast=1.79
-
-      typeScale=2.24
-
-      typeBias=0
-
-      typeContrast=4
-
-      precipitationScale=4.72
-
-      precipitationBias=-0.155
-
-      baseHeightScale=5.18
-
-      baseHeightBias=0.031
-
-      resolution=2048
-
-      captureSteps=96
-
-      captureAbsorption=1.5
-
-      upperLayer=1
+      bakeCubemapSize=512
 
 '
   - assetPath: Assets/Post Processing/Effects/Baseline Sky/Textures/SkyGradientBaked.exr
     recipe: 0
     hash: 0x0a6dba691e1335be
-    bakedUtc: 2026-08-12 21:40:30Z
+    bakedUtc: 2026-08-12 23:37:16Z
     inputs: 'bodyRadius=150
 
       atmosphereThickness=110
@@ -231,7 +144,7 @@ MonoBehaviour:
   - assetPath: Assets/Post Processing/Effects/Baseline Sky/Textures/SkyGradient.exr
     recipe: 1
     hash: 0xd53035fd354d17f0
-    bakedUtc: 2026-08-12 21:40:37Z
+    bakedUtc: 2026-08-12 23:37:22Z
     inputs: 'intensity=1.602
 
       contrast=1.45
@@ -245,66 +158,221 @@ MonoBehaviour:
       bakeZenithFalloff=0.65
 
 '
-  - assetPath: Assets/Post Processing/Effects/Baseline Sky/Textures/SkyCubemap.asset
-    recipe: 0
-    hash: 0x0a6dba691e1335be
-    bakedUtc: 2026-08-12 21:40:44Z
+  - assetPath: Assets/Data/Baseline Clouds/Cloud Layer Lower Baked.png
+    recipe: 2
+    hash: 0x250ad95fe12b6631
+    bakedUtc: 2026-08-12 23:38:07Z
     inputs: 'bodyRadius=150
 
-      atmosphereThickness=110
+      cloudBottomAltitude=0.6
 
-      wavelengthsRGB.x=680
+      cloudTopAltitude=15.17
 
-      wavelengthsRGB.y=550
+      shapeScale=0.038
 
-      wavelengthsRGB.z=440
+      detailScale=0.09
 
-      wavelengthScale=593.483
+      detailWeight=0.312
 
-      rayleighDensityAvg=0.08
+      densityMultiplier=1.28
 
-      mieCoefficient=0.3996
+      coverageMultiplier=0.61
 
-      mieDensityAvg=0.012
+      typeOffset=-0.035
 
-      mieAbsorption=0.44
+      baseVariation=0.3
 
-      mieAsymmetry=0.8
+      bandThickness=0.65
 
-      densityMultiplier=3
+      edgeSoftness=1
 
-      sunIlluminance=12.566371
+      precipDensity=1.2
 
-      ozonePeakDensityAltitude=0.25
+      precipTypePush=0.45
 
-      ozoneDensityFalloff=6.66667
+      precipBaseDrop=0.2
 
-      ozoneStrength=1
+      weatherMapSize.x=512
 
-      ozoneAbsorption.x=0.65
+      weatherMapSize.y=256
 
-      ozoneAbsorption.y=1.881
+      weatherOctaves=3
 
-      ozoneAbsorption.z=0.085
+      weatherLacunarity=3.18
 
-      transmittanceLUTSize.x=256
+      weatherGain=0.685
 
-      transmittanceLUTSize.y=64
+      weatherRangeGain=2.64
 
-      multipleScatteringStrength=1
+      coverageScale=2.01
 
-      multipleScatteringLUTSize.x=32
+      coverageBias=-0.083
 
-      multipleScatteringLUTSize.y=32
+      coverageContrast=1.79
 
-      groundAlbedo=0.1
+      typeScale=2.24
 
-      bakeAltitude=12
+      typeBias=0
 
-      bakeSunElevationDegrees=25
+      typeContrast=4
 
-      bakeScatteringSteps=512
+      precipitationScale=4.72
 
-      bakeCubemapSize=512
+      precipitationBias=-0.155
+
+      baseHeightScale=5.18
+
+      baseHeightBias=0.031
+
+      highStrength=1
+
+      highBase=0.696
+
+      highThickness=0.169
+
+      highScale=0.009
+
+      highDensityMultiplier=0.17
+
+      highCoverageMultiplier=0.79
+
+      highStretch=4.5
+
+      highGranularity=0.1
+
+      highWindDirection.x=1
+
+      highWindDirection.y=0
+
+      highWindDirection.z=0.35
+
+      highCoverageScale=1.6
+
+      highCoverageBias=-0.15
+
+      highCoverageContrast=1.4
+
+      highFormScale=0.9
+
+      highFormBias=0
+
+      genusOverride=0
+
+      resolution=2048
+
+      captureSteps=96
+
+      captureAbsorption=1.5
+
+      upperLayer=0
+
+'
+  - assetPath: Assets/Data/Baseline Clouds/Cloud Layer Upper Baked.png
+    recipe: 2
+    hash: 0x250ad95fe12b6631
+    bakedUtc: 2026-08-12 23:38:07Z
+    inputs: 'bodyRadius=150
+
+      cloudBottomAltitude=0.6
+
+      cloudTopAltitude=15.17
+
+      shapeScale=0.038
+
+      detailScale=0.09
+
+      detailWeight=0.312
+
+      densityMultiplier=1.28
+
+      coverageMultiplier=0.61
+
+      typeOffset=-0.035
+
+      baseVariation=0.3
+
+      bandThickness=0.65
+
+      edgeSoftness=1
+
+      precipDensity=1.2
+
+      precipTypePush=0.45
+
+      precipBaseDrop=0.2
+
+      weatherMapSize.x=512
+
+      weatherMapSize.y=256
+
+      weatherOctaves=3
+
+      weatherLacunarity=3.18
+
+      weatherGain=0.685
+
+      weatherRangeGain=2.64
+
+      coverageScale=2.01
+
+      coverageBias=-0.083
+
+      coverageContrast=1.79
+
+      typeScale=2.24
+
+      typeBias=0
+
+      typeContrast=4
+
+      precipitationScale=4.72
+
+      precipitationBias=-0.155
+
+      baseHeightScale=5.18
+
+      baseHeightBias=0.031
+
+      highStrength=1
+
+      highBase=0.696
+
+      highThickness=0.169
+
+      highScale=0.009
+
+      highDensityMultiplier=0.17
+
+      highCoverageMultiplier=0.79
+
+      highStretch=4.5
+
+      highGranularity=0.1
+
+      highWindDirection.x=1
+
+      highWindDirection.y=0
+
+      highWindDirection.z=0.35
+
+      highCoverageScale=1.6
+
+      highCoverageBias=-0.15
+
+      highCoverageContrast=1.4
+
+      highFormScale=0.9
+
+      highFormBias=0
+
+      genusOverride=0
+
+      resolution=2048
+
+      captureSteps=96
+
+      captureAbsorption=1.5
+
+      upperLayer=1
 
 '
