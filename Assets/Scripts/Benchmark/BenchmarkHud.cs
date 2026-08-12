@@ -42,6 +42,7 @@ public class BenchmarkHud : MonoBehaviour
 	public KeyCode toggleOverlayKey = KeyCode.F7;
 	public KeyCode fullscreenKey = KeyCode.F8;
 	public KeyCode cycleResolutionKey = KeyCode.F9;
+	public KeyCode togglePerformanceKey = KeyCode.F10;
 	public KeyCode abortKey = KeyCode.Escape;
 
 	[Tooltip("Cycled by the resolution key. These drive the runner's targetResolution, so the " +
@@ -92,6 +93,36 @@ public class BenchmarkHud : MonoBehaviour
 	Texture2D overlayBackground;
 	Color appliedBackgroundColour;
 
+	// ------------------------------------------------------------------ performance panel
+	//
+	// Off by default. It is a diagnostic, and IMGUI is not free - the same reason the main panel
+	// hides itself for the duration of a run.
+	[Tooltip("Live performance readout, top right. Off by default: IMGUI costs frame time, which " +
+		"is the thing it is reporting.")]
+	public bool showPerformance;
+
+	/// <summary>
+	/// Reuses the harness's own sampler rather than reading Time.deltaTime.
+	///
+	/// It is the difference between "how long did the frame take" and "where did the frame go":
+	/// FrameTimingManager gives real GPU time, and the profiler recorders give memory and draw
+	/// calls. Created lazily, because opening the recorders is not free and most sessions never
+	/// show this panel.
+	/// </summary>
+	FrameSampler perfSampler;
+
+	System.Diagnostics.Process perfProcess;
+	double perfLastCpuSeconds = -1;
+	float perfLastCpuSampleTime;
+	float perfCpuPercent = -1;
+
+	// Accumulated between refreshes. Per-frame values flicker far too fast to read, so the panel
+	// shows a mean over a short window rather than the last frame.
+	double perfWallSum, perfCpuMainSum, perfCpuRenderSum, perfGpuSum;
+	int perfSampleCount;
+	float perfNextRefresh;
+	string perfText = "";
+
 	List<BenchmarkDefinition> Available
 	{
 		get
@@ -135,13 +166,23 @@ public class BenchmarkHud : MonoBehaviour
 		// Effect enabled flags are asset state. A preview left applied when play mode ends
 		// would be written to the project on the next save.
 		ClearPreview();
+
+		// ProfilerRecorders are native handles; leaving them open across a domain reload leaks them.
+		ReleasePerformanceSampler();
 	}
 
 	void Update()
 	{
 		if (runner == null) { return; }
 
+		// Hides everything, including the performance panel: that one draws only when both this and
+		// its own flag are set, so F7 hides all of it and restores whatever was showing.
 		if (Input.GetKeyDown(toggleOverlayKey)) { showOverlay = !showOverlay; }
+
+		// Sampled outside the IsRunning early-out below, but not DURING a run - the panel is hidden
+		// then anyway, and its recorders would be reading frames the harness is measuring.
+		if (showOverlay && showPerformance && !runner.IsRunning) { SamplePerformance(); }
+		else if (!showPerformance) { ReleasePerformanceSampler(); }
 
 		if (runner.IsRunning)
 		{
@@ -183,6 +224,7 @@ public class BenchmarkHud : MonoBehaviour
 		if (Input.GetKeyDown(runKey)) { Run(); }
 		if (Input.GetKeyDown(fullscreenKey)) { ToggleFullscreen(); }
 		if (Input.GetKeyDown(cycleResolutionKey)) { CycleResolution(); }
+		if (Input.GetKeyDown(togglePerformanceKey)) { showPerformance = !showPerformance; }
 	}
 
 	// ------------------------------------------------------------------ live preview
@@ -323,6 +365,106 @@ public class BenchmarkHud : MonoBehaviour
 		}
 
 		Screen.SetResolution(runner.targetResolution.x, runner.targetResolution.y, Screen.fullScreenMode);
+	}
+
+	// ------------------------------------------------------------------ performance panel
+
+	/// <summary>
+	/// Accumulates a frame, and rebuilds the displayed text a few times a second.
+	///
+	/// Not once per frame: at 150 fps the numbers change faster than they can be read, and an
+	/// average over a short window is also the more honest figure - a single frame's GPU time says
+	/// as much about where the sample landed as about the workload.
+	/// </summary>
+	void SamplePerformance()
+	{
+		perfSampler ??= new FrameSampler();
+
+		FrameSampler.Sample sample = perfSampler.Capture();
+		perfWallSum += sample.wallMs;
+		perfCpuMainSum += sample.cpuMainMs;
+		perfCpuRenderSum += sample.cpuRenderMs;
+		perfGpuSum += sample.gpuMs;
+		perfSampleCount++;
+
+		SampleProcessCpu();
+
+		if (Time.unscaledTime < perfNextRefresh) { return; }
+		perfNextRefresh = Time.unscaledTime + 0.25f;
+
+		if (perfSampleCount == 0) { return; }
+
+		double wall = perfWallSum / perfSampleCount;
+		double gpu = perfGpuSum / perfSampleCount;
+
+		string fps = wall > 0 ? (1000.0 / wall).ToString("0", Ci) : "-";
+		string gpuLine = perfSampler.FrameTimingAvailable
+			? $"{gpu.ToString("0.00", Ci)} ms"
+			: "unavailable";
+
+		perfText =
+			$"fps         {fps}   ({wall.ToString("0.00", Ci)} ms)\n" +
+			$"cpu main    {(perfCpuMainSum / perfSampleCount).ToString("0.00", Ci)} ms\n" +
+			$"cpu render  {(perfCpuRenderSum / perfSampleCount).ToString("0.00", Ci)} ms\n" +
+			$"gpu         {gpuLine}\n" +
+			$"process cpu {(perfCpuPercent < 0 ? "n/a" : perfCpuPercent.ToString("0", Ci) + " %")}\n" +
+			$"memory      {Mb(sample.totalUsedBytes)}   gfx {Mb(sample.gfxUsedBytes)}\n" +
+			$"draw calls  {sample.drawCalls.ToString("N0", Ci)}\n" +
+			// Named rather than omitted, so it is clear these were considered and are not simply
+			// missing. None is reachable from Unity: die temperatures and GPU utilisation come from
+			// vendor interfaces - NVML, ADL, or Windows performance counters - not from the engine.
+			"cpu temp    n/a (needs vendor tooling)\n" +
+			"gpu usage   n/a (needs vendor tooling)\n" +
+			"gpu temp    n/a (needs vendor tooling)";
+
+		perfWallSum = perfCpuMainSum = perfCpuRenderSum = perfGpuSum = 0;
+		perfSampleCount = 0;
+	}
+
+	/// <summary>
+	/// This process's CPU use, as a percentage of one core-second per wall second.
+	///
+	/// The process rather than the machine: system-wide load is not something Unity can see, and
+	/// the renderer's own cost is the number that means anything here anyway. Divided by the core
+	/// count so it reads 0-100 rather than 0-N*100.
+	/// </summary>
+	void SampleProcessCpu()
+	{
+		try
+		{
+			perfProcess ??= System.Diagnostics.Process.GetCurrentProcess();
+
+			double cpuSeconds = perfProcess.TotalProcessorTime.TotalSeconds;
+			float now = Time.realtimeSinceStartup;
+
+			if (perfLastCpuSeconds >= 0 && now > perfLastCpuSampleTime)
+			{
+				double busy = cpuSeconds - perfLastCpuSeconds;
+				double elapsed = now - perfLastCpuSampleTime;
+				perfCpuPercent = (float)(100.0 * busy / (elapsed * Mathf.Max(1, SystemInfo.processorCount)));
+			}
+
+			perfLastCpuSeconds = cpuSeconds;
+			perfLastCpuSampleTime = now;
+		}
+		catch (System.Exception)
+		{
+			// Restricted on some platforms. Reported as n/a rather than as a wrong number.
+			perfCpuPercent = -1;
+			perfProcess = null;
+		}
+	}
+
+	static string Mb(long bytes) => (bytes / (1024.0 * 1024.0)).ToString("N0", Ci) + " MB";
+
+	void ReleasePerformanceSampler()
+	{
+		if (perfSampler == null) { return; }
+		perfSampler.Dispose();
+		perfSampler = null;
+		perfText = "";
+		perfSampleCount = 0;
+		perfWallSum = perfCpuMainSum = perfCpuRenderSum = perfGpuSum = 0;
 	}
 
 	void ToggleFullscreen()
@@ -511,6 +653,17 @@ public class BenchmarkHud : MonoBehaviour
 
 		GUI.DrawTexture(rect, overlayBackground);
 		GUI.Label(rect, content, overlayStyle);
+
+		// Top right, opposite the control panel, so neither has to be moved to read the other.
+		if (showPerformance && !string.IsNullOrEmpty(perfText))
+		{
+			var perfContent = new GUIContent(perfText);
+			Vector2 perfSize = overlayStyle.CalcSize(perfContent);
+			var perfRect = new Rect(Screen.width - perfSize.x - 10f, 10f, perfSize.x, perfSize.y);
+
+			GUI.DrawTexture(perfRect, overlayBackground);
+			GUI.Label(perfRect, perfContent, overlayStyle);
+		}
 	}
 
 /// <summary>
@@ -560,7 +713,7 @@ public class BenchmarkHud : MonoBehaviour
 			$"{KeyName(cycleGenusKey)} genus  {KeyName(cycleModeKey)} mode\n" +
 			$"  {KeyName(runKey)} run  {KeyName(cycleBenchmarkKey)} benchmark  " +
 			$"{KeyName(toggleOverlayKey)} hide  {KeyName(fullscreenKey)} fullscreen  " +
-			$"{KeyName(cycleResolutionKey)} resolution\n" +
+			$"{KeyName(cycleResolutionKey)} resolution  {KeyName(togglePerformanceKey)} perf\n" +
 			CameraKeyLine();
 	}
 

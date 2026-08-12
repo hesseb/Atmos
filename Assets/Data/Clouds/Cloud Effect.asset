@@ -96,7 +96,7 @@ MonoBehaviour:
   skyDetailScale: 0.5
   skyStrength: 0.628
   genusOverride: 0
-  costMode: 1
+  costMode: 2
   depthRejection: 64
   historyBlend: 0.2
   shadowCompute: {fileID: 7200000, guid: 7e32ea3e1f7e5774a905538e6cd29a45, type: 3}
