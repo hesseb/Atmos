@@ -11,7 +11,7 @@ using SolarSystem;
 /// thesis: twilight is where ozone absorption and the Mie forward lobe do most of their
 /// visible work, so those comparisons need to be reproducible across renderers.
 ///
-/// MEASUREMENT NOTE: turn <see cref="showOverlay"/> off before timing anything. IMGUI
+/// MEASUREMENT NOTE: hide the overlay before timing anything. IMGUI
 /// allocates and costs frame time.
 /// </summary>
 public class TimeController : MonoBehaviour
@@ -40,13 +40,6 @@ public class TimeController : MonoBehaviour
 	// condition where aerial perspective and Mie scattering are most visible.
 	public float goldenElevationDegrees = 5f;
 
-	[Header("Overlay")]
-	public bool showOverlay = true;
-	public KeyCode toggleOverlayKey = KeyCode.F1;
-	public int overlayFontSize = 18;
-	public Color overlayTextColour = Color.white;
-	public Color overlayBackgroundColour = new Color(0f, 0f, 0f, 0.66f);
-
 	public bool inputEnabled = true;
 
 	/// <summary>The last thing a time key did, for the shared overlay to echo.</summary>
@@ -57,9 +50,6 @@ public class TimeController : MonoBehaviour
 		get => LastAction;
 		set => LastAction = value;
 	}
-	GUIStyle overlayStyle;
-	Texture2D overlayBackground;
-	Color appliedBackgroundColour;
 
 	EarthOrbit Earth => solarSystem != null ? solarSystem.earth : null;
 
@@ -222,23 +212,12 @@ public class TimeController : MonoBehaviour
 		if (observer == null && Camera.main != null) { observer = Camera.main.transform; }
 	}
 
-	void OnDestroy()
-	{
-		if (overlayBackground != null)
-		{
-			if (Application.isPlaying) { Destroy(overlayBackground); }
-			else { DestroyImmediate(overlayBackground); }
-			overlayBackground = null;
-		}
-	}
-
 	void OnValidate()
 	{
 		if (speedSteps != null && speedSteps.Length > 0)
 		{
 			speedIndex = Mathf.Clamp(speedIndex, 0, speedSteps.Length - 1);
 		}
-		overlayFontSize = Mathf.Clamp(overlayFontSize, 8, 48);
 		if (Application.isPlaying) { ApplySpeed(); }
 	}
 }

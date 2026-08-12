@@ -103,6 +103,8 @@ public class BenchmarkHud : MonoBehaviour
 	{
 		if (runner == null) { runner = GetComponent<BenchmarkRunner>(); }
 		if (runner == null) { runner = FindFirstObjectByType<BenchmarkRunner>(); }
+		// Found rather than wired, so merging the two overlays costs no scene edit.
+		if (time == null) { time = FindFirstObjectByType<TimeController>(); }
 	}
 
 	void OnEnable()
