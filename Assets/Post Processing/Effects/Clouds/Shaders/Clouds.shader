@@ -406,6 +406,10 @@ Shader "Hidden/Clouds"
 			sampler2D _CloudTex;
 			sampler2D _CloudHistory;
 			float4 _CloudMarchSize;
+			// The slot marched this frame. Set on the material, so it reaches this pass as well as
+			// the march - which is what lets the fallback below compute where the marched block is
+			// instead of hunting for it.
+			int cloudTemporalIndex;
 			float4x4 _CloudPrevViewProj;
 			float _CloudHistoryBlend;
 			float _CloudReprojectRadius;
@@ -457,23 +461,28 @@ Shader "Hidden/Clouds"
 					// to a marched neighbour, since a hole would read as a hard dot pattern.
 					if (onScreen) { return history; }
 
-					// TWO texels, matching the block stride above.
+					// The marched block sits at a KNOWN offset, so this is one tap and not a search.
 					//
-					// This searched one texel away, which was right while the pattern alternated
-					// per pixel - the nearest marched neighbour was always adjacent. Now that a slot
-					// covers a 2x2 block the nearest one is two texels away, so a one-texel search
-					// lands inside the same unmarched block and finds nothing, leaving the fallback
-					// returning "no cloud" and punching holes wherever the history is unusable.
-					float2 texel = _CloudMarchSize.zw * 2.0;
-					float4 best = float4(0, 0, 0, 1);
-					[unroll]
-					for (int k = 0; k < 4; k++)
-					{
-						float2 offset = float2(k == 0 ? 1 : (k == 1 ? -1 : 0), k == 2 ? 1 : (k == 3 ? -1 : 0));
-						float4 neighbour = tex2D(_CloudTex, i.uv + offset * texel);
-						if (neighbour.a >= 0) { best = neighbour; }
-					}
-					return best;
+					// Stepping two texels along a single axis flips exactly one bit of the slot, so a
+					// four-tap cross over +-x and +-y reaches slot^1 and slot^2 and never slot^3. For
+					// the block diagonally adjacent to the marched one, none of the four taps had been
+					// marched, the accumulator kept its "no cloud" initialiser, and the fallback
+					// punched a hole in exactly the case it exists to fill. One block in four, on
+					// every frame the history cannot be used.
+					//
+					// Widening the cross to eight taps would fix it, but there is nothing to search
+					// for: the slot IS the block's parity, so xoring this block's slot against the
+					// marched one names the axes to step along outright.
+					int2 pixel = (int2)(i.uv * _CloudMarchSize.xy);
+					int slot = ((pixel.x >> 1) & 1) + (((pixel.y >> 1) & 1) << 1);
+					int diff = slot ^ cloudTemporalIndex;
+
+					float2 offset = float2((diff & 1) ? 1 : 0, (diff & 2) ? 1 : 0) * _CloudMarchSize.zw * 2.0;
+					// Step backwards on any axis where stepping forwards would leave the texture, so
+					// the edge of the frame does not reintroduce the hole this just removed.
+					offset = lerp(offset, -offset, step(1.0, i.uv + offset));
+
+					return tex2D(_CloudTex, i.uv + offset);
 				}
 
 				// Marched this frame. Blend toward it so the sequence converges rather than
