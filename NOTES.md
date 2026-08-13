@@ -2364,3 +2364,128 @@ Two audit findings that were wrong, recorded because the second nearly caused a 
 - The march jitter did not sample before the span start at default settings - the `+0.5` midpoint
   absorbs the negative end of the offset. It only does so above `jitterStrength` 1, and the range
   allows 2. The defect was the mean, not the extent.
+
+## Second audit pass: the FBM check paid off as a refutation, and the maps stopped redrawing themselves
+
+A second sweep over the same ground, structured differently from the first: triage a fresh list of
+suspect sites, execute the "check every FBM" instruction the FBM-range bug left behind, re-verify
+the twelve catalogued approximations against current code, and close-read the hot loop bodies the
+first pass indexed but did not line-audit. Same rules - image-neutral fixes applied one concern per
+commit, image-changing findings catalogued, refutations recorded.
+
+### The every-FBM check, executed
+
+The instruction from the range-bug era ("worth checking every FBM in the project") is now
+discharged, and the answer is good: **neither recorded bug class recurs anywhere.** Every fractal
+sum in the tree normalises by its own amplitude sum and then stretches by a measured, exposed range
+gain; every march in the project samples at midpoints or with the uniform jitter; the
+multiple-scattering LUT's 8x8 stratification is an exact equal-solid-angle midpoint rule; and the
+noise bake's interlocked min/max normalisation is a global affine stretch of a linearly composed
+field, so no range assumption upstream of it survives to distort anything. The one real finding is
+catalogued below as #13.
+
+### Fixed - image-neutral, unmeasured like everything above
+
+- **The shadow map and the sky map dispatched every frame with no staleness guard.** The weather
+  map's exact-signature skip never reached the other two per-frame cloud dispatches: 512x256 x
+  `shadowSteps` density samples, plus 256x128 x `skySteps` steps each paying a six-sample cone
+  march, every frame, to reproduce both textures bit for bit whenever the sun, the wind and every
+  dial were still - which is every held benchmark pose. Both now skip on the weather map's
+  discipline, with one shared `DensitySignature` standing in for the density model and the weather
+  signature standing in for that map's content. Two structural points worth keeping: the
+  **publishes stay unconditional**, because they are what re-claims the shadow globals after the
+  other cloud arm held them; and the sky map's signature must also hash the **camera position, sun
+  direction and a new `atmosphereSettingsVersion` global**, because that kernel samples the
+  transmittance and sky-view LUTs, and the sky-view LUT is rebuilt each frame from exactly those
+  inputs. The version global is bumped in `AtmosphereEffect`'s settings branch and published the
+  same one-writer way `skyReflectionStrength` is - without it, tuning an atmosphere slider would
+  leave the sea reflecting a deck lit by the previous atmosphere, the plausible-image failure this
+  file keeps warning about.
+- **`CloudSkyMap.compute` compiles a declaration of `CloudShadowMap` and nothing ever bound it.**
+  The kernel reaches `CloudShadowCommon.hlsl` through `SurfaceLighting.hlsl` but never samples the
+  map, so the dispatch survives on dead-stripping - one shared-function edit away from the
+  "Property ... is not set" failure `CloudShadowGlobals` documents, firing from inside a pre-cull
+  callback. Now bound like the atmosphere's three computes.
+- Both texture overloads of `ComputeHelper.Dispatch` fetched the kernel's thread-group sizes and
+  discarded them, delegating to the overload that fetches them again - two native reflection calls
+  per dispatch where one does, on the path the sky and sky-view LUTs take every frame.
+- `PostProcessingManager.OnDrawGizmos` and `OnDestroy` iterated `effects` unguarded; both are
+  reachable with the array null. Same guard class as the six in the first pass.
+- `RaymarchCommon.hlsl` was the only header in its folder without an include guard - five uniform
+  declarations one indirect include away from a redefinition error. Guard-only, so a compute
+  compiled against the stale header is bit-identical and no reimport is owed.
+- **The validation mirror lacked the guards its shader grew.** The scale-height floors and
+  `max(size, 2)` landed in `GetShaderValues` and `LutMapping.hlsl`; `AtmosphereReference` kept the
+  unguarded forms, so the validator NaNed on inputs the shader now survives. The sky-view mirror
+  also restated the sub-uv formula inline rather than calling its own helper - the exact drift the
+  file's header warns about, caught at the harmless end.
+- Two overclaiming comments corrected: one octave of the gradient noise is bounded by sqrt(3)/2,
+  not "roughly [-1, 1]", and `ApplyAtmosphereValuesTo` still cited an always-runs-in-edit-mode
+  path that was removed with the per-frame rebake.
+
+### New catalogue entries
+
+13. **One range gain is shared by FBMs of four different octave counts.** The weather map's six
+    fields fold with the same `weatherRangeGain` but run at `octaves` down to `max(2, octaves-3)`,
+    and a normalised FBM's spread widens as octaves drop - by ~5% two octaves down, ~27% at the
+    floor. The gain is calibrated against the widest field, so the shorter FBMs over-stretch and
+    clip ~0.06-0.5% of texels to exactly 0 or 1 at defaults, more if the octave count is lowered.
+    `BaselineCloudBake.compute` shares the same shape. Direction of error is tail-clipping, not
+    the old middle-third compression, and the contrast remaps clip on top of it deliberately - so
+    this is a distribution distortion, not a recurrence. The fix, if wanted, is a per-field gain
+    scaled by the octave count's amplitude ratio.
+14. **Catalogue item 10 grew.** The unmitigated `c = dot(p, p) - r*r` form now also exists at
+    `BaselineCloudCommon.hlsl:167`, `CloudShadowCommon.hlsl:73` and `SurfaceLighting.hlsl:131`,
+    beyond the two sites the item names. `CloudShadowMap.compute` remains the only site that
+    mitigates.
+
+Re-verification of the existing twelve: ten hold exactly as written. Item 3 is one-third done -
+the ambient amortisation shipped with the per-step hoist; the weather tap in the light march and
+the per-step sun transmittance remain. Item 11's two span derivations were compared term by term
+and **currently agree exactly**, including the ground, tangent and inside-atmosphere cases - still
+the drift class it names, not yet a live bug.
+
+### Notes, not defects
+
+- The output dither has mean +half an LSB rather than zero - `getBlueNoise`'s triangular remap is
+  rescaled to [-0.5, 1.5] - so all four dither sites add a constant `+0.5 * strength / 255` lift.
+  Identical in both renderer arms, so it cannot bias the comparison.
+- The shadow march covers `[nearSpan.x, max(nearSpan.y, farSpan.y)]` as one segment, so with the
+  sun low some of its `shadowSteps` land in the empty gap below the cloud base - dilution of the
+  effective sample count, not bias.
+- In Half mode the march reads full-resolution depth at half-resolution UVs, so termination is
+  decided by one arbitrary sub-pixel of the four covered; and the composite always runs full-res,
+  taking 5 depth + 4 cloud taps per pixel in Half against an early-out single tap in Full. Both
+  are properties of the technique the thesis is pricing - the Half/Full gap deliberately includes
+  the filter - but they belong in the RQ2 text.
+- The moon branch doubles the per-step cost of the cloud march (second cone march plus a second
+  transmittance tap) whenever `moonLightColour` is non-zero. Uniform branch, free by day, honest
+  by night; worth remembering when a night pose measures slow.
+- **`shadowSteps` is 32 in `Cloud Effect.asset`** - the top of its range and 3.2x the tooltip's
+  default of 10. Nothing in this file records that as a decision. Worth confirming before it
+  becomes a published cost number. (Inspector-authored value, so it was left alone.)
+- Four `main` commits after the benchmark additions (`b682e88`, `4efb658`, `344d4e8`, `1e8eed2`)
+  have no entry in this file, and `1e8eed2`'s message carries real measured data - Temporal at
+  87-102% of Full against Half's 28-43% before the quad-alignment fix - that exists nowhere else.
+
+### Refuted this pass
+
+Recorded for the same reason as the first pass's two: each of these looks like a defect on first
+read and is not.
+
+- **`skyReflectionStrength` is read at two points in the frame** (`BindDeckLighting` at pre-cull,
+  `SetProperties` in the post chain) - but its only writer runs in `RenderingManager.Update`,
+  which precedes both in every frame, so the two reads cannot see different values. On the profile
+  swap frame itself both reads see the pre-swap value together, and the next frame corrects.
+- **`SetDrawSkyShaderParameters` runs twice during setup** - both are load-bearing: the call in
+  `SetupSkyRenderingCommand` covers a freshly recreated material when settings are already clean,
+  and the dirty-branch call covers settings changes on a live material.
+- **`OnRenderImage` allocates `new PostProcessingEffect[0]` when `effects` is null** - it assigns
+  the field, so it happens once, not per frame.
+- **`BindGlobalResources` runs once per camera per frame** (it sits outside the `activeCamera`
+  check). In a build there is one camera, so there is no runtime waste; in the editor the scene
+  view doubles it, but gating it on the game camera would hand the scene view stale globals. The
+  first pass already established the harder version of this: do not gate it on `enabled` either.
+- **`ApplyAtmosphereValuesTo` builds `ShaderValues` twice when the settings are dirty** - real,
+  but it is the offline bake path, and reusing `sharedAtmosphereValues` would silently change
+  behaviour for a caller that wrote fields without marking the settings dirty.
