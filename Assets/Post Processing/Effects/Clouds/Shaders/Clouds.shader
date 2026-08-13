@@ -109,10 +109,48 @@ Shader "Hidden/Clouds"
 			float cloudMoonIntensity;
 			float cloudMoonSilverIntensity;
 
-			/// Returns the cloud on its own: rgb is what it adds, a is how much of the scene behind
-			/// it survives. Kept separate from the background so this pass can run at a lower
-			/// resolution than the frame and be upsampled by the composite pass below - which is
-			/// the whole of the Half cost mode.
+			/// The skylight reaching a cloud sample: the zenith and the sunlit horizon, blended.
+			///
+			/// Sampled toward the sunlit HORIZON as well as the zenith because at sunset the zenith is
+			/// deep blue while the horizon is orange, so a zenith-only lookup throws away exactly the
+			/// colour the clouds are meant to be picking up. The horizon tap is what carries the sunset.
+			///
+			/// Evaluated ONCE PER PIXEL, and it took a while to see that it could be. Both taps are
+			/// invariant along the ray - not approximately, exactly - and neither depends on `up`:
+			///
+			///   the zenith tap  dot(up, up) is 1, and the direction's tangent against up is the zero
+			///                   vector, so sampleSkyView takes its degenerate-azimuth branch and
+			///                   returns cosAzimuth = 1. That is texel (0, 0), whatever `up` was.
+			///   the horizon tap horizonDir is built perpendicular to up, so the zenith cosine is 0;
+			///                   and it is built FROM the sun's tangent, so the azimuth cosine is 1
+			///                   against itself. With skyViewLutAltitude at 0 the horizon zenith angle
+			///                   is exactly pi/2, which lands on the horizon row.
+			///
+			/// So the whole block - a normalize, a tangent projection, an acos, two LUT taps and two
+			/// tone maps - was recomputing two per-frame constants at every step of every pixel, in
+			/// both spans. CloudSkyMap.compute already hoists the identical block out of its own loop;
+			/// this is the same hoist, arrived at from the other direction.
+			///
+			/// What this is NOT is a new approximation. The lookup has no positional dependence to
+			/// lose: sampleSkyView reads skyViewLutRadius, a uniform baked at sea level. That is the
+			/// same limitation the aerial-perspective term documents, and it is why the in-scatter
+			/// there collapses to L_sky * (1 - T).
+			float3 cloudSkyAmbient(float3 up)
+			{
+				float3 sunTangent = cloudSunDir - up * dot(cloudSunDir, up);
+				float tangentLength = length(sunTangent);
+				// Degenerate with the sun overhead, and there the sky is near enough azimuthally
+				// symmetric that the zenith tap alone is right anyway.
+				float3 horizonDir = tangentLength > 1e-3 ? sunTangent / tangentLength : up;
+
+				float3 skyZenith = sampleSkyViewSafe(up, up, cloudSunDir);
+				float3 skyHorizon = sampleSkyViewSafe(up, horizonDir, cloudSunDir);
+
+				float3 ambient = lerp(skyZenith, skyHorizon, cloudAmbientHorizon) * cloudAmbientIntensity;
+				// Returns zero without an atmosphere, hence the fallback.
+				return ambient + cloudAmbientFallback * (hasPhysicalAtmosphere() ? 0.0 : 1.0);
+			}
+
 			/// Marches one span of the shell, accumulating into the caller's running totals.
 			///
 			/// A span rather than the whole ray, because a ray can cross the shell twice - see
@@ -120,7 +158,7 @@ Shader "Hidden/Clouds"
 			/// dimmed by whatever the near one already absorbed.
 			void cloudMarchSpan(
 				float3 rayOrigin, float3 rayDir, float2 span, float phase, float cosViewSun, float2 uv,
-				AerialRay aerialRay, float3 aerialSky,
+				AerialRay aerialRay, float3 aerialSky, float3 skyAmbient,
 				inout float transmittance, inout float3 luminance, inout float rawDensity)
 			{
 				float start = span.x;
@@ -194,26 +232,13 @@ Shader "Hidden/Clouds"
 
 					float energy = cloudBeerPowder(cloudLightMarch(pos, cloudSunDir), cosViewSun);
 
-					// Skylight, from the same LUT the ocean and the land use. This is what puts the
-					// sunset on the undersides, and at low sun it does more of the work than the
-					// direct term does. Returns zero without an atmosphere, hence the fallback.
-					//
-					// Sampled toward the sunlit HORIZON as well as the zenith. At sunset the zenith
-					// is deep blue while the horizon is orange, so a zenith-only lookup throws away
-					// exactly the colour the clouds are supposed to be picking up - which is most of
-					// why they read as dark rather than warm. Two taps, and the horizon one is what
-					// carries the sunset.
-					float3 up = normalize(pos);
-					float3 sunTangent = cloudSunDir - up * dot(cloudSunDir, up);
-					float tangentLength = length(sunTangent);
-					// Degenerate with the sun overhead, and there the sky is near enough
-					// azimuthally symmetric that the zenith tap alone is right anyway.
-					float3 horizonDir = tangentLength > 1e-3 ? sunTangent / tangentLength : up;
+					// Skylight, hoisted to the pixel - see cloudSkyAmbient, which explains why the two
+					// taps it is built from do not vary along the ray at all.
+					float3 ambient = skyAmbient;
 
-					float3 skyZenith = sampleSkyViewSafe(up, up, cloudSunDir);
-					float3 skyHorizon = sampleSkyViewSafe(up, horizonDir, cloudSunDir);
-					float3 ambient = lerp(skyZenith, skyHorizon, cloudAmbientHorizon) * cloudAmbientIntensity;
-					ambient += cloudAmbientFallback * (hasPhysicalAtmosphere() ? 0.0 : 1.0);
+					// The one part of it that genuinely does vary, because it is a function of
+					// position rather than of the LUT: how far past the terminator this sample sits.
+					float3 up = normalize(pos);
 
 					// Starlight and airglow. Every source the clouds have goes to zero together once
 					// the sun is down - the sky LUT is genuinely dark and the transmittance is
@@ -358,15 +383,18 @@ Shader "Hidden/Clouds"
 				// cloudMarchSpan is called twice for the same ray.
 				AerialRay aerialRay = aerialRayBegin(rayOrigin, rayDir);
 				float3 aerialSky = sampleSkyViewSafe(normalize(rayOrigin), rayDir, cloudSunDir);
+				// Third of the per-pixel terms, and the newest. See cloudSkyAmbient for why a value
+				// that reads as though it depends on the sample position does not.
+				float3 skyAmbient = cloudSkyAmbient(normalize(rayOrigin));
 
 				float transmittance = 1;
 				float3 luminance = 0;
 				float rawDensity = 0;
 
 				cloudMarchSpan(rayOrigin, rayDir, nearSpan, phase, cosViewSun, i.uv,
-					aerialRay, aerialSky, transmittance, luminance, rawDensity);
+					aerialRay, aerialSky, skyAmbient, transmittance, luminance, rawDensity);
 				cloudMarchSpan(rayOrigin, rayDir, farSpan, phase, cosViewSun, i.uv,
-					aerialRay, aerialSky, transmittance, luminance, rawDensity);
+					aerialRay, aerialSky, skyAmbient, transmittance, luminance, rawDensity);
 
 				if (cloudDebugMode == 4) { return float4((rawDensity * 0.2).xxx, 0); }
 
