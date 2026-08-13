@@ -20,8 +20,6 @@ public class RenderingManager : MonoBehaviour
 	public AtmosphereEffect atmosphereEffect;
 	public BaselineSkyRenderer baselineSky;
 
-	public Mesh mesh;
-	public Material mat;
 	public SolarSystem.Moon moon;
 
 	CommandBuffer outerSpaceRenderCommand;

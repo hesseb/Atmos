@@ -56,16 +56,4 @@ float3 toneMap(float3 lum) {
 	return lum;
 }
 
-float3 toneMapA(float3 lum) {
-	lum *= intensity;
-	lum = lerp(0.5, lum, contrast);
-	return lum;
-}
-
-float3 toneMapB(float3 lum) {
-	lum = reinhard_extended(lum, whitePoint);
-	lum = smoothMax(lum, -0.05, 0.05);
-	return lum;
-}
-
 #endif

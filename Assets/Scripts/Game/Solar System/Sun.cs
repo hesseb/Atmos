@@ -17,7 +17,6 @@ namespace SolarSystem
 		[Header("Debug")]
 		public Color sunColour;
 		public float timeOfDayT;
-		public int maxSize;
 
 		void Start()
 		{
@@ -25,10 +24,6 @@ namespace SolarSystem
 			cam = Camera.main;
 		}
 
-		void Update()
-		{
-			//lightSource.shadowCustomResolution = maxSize;
-		}
 
 
 		// For simplicity, earth is stationary and doesn't rotate.

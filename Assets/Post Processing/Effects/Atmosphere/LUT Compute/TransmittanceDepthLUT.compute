@@ -13,7 +13,6 @@
 // been 0.525, with the colour ratios still perfectly correct.
 
 RWTexture2D<float3> TransmittanceLUT;
-SamplerState transmittance_linear_clamp_sampler;
 
 uint width;
 uint height;

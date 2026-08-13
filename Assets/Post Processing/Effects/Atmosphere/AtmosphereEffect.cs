@@ -10,14 +10,11 @@ public class AtmosphereEffect : PostProcessingEffect
 
 	public Shader drawSkyShader;
 
-	public Color sunColTest;
 	public Light light;
 
 	public float bodyRadius;
 	public float atmosphereThickness;
 
-	public Shader atmosphereShader;
-	public Vector4 testParams = new Vector4(7, 1.26f, 0.1f, 3);
 
 	/// <summary>
 	/// Raymarch steps per depth slice of the aerial perspective LUT.
@@ -193,7 +190,6 @@ public class AtmosphereEffect : PostProcessingEffect
 	[Header("Later")]
 	public float ditherStrength = 0.8f;
 	public Texture2D blueNoise;
-	public FilterMode filterMode;
 
 	[Header("Debug")]
 	/// <summary>
@@ -556,7 +552,6 @@ public class AtmosphereEffect : PostProcessingEffect
 		drawAerial.SetTexture("BlueNoise", blueNoise);
 
 		// Values
-		drawAerial.SetVector("params", testParams);
 		drawAerial.SetFloat("ditherStrength", ditherStrength);
 		drawAerial.SetFloat("aerialPerspectiveStrength", aerialPerspectiveStrength);
 		drawAerial.SetInt("atmosphereDebugMode", (int)debugMode);
@@ -632,9 +627,10 @@ public class AtmosphereEffect : PostProcessingEffect
 		if (aerialPerspectiveLUTCompute == null || light == null) { return; }
 
 		// Assign dynamic values
+		// nearClip and farClip used to be set here. The compute declared both and read neither -
+		// the depth axis is normalised per ray against the atmosphere chord, not against the
+		// camera's clip planes, and has been since that axis stopped being a fixed distance.
 		SetRaymarchParams(aerialPerspectiveLUTCompute, corners);
-		aerialPerspectiveLUTCompute.SetFloat(ShaderParamID.nearClip, cam.nearClipPlane);
-		aerialPerspectiveLUTCompute.SetFloat(ShaderParamID.farClip, cam.farClipPlane);
 		aerialPerspectiveLUTCompute.SetVector(ShaderParamID.dirToSun, -light.transform.forward);
 
 		// 2D, over (x, y) only: each thread now walks the depth slices itself, so dispatching
@@ -646,7 +642,13 @@ public class AtmosphereEffect : PostProcessingEffect
 	void InitSkyLUT()
 	{
 		GraphicsFormat skyFormat = GraphicsFormat.R16G16B16A16_SFloat;
-		ComputeHelper.CreateRenderTexture(ref sky, skyRenderSize.x, skyRenderSize.y, FilterMode.Bilinear, skyFormat, "Sky", useMipMaps: true);
+		// No mip chain. It asked for one, ComputeHelper sets autoGenerateMips false, and nothing
+		// ever called GenerateMips - so the levels below 0 were allocated and left undefined, and
+		// DrawSky samples this with tex2D, which is free to pick one of them the moment the sky
+		// texture is minified rather than magnified. It is not today, at 128x256 against any screen
+		// the resolution cycle offers, but that is a property of the current numbers rather than
+		// something the code guarantees.
+		ComputeHelper.CreateRenderTexture(ref sky, skyRenderSize.x, skyRenderSize.y, FilterMode.Bilinear, skyFormat, "Sky");
 	}
 
 	/// <summary>
@@ -803,8 +805,6 @@ public class AtmosphereEffect : PostProcessingEffect
 		public static int bottomLeftDir = Shader.PropertyToID("bottomLeftDir");
 		public static int bottomRightDir = Shader.PropertyToID("bottomRightDir");
 		public static int camPos = Shader.PropertyToID("camPos");
-		public static int nearClip = Shader.PropertyToID("nearClip");
-		public static int farClip = Shader.PropertyToID("farClip");
 
 		public static int dirToSun = Shader.PropertyToID("dirToSun");
 

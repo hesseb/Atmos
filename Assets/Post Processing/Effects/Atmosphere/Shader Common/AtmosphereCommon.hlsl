@@ -315,8 +315,9 @@ void raymarchSegment(inout ScatteringState state, float3 segmentStart, float3 ra
 		float3 opticalDepth = scattering.extinction * stepSize;
 		float3 sampleTransmittance = exp(-opticalDepth);
 		
-		// The proportion of light that reaches this point from the sun
-		// float3 sunTransmittance = getSunTransmittance(rayPos, dirToSun);
+		// The proportion of light that reaches this point from the sun, from the LUT rather than
+		// from a nested 40-step march. getSunTransmittance still exists and is what BAKES that LUT;
+		// it is not an alternative to this line.
 		float3 sunTransmittance = sampleTransmittanceLUT(transmittanceLUT, rayPos, dirToSun);
 
 		// Earth shadow.

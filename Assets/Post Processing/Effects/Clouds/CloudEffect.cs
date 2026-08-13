@@ -428,8 +428,6 @@ namespace Clouds
 		// without the thing it is being judged on moving under it.
 		SolarSystem.SolarSystemManager solarSystem;
 
-		public RenderTexture WeatherMap => weatherMap;
-
 		public override void OnEnable()
 		{
 			// Before base.OnEnable, which is what builds the material from `shader`.

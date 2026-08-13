@@ -40,13 +40,11 @@
 			}
 
 			sampler2D _MainTex;
-			float4 _MainTex_TexelSize;
 			sampler2D _CameraDepthTexture;
 
 			sampler3D AerialPerspectiveLUT;
 			sampler3D TransmittanceLUT3D;
 
-			float4 params;
 			float aerialPerspectiveStrength;
 
 			/// 0 off, 1 the light-shaft occlusion term. See AtmosphereEffect.DebugMode.
@@ -92,7 +90,6 @@
 				float eyeDepth = LinearEyeDepth(nonlin_depth);
 				float sceneDepth = eyeDepth * viewLength;
 
-				float nearClipPlane = _ProjectionParams.y;
 				float farClipPlane = _ProjectionParams.z;
 			
 				float3 rayOrigin = _WorldSpaceCameraPos;

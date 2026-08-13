@@ -18,8 +18,6 @@ RWTexture3D<float4> AerialPerspectiveTransmittance;
 sampler2D TransmittanceLUT;
 
 uint size;
-float nearClip;
-float farClip;
 int stepsPerSlice;
 
 // One thread per (x, y), walking the depth slices in order, instead of one thread per voxel
