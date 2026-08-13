@@ -109,10 +109,48 @@ Shader "Hidden/Clouds"
 			float cloudMoonIntensity;
 			float cloudMoonSilverIntensity;
 
-			/// Returns the cloud on its own: rgb is what it adds, a is how much of the scene behind
-			/// it survives. Kept separate from the background so this pass can run at a lower
-			/// resolution than the frame and be upsampled by the composite pass below - which is
-			/// the whole of the Half cost mode.
+			/// The skylight reaching a cloud sample: the zenith and the sunlit horizon, blended.
+			///
+			/// Sampled toward the sunlit HORIZON as well as the zenith because at sunset the zenith is
+			/// deep blue while the horizon is orange, so a zenith-only lookup throws away exactly the
+			/// colour the clouds are meant to be picking up. The horizon tap is what carries the sunset.
+			///
+			/// Evaluated ONCE PER PIXEL, and it took a while to see that it could be. Both taps are
+			/// invariant along the ray - not approximately, exactly - and neither depends on `up`:
+			///
+			///   the zenith tap  dot(up, up) is 1, and the direction's tangent against up is the zero
+			///                   vector, so sampleSkyView takes its degenerate-azimuth branch and
+			///                   returns cosAzimuth = 1. That is texel (0, 0), whatever `up` was.
+			///   the horizon tap horizonDir is built perpendicular to up, so the zenith cosine is 0;
+			///                   and it is built FROM the sun's tangent, so the azimuth cosine is 1
+			///                   against itself. With skyViewLutAltitude at 0 the horizon zenith angle
+			///                   is exactly pi/2, which lands on the horizon row.
+			///
+			/// So the whole block - a normalize, a tangent projection, an acos, two LUT taps and two
+			/// tone maps - was recomputing two per-frame constants at every step of every pixel, in
+			/// both spans. CloudSkyMap.compute already hoists the identical block out of its own loop;
+			/// this is the same hoist, arrived at from the other direction.
+			///
+			/// What this is NOT is a new approximation. The lookup has no positional dependence to
+			/// lose: sampleSkyView reads skyViewLutRadius, a uniform baked at sea level. That is the
+			/// same limitation the aerial-perspective term documents, and it is why the in-scatter
+			/// there collapses to L_sky * (1 - T).
+			float3 cloudSkyAmbient(float3 up)
+			{
+				float3 sunTangent = cloudSunDir - up * dot(cloudSunDir, up);
+				float tangentLength = length(sunTangent);
+				// Degenerate with the sun overhead, and there the sky is near enough azimuthally
+				// symmetric that the zenith tap alone is right anyway.
+				float3 horizonDir = tangentLength > 1e-3 ? sunTangent / tangentLength : up;
+
+				float3 skyZenith = sampleSkyViewSafe(up, up, cloudSunDir);
+				float3 skyHorizon = sampleSkyViewSafe(up, horizonDir, cloudSunDir);
+
+				float3 ambient = lerp(skyZenith, skyHorizon, cloudAmbientHorizon) * cloudAmbientIntensity;
+				// Returns zero without an atmosphere, hence the fallback.
+				return ambient + cloudAmbientFallback * (hasPhysicalAtmosphere() ? 0.0 : 1.0);
+			}
+
 			/// Marches one span of the shell, accumulating into the caller's running totals.
 			///
 			/// A span rather than the whole ray, because a ray can cross the shell twice - see
@@ -120,7 +158,7 @@ Shader "Hidden/Clouds"
 			/// dimmed by whatever the near one already absorbed.
 			void cloudMarchSpan(
 				float3 rayOrigin, float3 rayDir, float2 span, float phase, float cosViewSun, float2 uv,
-				AerialRay aerialRay, float3 aerialSky,
+				AerialRay aerialRay, float3 aerialSky, float3 skyAmbient,
 				inout float transmittance, inout float3 luminance, inout float rawDensity)
 			{
 				float start = span.x;
@@ -141,12 +179,28 @@ Shader "Hidden/Clouds"
 
 				// Blue-noise start offset, so undersampling breaks up into noise rather than into
 				// the concentric banding a fixed phase produces on a spherical shell.
-				float jitter = getBlueNoise(uv).r * cloudJitterStrength * stepSize;
+				//
+				// A fraction of ONE step, and a MEAN-PRESERVING one. This read getBlueNoise, which is
+				// the DITHER transform: a triangular distribution rescaled to [-0.5, 1.5], mean 0.5.
+				// Added on top of the (s + 0.5) midpoint it shifted every sample forward by half a step
+				// on average, and let the tail reach 1.5 steps past where it belonged - at which point
+				// the `t >= end` break fired early and the march stopped short of the very span it had
+				// just sized itself to cover, against the claim made twenty lines above.
+				//
+				// That is the same quadrature bias found and fixed twice in the atmosphere:
+				// getSunTransmittance sampling right-Riemann, raymarchSegment left-Riemann. A biased
+				// sample position is not noise; it is a systematic error that noise happens to hide.
+				//
+				// lerp from 0.5 rather than scaling the offset, so the mean stays on the midpoint at
+				// every strength: 0 is exactly the midpoint rule, 1 is uniform across the step. Past 1
+				// the offset can leave the step's own interval, which costs a sample rather than
+				// correctness - a position outside the span reads zero density anyway.
+				float jitter = lerp(0.5, getBlueNoiseRaw(uv).r, cloudJitterStrength);
 
 				[loop]
 				for (int s = 0; s < steps; s++)
 				{
-					float t = start + (s + 0.5) * stepSize + jitter;
+					float t = start + (s + jitter) * stepSize;
 					if (t >= end) { break; }
 
 					float3 pos = rayOrigin + rayDir * t;
@@ -178,26 +232,13 @@ Shader "Hidden/Clouds"
 
 					float energy = cloudBeerPowder(cloudLightMarch(pos, cloudSunDir), cosViewSun);
 
-					// Skylight, from the same LUT the ocean and the land use. This is what puts the
-					// sunset on the undersides, and at low sun it does more of the work than the
-					// direct term does. Returns zero without an atmosphere, hence the fallback.
-					//
-					// Sampled toward the sunlit HORIZON as well as the zenith. At sunset the zenith
-					// is deep blue while the horizon is orange, so a zenith-only lookup throws away
-					// exactly the colour the clouds are supposed to be picking up - which is most of
-					// why they read as dark rather than warm. Two taps, and the horizon one is what
-					// carries the sunset.
-					float3 up = normalize(pos);
-					float3 sunTangent = cloudSunDir - up * dot(cloudSunDir, up);
-					float tangentLength = length(sunTangent);
-					// Degenerate with the sun overhead, and there the sky is near enough
-					// azimuthally symmetric that the zenith tap alone is right anyway.
-					float3 horizonDir = tangentLength > 1e-3 ? sunTangent / tangentLength : up;
+					// Skylight, hoisted to the pixel - see cloudSkyAmbient, which explains why the two
+					// taps it is built from do not vary along the ray at all.
+					float3 ambient = skyAmbient;
 
-					float3 skyZenith = sampleSkyViewSafe(up, up, cloudSunDir);
-					float3 skyHorizon = sampleSkyViewSafe(up, horizonDir, cloudSunDir);
-					float3 ambient = lerp(skyZenith, skyHorizon, cloudAmbientHorizon) * cloudAmbientIntensity;
-					ambient += cloudAmbientFallback * (hasPhysicalAtmosphere() ? 0.0 : 1.0);
+					// The one part of it that genuinely does vary, because it is a function of
+					// position rather than of the LUT: how far past the terminator this sample sits.
+					float3 up = normalize(pos);
 
 					// Starlight and airglow. Every source the clouds have goes to zero together once
 					// the sun is down - the sky LUT is genuinely dark and the transmittance is
@@ -342,15 +383,18 @@ Shader "Hidden/Clouds"
 				// cloudMarchSpan is called twice for the same ray.
 				AerialRay aerialRay = aerialRayBegin(rayOrigin, rayDir);
 				float3 aerialSky = sampleSkyViewSafe(normalize(rayOrigin), rayDir, cloudSunDir);
+				// Third of the per-pixel terms, and the newest. See cloudSkyAmbient for why a value
+				// that reads as though it depends on the sample position does not.
+				float3 skyAmbient = cloudSkyAmbient(normalize(rayOrigin));
 
 				float transmittance = 1;
 				float3 luminance = 0;
 				float rawDensity = 0;
 
 				cloudMarchSpan(rayOrigin, rayDir, nearSpan, phase, cosViewSun, i.uv,
-					aerialRay, aerialSky, transmittance, luminance, rawDensity);
+					aerialRay, aerialSky, skyAmbient, transmittance, luminance, rawDensity);
 				cloudMarchSpan(rayOrigin, rayDir, farSpan, phase, cosViewSun, i.uv,
-					aerialRay, aerialSky, transmittance, luminance, rawDensity);
+					aerialRay, aerialSky, skyAmbient, transmittance, luminance, rawDensity);
 
 				if (cloudDebugMode == 4) { return float4((rawDensity * 0.2).xxx, 0); }
 
@@ -390,6 +434,10 @@ Shader "Hidden/Clouds"
 			sampler2D _CloudTex;
 			sampler2D _CloudHistory;
 			float4 _CloudMarchSize;
+			// The slot marched this frame. Set on the material, so it reaches this pass as well as
+			// the march - which is what lets the fallback below compute where the marched block is
+			// instead of hunting for it.
+			int cloudTemporalIndex;
 			float4x4 _CloudPrevViewProj;
 			float _CloudHistoryBlend;
 			float _CloudReprojectRadius;
@@ -441,23 +489,28 @@ Shader "Hidden/Clouds"
 					// to a marched neighbour, since a hole would read as a hard dot pattern.
 					if (onScreen) { return history; }
 
-					// TWO texels, matching the block stride above.
+					// The marched block sits at a KNOWN offset, so this is one tap and not a search.
 					//
-					// This searched one texel away, which was right while the pattern alternated
-					// per pixel - the nearest marched neighbour was always adjacent. Now that a slot
-					// covers a 2x2 block the nearest one is two texels away, so a one-texel search
-					// lands inside the same unmarched block and finds nothing, leaving the fallback
-					// returning "no cloud" and punching holes wherever the history is unusable.
-					float2 texel = _CloudMarchSize.zw * 2.0;
-					float4 best = float4(0, 0, 0, 1);
-					[unroll]
-					for (int k = 0; k < 4; k++)
-					{
-						float2 offset = float2(k == 0 ? 1 : (k == 1 ? -1 : 0), k == 2 ? 1 : (k == 3 ? -1 : 0));
-						float4 neighbour = tex2D(_CloudTex, i.uv + offset * texel);
-						if (neighbour.a >= 0) { best = neighbour; }
-					}
-					return best;
+					// Stepping two texels along a single axis flips exactly one bit of the slot, so a
+					// four-tap cross over +-x and +-y reaches slot^1 and slot^2 and never slot^3. For
+					// the block diagonally adjacent to the marched one, none of the four taps had been
+					// marched, the accumulator kept its "no cloud" initialiser, and the fallback
+					// punched a hole in exactly the case it exists to fill. One block in four, on
+					// every frame the history cannot be used.
+					//
+					// Widening the cross to eight taps would fix it, but there is nothing to search
+					// for: the slot IS the block's parity, so xoring this block's slot against the
+					// marched one names the axes to step along outright.
+					int2 pixel = (int2)(i.uv * _CloudMarchSize.xy);
+					int slot = ((pixel.x >> 1) & 1) + (((pixel.y >> 1) & 1) << 1);
+					int diff = slot ^ cloudTemporalIndex;
+
+					float2 offset = float2((diff & 1) ? 1 : 0, (diff & 2) ? 1 : 0) * _CloudMarchSize.zw * 2.0;
+					// Step backwards on any axis where stepping forwards would leave the texture, so
+					// the edge of the frame does not reintroduce the hole this just removed.
+					offset = lerp(offset, -offset, step(1.0, i.uv + offset));
+
+					return tex2D(_CloudTex, i.uv + offset);
 				}
 
 				// Marched this frame. Blend toward it so the sequence converges rather than

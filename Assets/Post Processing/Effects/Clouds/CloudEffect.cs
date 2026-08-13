@@ -428,10 +428,16 @@ namespace Clouds
 		// without the thing it is being judged on moving under it.
 		SolarSystem.SolarSystemManager solarSystem;
 
-		public RenderTexture WeatherMap => weatherMap;
-
 		public override void OnEnable()
 		{
+			// Before base.OnEnable, which is what builds the material from `shader`.
+			//
+			// The same hole BaselineCloudEffect fills, and worse here: with the field empty the base
+			// class falls back to Unlit/Texture, which has ONE pass, and RenderEffectToTarget blits
+			// pass 2 of it. There is exactly one shader this effect can ever use, so leaving it to be
+			// assigned by hand buys nothing. An explicit assignment still wins.
+			if (shader == null) { shader = Shader.Find("Hidden/Clouds"); }
+
 			base.OnEnable();
 			// Both maps are generated at pre-cull, not in OnRenderImage, because the terrain and
 			// ocean sample the shadow map during forward opaque - which has already happened by the
@@ -530,7 +536,7 @@ namespace Clouds
 			ResolveSun();
 			Vector3 sunDir = sunLight != null ? -sunLight.transform.forward : Vector3.up;
 
-			int kernel = skyCompute.FindKernel("CSCloudSkyMap");
+			int kernel = skyMapKernel.Of(skyCompute, "CSCloudSkyMap");
 			BindDensity(skyCompute, kernel);
 			skyCompute.SetTexture(kernel, "Result", skyMap);
 			skyCompute.SetVector("cloudSkyMapSize", new Vector2(width, height));
@@ -749,6 +755,61 @@ namespace Clouds
 			temporalFrame++;
 		}
 
+		/// <summary>
+		/// Advances the weather on the SCENE's clock, not the wall clock: paused means paused, and
+		/// scrubbing time forward at 64x carries the weather with it rather than leaving it crawling.
+		/// Falls back to real time if there is no solar system in the scene.
+		///
+		/// Once per frame however many callers ask, which BaselineCloudEffect.Advance has needed for
+		/// the same reason and this did not have. RenderWeatherMap is reachable both from the pre-cull
+		/// callback and from ApplyDensityValuesTo, which the baseline's capture bake calls - so the
+		/// weather could step twice in a frame, at double speed, depending on whether an editor tool
+		/// happened to be running.
+		/// </summary>
+		void Advance()
+		{
+			if (Time.frameCount == lastAdvanceFrame) { return; }
+			lastAdvanceFrame = Time.frameCount;
+
+			if (solarSystem == null) { solarSystem = FindFirstObjectByType<SolarSystem.SolarSystemManager>(); }
+			float timeScale = solarSystem == null ? 1f : (solarSystem.animate ? solarSystem.timeMultiplier : 0f);
+			elapsed += Time.deltaTime * timeScale;
+		}
+
+		CachedKernel skyMapKernel;
+		CachedKernel weatherKernel;
+		CachedKernel shadowKernel;
+
+		int lastAdvanceFrame = -1;
+		int lastWeatherSignature;
+		bool weatherMapValid;
+
+		/// <summary>
+		/// Everything the weather kernel reads, combined into one comparable value.
+		///
+		/// A signature rather than a hand-maintained set of "did this field change" tests, because
+		/// the fields are public and are written from the inspector, from benchmark profiles and from
+		/// the genus authoring table. A list of comparisons would be a second place that has to be
+		/// updated whenever a uniform is added, and the failure mode of forgetting is a map that
+		/// silently stops responding to one of its own dials.
+		///
+		/// Must include every value bound below. If a uniform is added there, add it here.
+		/// </summary>
+		int WeatherSignature(int width, int height, float weatherOffset)
+		{
+			var h = new System.HashCode();
+			h.Add(width); h.Add(height); h.Add(weatherOffset);
+			h.Add(weatherOctaves); h.Add(weatherLacunarity); h.Add(weatherGain);
+			h.Add(coverageScale); h.Add(coverageBias); h.Add(coverageContrast);
+			h.Add(weatherRangeGain); h.Add(typeContrast);
+			h.Add(baseHeightScale); h.Add(baseHeightBias);
+			h.Add(typeScale); h.Add(typeBias);
+			h.Add(precipitationScale); h.Add(precipitationBias);
+			h.Add(highCoverageScale); h.Add(highCoverageBias); h.Add(highCoverageContrast);
+			h.Add(highFormScale); h.Add(highFormBias);
+			return h.ToHashCode();
+		}
+
 		void RenderWeatherMap()
 		{
 			int width = Mathf.Max(8, weatherMapSize.x);
@@ -760,18 +821,36 @@ namespace Clouds
 				ReleaseWeatherMap();
 				weatherMap = CreateWeatherTarget(width, height, "Cloud Weather Map");
 				weatherMapHigh = CreateWeatherTarget(width, height, "Cloud Weather Map High");
+				// A fresh target holds nothing, so the guard below must not conclude the contents
+				// are still current just because the parameters have not moved.
+				weatherMapValid = false;
 			}
 
-			// Advanced on the scene's clock, not the wall clock: paused means paused, and scrubbing
-			// time forward at 64x carries the weather with it rather than leaving it crawling.
-			// Falls back to real time if there is no solar system in the scene.
-			if (solarSystem == null) { solarSystem = FindFirstObjectByType<SolarSystem.SolarSystemManager>(); }
-			float timeScale = solarSystem == null ? 1f : (solarSystem.animate ? solarSystem.timeMultiplier : 0f);
-
-			elapsed += Time.deltaTime * timeScale;
+			Advance();
 			float weatherOffset = elapsed * weatherWindSpeed;
 
-			int kernel = weatherCompute.FindKernel("CSWeatherMap");
+			// This map is expensive and mostly static, and it was rebuilt from scratch every frame.
+			//
+			// Six FBMs per texel, each up to five octaves of an eight-corner gradient noise, over
+			// 512x256 - on the order of thirty million hash evaluations per frame for a field whose
+			// only animated input is a wind offset.
+			//
+			// The comparison is exact rather than a tolerance, so this can only skip a dispatch that
+			// would have reproduced the existing texture bit for bit. That covers more than it
+			// sounds: `Advance` scales the clock by the solar system's own multiplier, which is zero
+			// whenever time is paused - so every held benchmark pose, and every frame spent looking
+			// at a still scene while tuning, was regenerating an identical texture.
+			//
+			// Skipping on "moved less than one texel" would skip far more, and is the obvious next
+			// step, but it is an approximation and belongs with the other approximations rather than
+			// smuggled in beside a set of changes that cannot alter an image.
+			int signature = WeatherSignature(width, height, weatherOffset);
+			if (weatherMapValid && signature == lastWeatherSignature) { return; }
+
+			lastWeatherSignature = signature;
+			weatherMapValid = true;
+
+			int kernel = weatherKernel.Of(weatherCompute, "CSWeatherMap");
 			weatherCompute.SetTexture(kernel, "Result", weatherMap);
 			// One dispatch writes both layers, so they cannot drift out of step.
 			weatherCompute.SetTexture(kernel, "ResultHigh", weatherMapHigh);
@@ -879,7 +958,7 @@ namespace Clouds
 			compute.SetVector("cloudShapeWind", ShapeWind);
 			compute.SetVector("cloudDetailWind", DetailWind);
 
-					compute.SetFloat("cloudHighStrength", highStrength);
+				compute.SetFloat("cloudHighStrength", highStrength);
 			compute.SetFloat("cloudHighBase", highBase);
 			compute.SetFloat("cloudHighThickness", highThickness);
 			compute.SetFloat("cloudHighScale", highScale);
@@ -889,7 +968,7 @@ namespace Clouds
 			compute.SetFloat("cloudHighGranularity", highGranularity);
 			compute.SetVector("cloudHighWindDir", HighWindDir);
 			compute.SetVector("cloudHighWind", HighWind);
-			BindGenusOverride(compute.SetFloat, compute.SetVector);
+			BindGenusOverride(compute);
 		}
 
 		void RenderShadowMap()
@@ -927,7 +1006,7 @@ namespace Clouds
 			ResolveSun();
 			Vector3 sunDir = sunLight != null ? -sunLight.transform.forward : Vector3.up;
 
-			int kernel = shadowCompute.FindKernel("CSCloudShadow");
+			int kernel = shadowKernel.Of(shadowCompute, "CSCloudShadow");
 			BindDensity(shadowCompute, kernel);
 			shadowCompute.SetTexture(kernel, "Result", shadowMap);
 			shadowCompute.SetVector("shadowMapSize", new Vector2(width, height));
@@ -950,12 +1029,32 @@ namespace Clouds
 			publishedShadows = true;
 		}
 
+		/// <summary>
+		/// FindGameObjectWithTag throws rather than returning null when the tag does not exist, and
+		/// this is called three times a frame. One warning and then silence beats an exception per
+		/// call from inside a pre-cull callback. AtmosphereEffect.ResolveSun does the same.
+		/// </summary>
 		void ResolveSun()
 		{
-			if (sunLight != null) { return; }
-			GameObject sunObject = GameObject.FindGameObjectWithTag("Sun");
+			if (sunLight != null || sunTagMissing) { return; }
+
+			GameObject sunObject;
+			try
+			{
+				sunObject = GameObject.FindGameObjectWithTag("Sun");
+			}
+			catch (UnityException)
+			{
+				sunTagMissing = true;
+				Debug.LogWarning("CloudEffect: no \"Sun\" tag defined in this project, so the clouds " +
+					"cannot resolve a sun direction. Assign the light manually on the effect asset.");
+				return;
+			}
+
 			sunLight = sunObject != null ? sunObject.GetComponent<Light>() : null;
 		}
+
+		bool sunTagMissing;
 
 		/// <summary>
 		/// One genus, as weather-field values.
@@ -1009,15 +1108,40 @@ namespace Clouds
 			}
 		}
 
-		/// <summary>Binds the override to whichever consumer. Off leaves every field at its map value.</summary>
-		void BindGenusOverride(System.Action<string, float> setFloat, System.Action<string, Vector4> setVector)
+		/// <summary>
+		/// The override as the four values a consumer binds, whichever consumer that is.
+		///
+		/// This used to be one method taking `setFloat`/`setVector` delegates, called as
+		/// BindGenusOverride(compute.SetFloat, compute.SetVector). A method group converted to a
+		/// System.Action allocates, and both of those do, on every call - and the call sites run
+		/// three times a frame between them. Six delegates a frame of pure garbage to avoid writing
+		/// four lines twice.
+		///
+		/// The values stay in one place, which is the part that actually mattered about sharing.
+		/// </summary>
+		void GenusOverrideValues(out float on, out Vector4 low, out Vector4 high, out float baseOffset)
 		{
-			GenusSettings(genusOverride, out Vector4 low, out Vector2 high, out float baseOffset);
+			GenusSettings(genusOverride, out low, out Vector2 highPair, out baseOffset);
+			on = genusOverride == Genus.Off ? 0f : 1f;
+			high = new Vector4(highPair.x, highPair.y, 0, 0);
+		}
 
-			setFloat("cloudWeatherOverrideOn", genusOverride == Genus.Off ? 0f : 1f);
-			setVector("cloudWeatherOverride", low);
-			setVector("cloudHighWeatherOverride", new Vector4(high.x, high.y, 0, 0));
-			setFloat("cloudGenusBaseOffset", baseOffset);
+		void BindGenusOverride(Material target)
+		{
+			GenusOverrideValues(out float on, out Vector4 low, out Vector4 high, out float baseOffset);
+			target.SetFloat("cloudWeatherOverrideOn", on);
+			target.SetVector("cloudWeatherOverride", low);
+			target.SetVector("cloudHighWeatherOverride", high);
+			target.SetFloat("cloudGenusBaseOffset", baseOffset);
+		}
+
+		void BindGenusOverride(ComputeShader target)
+		{
+			GenusOverrideValues(out float on, out Vector4 low, out Vector4 high, out float baseOffset);
+			target.SetFloat("cloudWeatherOverrideOn", on);
+			target.SetVector("cloudWeatherOverride", low);
+			target.SetVector("cloudHighWeatherOverride", high);
+			target.SetFloat("cloudGenusBaseOffset", baseOffset);
 		}
 
 		void SetProperties()
@@ -1060,7 +1184,7 @@ namespace Clouds
 			material.SetFloat("cloudHighGranularity", highGranularity);
 			material.SetVector("cloudHighWindDir", HighWindDir);
 			material.SetVector("cloudHighWind", HighWind);
-			BindGenusOverride(material.SetFloat, material.SetVector);
+			BindGenusOverride(material);
 
 			material.SetFloat("cloudStepSize", stepSize);
 			// CameraRegion leaves the clouds rendering and shows the region as a corner swatch, so

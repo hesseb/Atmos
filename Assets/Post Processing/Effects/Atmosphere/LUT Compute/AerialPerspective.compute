@@ -18,8 +18,6 @@ RWTexture3D<float4> AerialPerspectiveTransmittance;
 sampler2D TransmittanceLUT;
 
 uint size;
-float nearClip;
-float farClip;
 int stepsPerSlice;
 
 // One thread per (x, y), walking the depth slices in order, instead of one thread per voxel
@@ -32,8 +30,13 @@ int stepsPerSlice;
 // the haze layer was being resolved to within a factor of two.
 //
 // Marching once and writing the running totals as each slice goes by is both cheaper and far
-// more accurate: 32 slices x 6 steps = 192 steps against 640, at 0.78 units per step instead of
-// 7.5. Roughly a third of the work for a far smaller error.
+// more accurate: `size` slices x stepsPerSlice steps, one pass, instead of re-marching from the
+// camera for every slice. At the 32 slices and 20 re-marched steps this was written against, that
+// was 192 steps in place of 640, and 0.78 units per step in place of 7.5 - roughly a third of the
+// work for a far smaller error.
+//
+// The asset now runs 64 slices, so the figures above describe the change rather than the current
+// build: 384 steps, and about 0.39 units per step over a 150-unit clip distance.
 //
 // The second gain is structural rather than numerical. Slices were previously independent
 // discretisations of *different* integrals, so consecutive slices disagreed by more than their
@@ -45,11 +48,23 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 {
 	if (id.x >= size || id.y >= size) { return; }
 
-	float2 uv = id.xy / (size - 1.0);
+	// (id.xy + 0.5) / size, not id.xy / (size - 1), and for exactly the reason the depth axis
+	// below already gives: Atmosphere.shader reads this volume with tex3Dlod at a raw screen uv,
+	// which lands at texel coordinate uv * size - 0.5. The corner form wrote texel i as though it
+	// held the value for i / (size - 1) while the composite read it as (i + 0.5) / size - the two
+	// agreeing only at the centre of the screen and differing by half a texel at the edges.
+	//
+	// Half a texel here is 0.78% of the screen, about 11 pixels at 1440p, so the aerial perspective
+	// was sheared outwards from the centre of the frame. Invisible as a shift, because there is no
+	// edge to see it against; it shows up as haze that does not sit on the terrain it belongs to.
+	//
+	// The z fix landed with its own note and this one was missed, which is the usual shape of it:
+	// one axis of a mapping gets corrected and the others keep the old convention.
+	float2 uv = (id.xy + 0.5) / size;
 
 	float3 rayDir = calculateViewDir(uv);
 
-	// camPos, not camPos + rayDir * nearClip. The composite shader does its ray-sphere test from
+	// camPos, not the camera's near plane. The composite shader does its ray-sphere test from
 	// _WorldSpaceCameraPos, and the depth axis is now defined relative to that intersection, so
 	// the two origins have to be identical or every slice lands at a slightly wrong distance.
 	float2 atmosphereHitInfo = raySphere(0, atmosphereRadius, camPos, rayDir);
@@ -70,7 +85,7 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 	//
 	// Without this, a ray just below the horizon has span = its ground distance (55.7 units from
 	// 10 up) while a ray just above has span = the whole atmosphere chord (268) - a 4.8x jump
-	// between adjacent texels. This LUT is only 32x32 in screen space, so that jump is bilinearly
+	// between adjacent texels. This LUT is only 64x64 in screen space, so that jump is bilinearly
 	// smeared across ~80 pixels at 1440p, and ground pixels beside the horizon end up reading
 	// texels whose ray missed the planet entirely and therefore carry a far longer, brighter
 	// march. It shows as a serrated bright band hugging the horizon, worst at sunset when the
@@ -104,14 +119,15 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 		// chord already clipped at the ground - rather than a fixed distance from the camera.
 		//
 		// Two fixed-range versions failed for opposite reasons. A far distance of bodyRadius put
-		// the entire visible scene inside five of the thirty-two slices at low altitude; a
-		// quadratic, camera-dependent range fixed that end and still left four slices from orbit,
-		// because it concentrates samples near the camera and from out there the air is all far
-		// away. Depth varies radially when looking at a sphere, so either way the shortage read
-		// as concentric banding across the planet.
+		// the entire visible scene inside five slices at low altitude - of the thirty-two the LUT
+		// had when this was measured; a quadratic, camera-dependent range fixed that end and still
+		// left four, because it concentrates samples near the camera and from out there the air is
+		// all far away. Depth varies radially when looking at a sphere, so either way the shortage
+		// read as concentric banding across the planet.
 		//
-		// Normalising per ray removes the failure mode instead of moving it: every ray gets all
-		// thirty-two slices across exactly the air it passes through, at any altitude.
+		// Normalising per ray removes the failure mode instead of moving it: every ray gets every
+		// slice across exactly the air it passes through, at any altitude - which is why the count
+		// stopped mattering here and is left as `size` rather than restated.
 		float target = depthT * maxLength;
 
 		if (dstThroughAtmosphere > 0 && target > marched) {

@@ -10,14 +10,11 @@ public class AtmosphereEffect : PostProcessingEffect
 
 	public Shader drawSkyShader;
 
-	public Color sunColTest;
 	public Light light;
 
 	public float bodyRadius;
 	public float atmosphereThickness;
 
-	public Shader atmosphereShader;
-	public Vector4 testParams = new Vector4(7, 1.26f, 0.1f, 3);
 
 	/// <summary>
 	/// Raymarch steps per depth slice of the aerial perspective LUT.
@@ -193,7 +190,6 @@ public class AtmosphereEffect : PostProcessingEffect
 	[Header("Later")]
 	public float ditherStrength = 0.8f;
 	public Texture2D blueNoise;
-	public FilterMode filterMode;
 
 	[Header("Debug")]
 	/// <summary>
@@ -258,9 +254,14 @@ public class AtmosphereEffect : PostProcessingEffect
 			if (activeCamera == cam)
 			{
 				lutUpdateRequired = false;
-				RenderSky(activeCamera);
+
+				// Derived once here rather than inside each consumer: both marches parameterise
+				// their rays off the same four corners, and deriving them costs a matrix inversion.
+				FrustumCorners corners = CalculateFrustumCorners(activeCamera);
+
+				RenderSky(corners);
 				RenderSkyViewLUT(activeCamera);
-				RenderAerialPerspectiveLUTs(activeCamera);
+				RenderAerialPerspectiveLUTs(activeCamera, corners);
 			}
 		}
 
@@ -324,14 +325,43 @@ public class AtmosphereEffect : PostProcessingEffect
 		Graphics.Blit(source, target, material);
 	}
 
+	/// <summary>
+	/// Finds the Sun, once, and stops asking if the project has no "Sun" tag at all.
+	///
+	/// FindGameObjectWithTag does not return null for an undefined tag - it throws. This runs from
+	/// SetProperties on every frame and from three LUT renderers, so in a project where the tag has
+	/// not been created that is an exception per frame rather than a missing sun, and the message
+	/// points at the lookup rather than at the tag.
+	///
+	/// The retry itself stays: the effect's OnEnable can run before the scene's Sun exists, so
+	/// giving up after one miss would leave the atmosphere permanently unlit in that ordering.
+	/// </summary>
+	void ResolveSun()
+	{
+		if (light != null || sunTagMissing) { return; }
+
+		GameObject sunObject;
+		try
+		{
+			sunObject = GameObject.FindGameObjectWithTag("Sun");
+		}
+		catch (UnityException)
+		{
+			sunTagMissing = true;
+			Debug.LogWarning("AtmosphereEffect: no \"Sun\" tag defined in this project, so the sun " +
+				"direction cannot be resolved. Assign the light manually on the effect asset.");
+			return;
+		}
+
+		light = sunObject != null ? sunObject.GetComponent<Light>() : null;
+	}
+
+	bool sunTagMissing;
+
 	public void SetProperties()
 	{
 
-		if (light == null)
-		{
-			GameObject sunObject = GameObject.FindGameObjectWithTag("Sun");
-			light = sunObject?.GetComponent<Light>();
-		}
+		ResolveSun();
 
 		if (material != null && light != null)
 		{
@@ -370,6 +400,12 @@ public class AtmosphereEffect : PostProcessingEffect
 
 			// Again, after the multiple-scattering LUT exists: BindComputeResources ran before
 			// this branch, when the texture was still null.
+			//
+			// This is the ONLY rebind the Init calls above need. Three of them used to end with a
+			// BindComputeResources of their own, which made five full rebind passes per settings
+			// change where two do - one before the branch for the texture-less binds, and this one
+			// after every texture exists. They are only reachable from here, so there was never a
+			// caller that depended on the inner ones.
 			BindComputeResources();
 
 			// Set shader params after all LUTs have been initialized
@@ -432,7 +468,13 @@ public class AtmosphereEffect : PostProcessingEffect
 		float thickness = atmosphereThickness;
 
 		// Rayleigh values
-		values.floats.Add(("rayleighScaleHeight", rayleighDensityAvg * thickness));
+		//
+		// Floored for the same reason ozoneHalfWidth below is. Both scale heights are inspector
+		// fractions in [0, 1] times the thickness, so both reach exactly zero on a slider drag -
+		// and getScatteringValues divides by them inside exp(). At the surface that is exp(-0/0),
+		// which is NaN rather than the infinity a non-zero altitude would give, so it survives
+		// every saturate and clamp downstream and poisons all three LUTs at once.
+		values.floats.Add(("rayleighScaleHeight", Mathf.Max(1e-4f, rayleighDensityAvg * thickness)));
 		// Arbitrary scale to give nicer range of reasonable values for the scattering constant
 		// Strength of (rayleigh) scattering is dependent on wavelength (~ 1/wavelength^4)
 		Vector3 inverseWavelengths = new Vector3(1 / wavelengthsRGB.x, 1 / wavelengthsRGB.y, 1 / wavelengthsRGB.z);
@@ -444,7 +486,7 @@ public class AtmosphereEffect : PostProcessingEffect
 		if (rayleighCoefficients != rayleigh) { rayleighCoefficients = rayleigh; }
 
 		// Mie values
-		values.floats.Add(("mieScaleHeight", mieDensityAvg * thickness));
+		values.floats.Add(("mieScaleHeight", Mathf.Max(1e-4f, mieDensityAvg * thickness)));
 		values.floats.Add(("mieCoefficient", mieCoefficient * densityMultiplier / thickness));
 		values.floats.Add(("mieAbsorption", mieAbsorption * densityMultiplier / thickness));
 		values.floats.Add(("mieAsymmetry", mieAsymmetry));
@@ -510,7 +552,6 @@ public class AtmosphereEffect : PostProcessingEffect
 		drawAerial.SetTexture("BlueNoise", blueNoise);
 
 		// Values
-		drawAerial.SetVector("params", testParams);
 		drawAerial.SetFloat("ditherStrength", ditherStrength);
 		drawAerial.SetFloat("aerialPerspectiveStrength", aerialPerspectiveStrength);
 		drawAerial.SetInt("atmosphereDebugMode", (int)debugMode);
@@ -568,8 +609,6 @@ public class AtmosphereEffect : PostProcessingEffect
 		// SFloat: this is a radiance like the sky texture, not a fraction like the transmittance LUT.
 		ComputeHelper.CreateRenderTexture(ref skyViewLUT, skyViewLUTSize.x, skyViewLUTSize.y,
 			FilterMode.Bilinear, GraphicsFormat.R16G16B16A16_SFloat, "Sky View LUT");
-
-		BindComputeResources();
 	}
 
 	void InitAeiralPerspectiveLUTs()
@@ -578,16 +617,20 @@ public class AtmosphereEffect : PostProcessingEffect
 		GraphicsFormat transmittance3DFormat = GraphicsFormat.R16G16B16A16_UNorm;
 		ComputeHelper.CreateRenderTexture3D(ref aerialPerspectiveLuminance, aerialPerspectiveLUTSize, aerialPerspectiveLUTFormat, TextureWrapMode.Clamp, "Aerial Perspective");
 		ComputeHelper.CreateRenderTexture3D(ref aerialPerspectiveTransmittance, aerialPerspectiveLUTSize, transmittance3DFormat, TextureWrapMode.Clamp, "Transmittance LUT 3D");
-
-		BindComputeResources();
 	}
 
-	void RenderAerialPerspectiveLUTs(Camera cam)
+	void RenderAerialPerspectiveLUTs(Camera cam, FrustumCorners corners)
 	{
+		// Guarded like RenderSkyViewLUT below. All three of these run from Camera.onPreCull, so an
+		// unresolved sun threw once per camera per frame from inside Unity's render loop rather
+		// than failing anywhere a stack trace would point at this effect.
+		if (aerialPerspectiveLUTCompute == null || light == null) { return; }
+
 		// Assign dynamic values
-		SetRaymarchParams(cam, aerialPerspectiveLUTCompute);
-		aerialPerspectiveLUTCompute.SetFloat(ShaderParamID.nearClip, cam.nearClipPlane);
-		aerialPerspectiveLUTCompute.SetFloat(ShaderParamID.farClip, cam.farClipPlane);
+		// nearClip and farClip used to be set here. The compute declared both and read neither -
+		// the depth axis is normalised per ray against the atmosphere chord, not against the
+		// camera's clip planes, and has been since that axis stopped being a fixed distance.
+		SetRaymarchParams(aerialPerspectiveLUTCompute, corners);
 		aerialPerspectiveLUTCompute.SetVector(ShaderParamID.dirToSun, -light.transform.forward);
 
 		// 2D, over (x, y) only: each thread now walks the depth slices itself, so dispatching
@@ -599,9 +642,13 @@ public class AtmosphereEffect : PostProcessingEffect
 	void InitSkyLUT()
 	{
 		GraphicsFormat skyFormat = GraphicsFormat.R16G16B16A16_SFloat;
-		ComputeHelper.CreateRenderTexture(ref sky, skyRenderSize.x, skyRenderSize.y, FilterMode.Bilinear, skyFormat, "Sky", useMipMaps: true);
-
-		BindComputeResources();
+		// No mip chain. It asked for one, ComputeHelper sets autoGenerateMips false, and nothing
+		// ever called GenerateMips - so the levels below 0 were allocated and left undefined, and
+		// DrawSky samples this with tex2D, which is free to pick one of them the moment the sky
+		// texture is minified rather than magnified. It is not today, at 128x256 against any screen
+		// the resolution cycle offers, but that is a property of the current numbers rather than
+		// something the code guarantees.
+		ComputeHelper.CreateRenderTexture(ref sky, skyRenderSize.x, skyRenderSize.y, FilterMode.Bilinear, skyFormat, "Sky");
 	}
 
 	/// <summary>
@@ -671,9 +718,11 @@ public class AtmosphereEffect : PostProcessingEffect
 
 	// Render the sky to a small texture, which then will be upscaled to reduce expensive raymarching
 	// This is rendered every frame
-	void RenderSky(Camera cam)
+	void RenderSky(FrustumCorners corners)
 	{
-		SetRaymarchParams(cam, skyRenderCompute);
+		if (skyRenderCompute == null || light == null) { return; }
+
+		SetRaymarchParams(skyRenderCompute, corners);
 		skyRenderCompute.SetVector(ShaderParamID.dirToSun, -light.transform.forward);
 		ComputeHelper.Dispatch(skyRenderCompute, sky);
 	}
@@ -704,18 +753,49 @@ public class AtmosphereEffect : PostProcessingEffect
 		ComputeHelper.Dispatch(skyViewLUTCompute, skyViewLUT);
 	}
 
-	void SetRaymarchParams(Camera cam, ComputeShader raymarchCompute)
+	/// <summary>
+	/// The frustum's four corner directions in world space, and the camera position they start at.
+	///
+	/// Computed once per frame and handed to both consumers, rather than derived per consumer per
+	/// corner. The old shape derived each corner in its own call and inverted the projection matrix
+	/// inside every one of them - and SetRaymarchParams itself runs twice a frame, for the sky
+	/// render and for the aerial perspective LUT. That is eight inversions of the same matrix where
+	/// one will do, and four of them producing values byte-identical to the other four.
+	/// </summary>
+	struct FrustumCorners
 	{
-		Vector3 topLeftDir = CalculateViewDirection(cam, new Vector2(0, 1));
-		Vector3 topRightDir = CalculateViewDirection(cam, new Vector2(1, 1));
-		Vector3 bottomLeftDir = CalculateViewDirection(cam, new Vector2(0, 0));
-		Vector3 bottomRightDir = CalculateViewDirection(cam, new Vector2(1, 0));
+		public Vector3 topLeft, topRight, bottomLeft, bottomRight;
+		public Vector3 camPos;
+	}
 
-		raymarchCompute.SetVector(ShaderParamID.topLeftDir, topLeftDir);
-		raymarchCompute.SetVector(ShaderParamID.topRightDir, topRightDir);
-		raymarchCompute.SetVector(ShaderParamID.bottomLeftDir, bottomLeftDir);
-		raymarchCompute.SetVector(ShaderParamID.bottomRightDir, bottomRightDir);
-		raymarchCompute.SetVector(ShaderParamID.camPos, cam.transform.position);
+	static FrustumCorners CalculateFrustumCorners(Camera camera)
+	{
+		Matrix4x4 clipToView = GL.GetGPUProjectionMatrix(camera.projectionMatrix, true).inverse;
+		Matrix4x4 viewToWorld = camera.transform.localToWorldMatrix;
+
+		FrustumCorners corners;
+		corners.topLeft = CornerDirection(clipToView, viewToWorld, 0, 1);
+		corners.topRight = CornerDirection(clipToView, viewToWorld, 1, 1);
+		corners.bottomLeft = CornerDirection(clipToView, viewToWorld, 0, 0);
+		corners.bottomRight = CornerDirection(clipToView, viewToWorld, 1, 0);
+		corners.camPos = camera.transform.position;
+		return corners;
+	}
+
+	static Vector3 CornerDirection(Matrix4x4 clipToView, Matrix4x4 viewToWorld, float u, float v)
+	{
+		Vector3 viewVector = clipToView * new Vector4(u * 2 - 1, v * 2 - 1, 0, -1);
+		viewVector = viewToWorld * new Vector4(viewVector.x, viewVector.y, viewVector.z, 0);
+		return viewVector.normalized;
+	}
+
+	static void SetRaymarchParams(ComputeShader raymarchCompute, FrustumCorners corners)
+	{
+		raymarchCompute.SetVector(ShaderParamID.topLeftDir, corners.topLeft);
+		raymarchCompute.SetVector(ShaderParamID.topRightDir, corners.topRight);
+		raymarchCompute.SetVector(ShaderParamID.bottomLeftDir, corners.bottomLeft);
+		raymarchCompute.SetVector(ShaderParamID.bottomRightDir, corners.bottomRight);
+		raymarchCompute.SetVector(ShaderParamID.camPos, corners.camPos);
 	}
 
 	public static class ShaderParamID
@@ -725,21 +805,9 @@ public class AtmosphereEffect : PostProcessingEffect
 		public static int bottomLeftDir = Shader.PropertyToID("bottomLeftDir");
 		public static int bottomRightDir = Shader.PropertyToID("bottomRightDir");
 		public static int camPos = Shader.PropertyToID("camPos");
-		public static int nearClip = Shader.PropertyToID("nearClip");
-		public static int farClip = Shader.PropertyToID("farClip");
 
 		public static int dirToSun = Shader.PropertyToID("dirToSun");
 
-	}
-
-	Vector3 CalculateViewDirection(Camera camera, Vector2 texCoord)
-	{
-		Matrix4x4 camInverseMatrix = GL.GetGPUProjectionMatrix(camera.projectionMatrix, true).inverse;
-		Matrix4x4 localToWorldMatrix = camera.transform.localToWorldMatrix;
-
-		Vector3 viewVector = camInverseMatrix * new Vector4(texCoord.x * 2 - 1, texCoord.y * 2 - 1, 0, -1);
-		viewVector = localToWorldMatrix * new Vector4(viewVector.x, viewVector.y, viewVector.z, 0);
-		return viewVector.normalized;
 	}
 
 	public override void OnDestroy()

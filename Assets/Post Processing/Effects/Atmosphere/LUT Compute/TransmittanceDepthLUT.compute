@@ -13,7 +13,6 @@
 // been 0.525, with the colour ratios still perfectly correct.
 
 RWTexture2D<float3> TransmittanceLUT;
-SamplerState transmittance_linear_clamp_sampler;
 
 uint width;
 uint height;
@@ -21,6 +20,14 @@ uint height;
 [numthreads(8,8,1)]
 void CreateTransmittanceLUT (uint2 id : SV_DispatchThreadID)
 {
+	// The bounds check every other kernel in this folder has, and this one did not.
+	//
+	// Free today, because 256x64 divides exactly by the 8x8 group size. It stops being free the
+	// moment transmittanceLutSize is set to anything that does not - the tail threads would run
+	// transmittanceLutParams on uv > 1 and write outside the texture, which most hardware discards
+	// silently rather than complaining about.
+	if (id.x >= width || id.y >= height) { return; }
+
 	// Texel centres, not id/(size-1). The sampler reads texel centre u*N - 0.5, so writing at
 	// id/(N-1) made write and read agree only at u = 0.5. lutUnitToSubUv is the other half of
 	// this pair; transmittanceLutParams undoes it.
