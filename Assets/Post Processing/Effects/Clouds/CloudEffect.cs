@@ -958,7 +958,7 @@ namespace Clouds
 			compute.SetVector("cloudShapeWind", ShapeWind);
 			compute.SetVector("cloudDetailWind", DetailWind);
 
-					compute.SetFloat("cloudHighStrength", highStrength);
+				compute.SetFloat("cloudHighStrength", highStrength);
 			compute.SetFloat("cloudHighBase", highBase);
 			compute.SetFloat("cloudHighThickness", highThickness);
 			compute.SetFloat("cloudHighScale", highScale);

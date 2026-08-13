@@ -64,7 +64,7 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 
 	float3 rayDir = calculateViewDir(uv);
 
-	// camPos, not camPos + rayDir * nearClip. The composite shader does its ray-sphere test from
+	// camPos, not the camera's near plane. The composite shader does its ray-sphere test from
 	// _WorldSpaceCameraPos, and the depth axis is now defined relative to that intersection, so
 	// the two origins have to be identical or every slice lands at a slightly wrong distance.
 	float2 atmosphereHitInfo = raySphere(0, atmosphereRadius, camPos, rayDir);

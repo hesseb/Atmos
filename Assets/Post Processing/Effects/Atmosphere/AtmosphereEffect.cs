@@ -757,10 +757,10 @@ public class AtmosphereEffect : PostProcessingEffect
 	/// The frustum's four corner directions in world space, and the camera position they start at.
 	///
 	/// Computed once per frame and handed to both consumers, rather than derived per consumer per
-	/// corner. The old shape called CalculateViewDirection four times from here and inverted the
-	/// projection matrix inside each one - and SetRaymarchParams itself runs twice a frame, for the
-	/// sky render and for the aerial perspective LUT. That is eight inversions of the same matrix
-	/// where one will do, and four of them producing values byte-identical to the other four.
+	/// corner. The old shape derived each corner in its own call and inverted the projection matrix
+	/// inside every one of them - and SetRaymarchParams itself runs twice a frame, for the sky
+	/// render and for the aerial perspective LUT. That is eight inversions of the same matrix where
+	/// one will do, and four of them producing values byte-identical to the other four.
 	/// </summary>
 	struct FrustumCorners
 	{
