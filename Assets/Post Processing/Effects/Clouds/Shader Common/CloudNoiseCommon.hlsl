@@ -27,7 +27,9 @@ float3 cloudHashGradient(float3 cell)
 	return g * rsqrt(max(1e-6, dot(g, g)));
 }
 
-/// Gradient noise on an unbounded domain. Roughly [-1, 1].
+/// Gradient noise on an unbounded domain. Bounded by +-sqrt(3)/2 = +-0.866 - the corner dot
+/// products peak at |d| = sqrt(3)/2 with unit gradients - and in practice one octave's spread is
+/// about +-0.19 std, which is what the weatherRangeGain calibration is measured against.
 ///
 /// Used for the weather map, which is evaluated at points ON THE SPHERE and therefore has no wrap
 /// to worry about - the domain is closed by the geometry rather than by the lattice.

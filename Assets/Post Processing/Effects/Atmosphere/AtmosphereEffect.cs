@@ -447,8 +447,10 @@ public class AtmosphereEffect : PostProcessingEffect
 	/// </summary>
 	public void ApplyAtmosphereValuesTo(ComputeShader compute)
 	{
-		// In edit mode SetProperties always takes its init branch, so this also guarantees
-		// transmittanceLUT has been rendered.
+		// SetProperties takes its init branch whenever the settings are dirty or a LUT is missing,
+		// so after this the transmittance LUT is guaranteed to exist and be current. (The comment
+		// here used to claim the branch always runs in edit mode - that path was removed; the
+		// guarantee now rests on the null check.)
 		SetProperties();
 		GetShaderValues().Apply(compute);
 
