@@ -13,6 +13,7 @@ MonoBehaviour:
   m_Name: framing
   m_EditorClassIdentifier: Assembly-CSharp::BenchmarkDefinition
   id: framing
+  includeInAll: 1
   description: Four holds from one position, varying only pitch. Isolates the effect
     of sky-to-terrain ratio on atmosphere cost with everything else held fixed. Sky
     fraction runs roughly 0.0 at nadir to 0.9 at the horizon.

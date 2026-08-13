@@ -13,6 +13,7 @@ MonoBehaviour:
   m_Name: daycycle
   m_EditorClassIdentifier: Assembly-CSharp::BenchmarkDefinition
   id: daycycle
+  includeInAll: 1
   description: Fixed camera near the horizon while the sun sets from +30 degrees
     elevation through to -12 (civil twilight). Isolates sun angle with the view held
     constant. Screenshots at the ends of each segment give paired images for the
