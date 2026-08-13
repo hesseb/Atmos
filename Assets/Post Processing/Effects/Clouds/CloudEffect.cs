@@ -432,6 +432,14 @@ namespace Clouds
 
 		public override void OnEnable()
 		{
+			// Before base.OnEnable, which is what builds the material from `shader`.
+			//
+			// The same hole BaselineCloudEffect fills, and worse here: with the field empty the base
+			// class falls back to Unlit/Texture, which has ONE pass, and RenderEffectToTarget blits
+			// pass 2 of it. There is exactly one shader this effect can ever use, so leaving it to be
+			// assigned by hand buys nothing. An explicit assignment still wins.
+			if (shader == null) { shader = Shader.Find("Hidden/Clouds"); }
+
 			base.OnEnable();
 			// Both maps are generated at pre-cull, not in OnRenderImage, because the terrain and
 			// ocean sample the shadow map during forward opaque - which has already happened by the
@@ -950,12 +958,32 @@ namespace Clouds
 			publishedShadows = true;
 		}
 
+		/// <summary>
+		/// FindGameObjectWithTag throws rather than returning null when the tag does not exist, and
+		/// this is called three times a frame. One warning and then silence beats an exception per
+		/// call from inside a pre-cull callback. AtmosphereEffect.ResolveSun does the same.
+		/// </summary>
 		void ResolveSun()
 		{
-			if (sunLight != null) { return; }
-			GameObject sunObject = GameObject.FindGameObjectWithTag("Sun");
+			if (sunLight != null || sunTagMissing) { return; }
+
+			GameObject sunObject;
+			try
+			{
+				sunObject = GameObject.FindGameObjectWithTag("Sun");
+			}
+			catch (UnityException)
+			{
+				sunTagMissing = true;
+				Debug.LogWarning("CloudEffect: no \"Sun\" tag defined in this project, so the clouds " +
+					"cannot resolve a sun direction. Assign the light manually on the effect asset.");
+				return;
+			}
+
 			sunLight = sunObject != null ? sunObject.GetComponent<Light>() : null;
 		}
+
+		bool sunTagMissing;
 
 		/// <summary>
 		/// One genus, as weather-field values.

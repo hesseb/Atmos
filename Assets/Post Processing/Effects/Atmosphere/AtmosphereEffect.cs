@@ -324,14 +324,43 @@ public class AtmosphereEffect : PostProcessingEffect
 		Graphics.Blit(source, target, material);
 	}
 
+	/// <summary>
+	/// Finds the Sun, once, and stops asking if the project has no "Sun" tag at all.
+	///
+	/// FindGameObjectWithTag does not return null for an undefined tag - it throws. This runs from
+	/// SetProperties on every frame and from three LUT renderers, so in a project where the tag has
+	/// not been created that is an exception per frame rather than a missing sun, and the message
+	/// points at the lookup rather than at the tag.
+	///
+	/// The retry itself stays: the effect's OnEnable can run before the scene's Sun exists, so
+	/// giving up after one miss would leave the atmosphere permanently unlit in that ordering.
+	/// </summary>
+	void ResolveSun()
+	{
+		if (light != null || sunTagMissing) { return; }
+
+		GameObject sunObject;
+		try
+		{
+			sunObject = GameObject.FindGameObjectWithTag("Sun");
+		}
+		catch (UnityException)
+		{
+			sunTagMissing = true;
+			Debug.LogWarning("AtmosphereEffect: no \"Sun\" tag defined in this project, so the sun " +
+				"direction cannot be resolved. Assign the light manually on the effect asset.");
+			return;
+		}
+
+		light = sunObject != null ? sunObject.GetComponent<Light>() : null;
+	}
+
+	bool sunTagMissing;
+
 	public void SetProperties()
 	{
 
-		if (light == null)
-		{
-			GameObject sunObject = GameObject.FindGameObjectWithTag("Sun");
-			light = sunObject?.GetComponent<Light>();
-		}
+		ResolveSun();
 
 		if (material != null && light != null)
 		{
@@ -432,7 +461,13 @@ public class AtmosphereEffect : PostProcessingEffect
 		float thickness = atmosphereThickness;
 
 		// Rayleigh values
-		values.floats.Add(("rayleighScaleHeight", rayleighDensityAvg * thickness));
+		//
+		// Floored for the same reason ozoneHalfWidth below is. Both scale heights are inspector
+		// fractions in [0, 1] times the thickness, so both reach exactly zero on a slider drag -
+		// and getScatteringValues divides by them inside exp(). At the surface that is exp(-0/0),
+		// which is NaN rather than the infinity a non-zero altitude would give, so it survives
+		// every saturate and clamp downstream and poisons all three LUTs at once.
+		values.floats.Add(("rayleighScaleHeight", Mathf.Max(1e-4f, rayleighDensityAvg * thickness)));
 		// Arbitrary scale to give nicer range of reasonable values for the scattering constant
 		// Strength of (rayleigh) scattering is dependent on wavelength (~ 1/wavelength^4)
 		Vector3 inverseWavelengths = new Vector3(1 / wavelengthsRGB.x, 1 / wavelengthsRGB.y, 1 / wavelengthsRGB.z);
@@ -444,7 +479,7 @@ public class AtmosphereEffect : PostProcessingEffect
 		if (rayleighCoefficients != rayleigh) { rayleighCoefficients = rayleigh; }
 
 		// Mie values
-		values.floats.Add(("mieScaleHeight", mieDensityAvg * thickness));
+		values.floats.Add(("mieScaleHeight", Mathf.Max(1e-4f, mieDensityAvg * thickness)));
 		values.floats.Add(("mieCoefficient", mieCoefficient * densityMultiplier / thickness));
 		values.floats.Add(("mieAbsorption", mieAbsorption * densityMultiplier / thickness));
 		values.floats.Add(("mieAsymmetry", mieAsymmetry));
@@ -584,6 +619,11 @@ public class AtmosphereEffect : PostProcessingEffect
 
 	void RenderAerialPerspectiveLUTs(Camera cam)
 	{
+		// Guarded like RenderSkyViewLUT below. All three of these run from Camera.onPreCull, so an
+		// unresolved sun threw once per camera per frame from inside Unity's render loop rather
+		// than failing anywhere a stack trace would point at this effect.
+		if (aerialPerspectiveLUTCompute == null || light == null) { return; }
+
 		// Assign dynamic values
 		SetRaymarchParams(cam, aerialPerspectiveLUTCompute);
 		aerialPerspectiveLUTCompute.SetFloat(ShaderParamID.nearClip, cam.nearClipPlane);
@@ -673,6 +713,8 @@ public class AtmosphereEffect : PostProcessingEffect
 	// This is rendered every frame
 	void RenderSky(Camera cam)
 	{
+		if (skyRenderCompute == null || light == null) { return; }
+
 		SetRaymarchParams(cam, skyRenderCompute);
 		skyRenderCompute.SetVector(ShaderParamID.dirToSun, -light.transform.forward);
 		ComputeHelper.Dispatch(skyRenderCompute, sky);
