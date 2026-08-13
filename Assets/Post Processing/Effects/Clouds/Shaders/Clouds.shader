@@ -141,12 +141,28 @@ Shader "Hidden/Clouds"
 
 				// Blue-noise start offset, so undersampling breaks up into noise rather than into
 				// the concentric banding a fixed phase produces on a spherical shell.
-				float jitter = getBlueNoise(uv).r * cloudJitterStrength * stepSize;
+				//
+				// A fraction of ONE step, and a MEAN-PRESERVING one. This read getBlueNoise, which is
+				// the DITHER transform: a triangular distribution rescaled to [-0.5, 1.5], mean 0.5.
+				// Added on top of the (s + 0.5) midpoint it shifted every sample forward by half a step
+				// on average, and let the tail reach 1.5 steps past where it belonged - at which point
+				// the `t >= end` break fired early and the march stopped short of the very span it had
+				// just sized itself to cover, against the claim made twenty lines above.
+				//
+				// That is the same quadrature bias found and fixed twice in the atmosphere:
+				// getSunTransmittance sampling right-Riemann, raymarchSegment left-Riemann. A biased
+				// sample position is not noise; it is a systematic error that noise happens to hide.
+				//
+				// lerp from 0.5 rather than scaling the offset, so the mean stays on the midpoint at
+				// every strength: 0 is exactly the midpoint rule, 1 is uniform across the step. Past 1
+				// the offset can leave the step's own interval, which costs a sample rather than
+				// correctness - a position outside the span reads zero density anyway.
+				float jitter = lerp(0.5, getBlueNoiseRaw(uv).r, cloudJitterStrength);
 
 				[loop]
 				for (int s = 0; s < steps; s++)
 				{
-					float t = start + (s + 0.5) * stepSize + jitter;
+					float t = start + (s + jitter) * stepSize;
 					if (t >= end) { break; }
 
 					float3 pos = rayOrigin + rayDir * t;

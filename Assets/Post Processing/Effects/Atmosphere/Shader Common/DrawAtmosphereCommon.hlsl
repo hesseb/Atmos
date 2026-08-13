@@ -22,16 +22,29 @@ float remap_noise_tri_erp(float v)
 {
 	float r2 = 0.5 * v;
 	float f1 = sqrt(r2);
-	float f2 = 1.0 - sqrt(r2 - 0.25);
+	// max(0, ...): r2 - 0.25 is negative on the whole of the f1 branch, and HLSL evaluates both
+	// operands of ?: before selecting. The NaN is discarded so nothing is visibly wrong, but a
+	// NaN that only survives because of which side of a select it lands on is not worth keeping.
+	float f2 = 1.0 - sqrt(max(0, r2 - 0.25));
 	return (v < 0.5) ? f1 : f2;
 }
 
-float3 getBlueNoise(float2 uv) {
+/// The blue noise texture at one screen pixel per texel, unmodified - values in [0, 1).
+///
+/// getBlueNoise below is this remapped to a triangular distribution and rescaled, which is what
+/// DITHERING wants: signed, centred, and heavier in the middle so the error it hides averages out.
+/// A raymarch start offset wants none of that. It wants a uniform fraction of one step, because
+/// the thing being randomised is *where in the interval* the sample sits, and every position in
+/// that interval is equally valid. Feeding it the dither distribution instead lands the offset in
+/// [-0.5, 1.5] with a mean of 0.5 - see the note at the call site in Clouds.shader.
+float3 getBlueNoiseRaw(float2 uv) {
 	float2 screenSize = _ScreenParams.xy;
-	
 	uv = (uv * screenSize) * BlueNoise_TexelSize.xy;
+	return tex2D(BlueNoise, uv).rgb;
+}
 
-	float3 blueNoise = tex2D(BlueNoise, uv).rgb;
+float3 getBlueNoise(float2 uv) {
+	float3 blueNoise = getBlueNoiseRaw(uv);
 	float3 m = 0;
 	m.r = remap_noise_tri_erp(blueNoise.r);
 	m.g = remap_noise_tri_erp(blueNoise.g);	
