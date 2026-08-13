@@ -124,19 +124,20 @@
 					// The depth axis spans the air in front of THIS ray, not a fixed distance.
 					//
 					// Two fixed-range attempts failed for opposite reasons. A far distance of
-					// bodyRadius left the whole visible scene inside five of the thirty-two slices
-					// at low altitude; making the range quadratic and camera-dependent fixed that
-					// but still gave only four slices from orbit, because it concentrates samples
-					// near the camera and from out there the air is all far away.
+					// bodyRadius left the whole visible scene inside five slices at low altitude -
+					// of the thirty-two the LUT had when this was measured; making the range
+					// quadratic and camera-dependent fixed that but still gave only four from
+					// orbit, because it concentrates samples near the camera and from out there
+					// the air is all far away.
 					//
 					// Normalising by the atmosphere chord alone does not work either: a ray looking
 					// straight down is inside the atmosphere sphere, so its chord runs through the
 					// planet and out the far side - 322 units of "atmosphere" for 2 units of air.
 					//
 					// Clipping that chord at the ground is what makes it exact. The span is then
-					// always the air actually between the camera and what it is looking at, so all
-					// thirty-two slices are used at every altitude. The compute derives the same
-					// span from the same two intersections.
+					// always the air actually between the camera and what it is looking at, so
+					// every slice is used at every altitude, whatever the slice count happens to
+					// be. The compute derives the same span from the same two intersections.
 					float dstToGround = rayIntersectSphere(inPoint, rayDir, planetRadius);
 					float span = dstToGround > 0 ? min(dstThroughAtmosphere, dstToGround) : dstThroughAtmosphere;
 

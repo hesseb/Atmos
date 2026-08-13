@@ -2234,3 +2234,133 @@ sunset from one pose; clear sky as a pixel-identical control; a cloud bank on th
 sky overhead, to confirm the reflected-ray lookup is not falling through to its zenith guard; and
 night, where a missing `max(0, ...)` would push the sea below black. Cost is unmeasured — the bake is
 its own dispatch with a six-sample cone light march per vertical step, so it is not free.
+
+## Audit pass: bugs, dead code and the free half of the optimizations
+
+A read of the whole PBR atmosphere and volumetric cloud path looking for defects and waste,
+committed one concern at a time. Split deliberately into what cannot change an image and what can;
+only the first half was applied.
+
+### Correctness
+
+- **A disabled post-process effect released the same temporary render texture on every frame,
+  forever.** `OnFinishedDrawingFrame` released `target` without nulling it, and
+  `PostProcessingManager` calls that method regardless of the `enabled` flag. A pool that has been
+  given one texture twice is free to lend it to two effects at once. The benchmark arms are exactly
+  this configuration - every profile toggles `enabled` on these assets - so this was live in the
+  measurement path rather than a theoretical hazard.
+- **The aerial perspective LUT's screen axes were half a texel out.** The depth axis had been moved
+  onto texel centres with a note explaining that `tex3Dlod` reads `uv * size - 0.5`; that argument
+  applies to x and y verbatim, and they were still on the corner mapping. Zero error at screen
+  centre, half a texel at the edges - 0.78% of the frame, about 11 px at 1440p - so the haze was
+  sheared outwards from the middle of the image. **This one changes the picture**, and is the only
+  correctness fix in this pass that does.
+- **The cloud march was jittered with the dither distribution.** `getBlueNoise` returns a triangular
+  distribution rescaled to [-0.5, 1.5], mean 0.5. As a march offset on top of the (s + 0.5) midpoint
+  it shifted every sample half a step along the ray, and let the tail reach 1.5 steps past its
+  interval - far enough for the `t >= end` break to fire and stop the march short of the span it had
+  just sized itself to cover. Third instance of this bias class here, after `getSunTransmittance`
+  sampling right-Riemann and `raymarchSegment` left-Riemann. `getBlueNoiseRaw` now exists for
+  offsets, which want a uniform distribution rather than the dither's.
+- **The temporal fallback could not reach the block diagonal to it.** Stepping two texels along one
+  axis flips exactly one bit of a two-bit slot key, so a four-tap cross reached `s^1` and `s^2` and
+  never `s^3`. One block in four fell through to "no cloud" on every frame the history reprojected
+  off screen. Now one computed tap rather than a search: the slot IS the block's parity, so the
+  offset can be derived instead of hunted for.
+- **`RenderingManager` released its command buffers without detaching them**, and never removed the
+  outer-space buffer anywhere at all. A camera holding a released buffer keeps executing it until
+  `RemoveAllCommandBuffers`, which only runs on the next enable - a window that opens on every
+  domain reload under `[ExecuteInEditMode]`.
+- Guards for a set of reachable NaN and exception paths: both scale heights reach `exp(-0/0)` when
+  their sliders hit zero; two of the three LUT renderers dereferenced `light` unguarded from inside
+  `Camera.onPreCull`; `FindGameObjectWithTag` throws rather than returning null for an undefined tag
+  and was called every frame; `TransmittanceDepthLUT` was the only kernel in its folder with no
+  bounds check; and `lutUnitToSubUv` is singular at size 0, which is what every LUT-size uniform
+  holds before `SetProperties` has run on that material.
+
+### Optimizations applied - all provably free of visual change
+
+None of these have been measured. Each wants a before/after pair before it is quoted.
+
+- **The cloud march recomputed two per-frame constants at every step.** Both sky-view taps behind
+  the ambient term resolve to fixed texels: the zenith one takes `sampleSkyView`'s degenerate
+  azimuth branch because `dot(up, up)` is 1, and the horizon one is built perpendicular to `up` and
+  from the sun's own tangent, so with `skyViewLutAltitude` at 0 it lands exactly on the horizon row.
+  A normalize, a tangent projection, an acos, two taps and two tone maps - per step, per pixel, in
+  both spans, in every cost mode. Now hoisted beside the aerial terms. **Largest of these, and the
+  saving scales with step count, so measure at a horizon pose rather than at nadir.**
+- **The weather map was rebuilt from scratch every frame** - roughly 30 M hash evaluations for a
+  field whose only animated input is a sub-texel wind offset. Now skipped when a signature over
+  every bound uniform is unchanged, which is exact rather than a tolerance, so it can only skip a
+  dispatch that would have reproduced the texture bit for bit. That still covers every paused frame,
+  because the clock is scaled by the solar system's own multiplier. **Measure paused against
+  animated; the saving is entirely in the paused case for now.**
+- **`sampleCloudLow` tapped the weather map before it could reject on altitude**, which the comment
+  beside it claimed it did not. The band's floor is a field, so the obvious test needs the very tap
+  it would save - but it can be bounded from uniforms, and the light march runs six of these per
+  view step per light source.
+- **The earth-shadow test ran about 1.5 M times a frame in the aerial LUT to return -1 every time**,
+  because that consumer passes radius 0 and relies on the sampler's own horizon test instead.
+- **The projection matrix was inverted eight times a frame** to produce four pairs of identical
+  frustum corners, and a settings change ran five full `BindComputeResources` passes where two do.
+- Per-frame managed allocation in both cloud renderers: delegates from method-group conversions,
+  property names built by concatenation, and `Gradient.colorKeys` copying a fresh array on each of
+  three accesses. This file already records 27.6 KB/frame as worth chasing; this is part of it.
+
+### Deliberately not done
+
+- **Splitting `OnValidate`** so that display-only settings stop rebaking the transmittance and
+  multiple-scattering LUTs. Real waste - dragging the intensity slider rebakes both on every frame
+  of the drag - but the fix is a signature over everything those bakes consume, and getting that set
+  wrong means a physics LUT that silently stops responding to one of its inputs. See the "baked
+  assets go stale silently" section above. The cost is editor-only; the risk lands on every
+  measurement.
+- **Converting the remaining ~130 string-keyed `Set*` calls to cached property IDs.** They hash,
+  they do not allocate; at 50-100 ns each that is about 0.1% of a frame already measured as
+  CPU-bound at 8.42 ms, against 130 opportunities to silently unbind a uniform with a typo.
+
+### The approximations, catalogued but not applied
+
+Each of these changes the image or the architecture, so each needs its own judgement:
+
+1. **Serve the drawn sky from the sky-view LUT.** `SkyRender.compute` marches 8.4 M steps a frame,
+   and `SkyViewLUT.compute` marches the same atmosphere again with a different parameterisation.
+   This is Hillaire's actual design, `SkyViewCommon.hlsl` already anticipates it, and it is the
+   largest optimization available anywhere in this project by an order of magnitude.
+2. `numSkyScatteringSteps` 256 to 128. `CheckMarchQuadrature` can locate the knee.
+3. Hoist the weather tap out of the light march; amortise per-step ambient and sun transmittance
+   along the ray.
+4. **The cone kernel is applied in world space** rather than in a basis around the light, so
+   Schneider's +Z-biased kernel leans toward world +Z regardless of where the sun is.
+5. Non-cubic aerial LUT. `CreateRenderTexture3D` forces width = height = depth, which chains screen
+   resolution to depth resolution; 96x96x32 is less total work *and* better shaft definition than 64
+   cubed.
+6. Transmittance LUT `UNorm` to `SFloat`. It is a *divisor* in the Bruneton ratio identity, and near
+   sunset the blue channel quantises to one or two LSBs - the 1e-5 clamp sits below the quantisation
+   step, so it does not actually protect the ratio.
+7. The weather map's alpha carries `baseHeight` at 8 bits: the one channel in that map that is a
+   position rather than a soft field.
+8. `sin`-based hashing in `CloudNoiseCommon.hlsl` loses precision at the coordinate magnitudes
+   `baseHeightScale` 30 produces, which the tooltip currently blames entirely on map resolution.
+9. The silver-lining spread slider is dead below about 0.022, where (1-g) squared hits the `1e-3`
+   floor in `cloudHg`. The range allows 0.02.
+10. Ray-sphere cancellation at planet scale, in the view march and in the temporal reproject.
+    `CloudShadowMap.compute` documents having been bitten by exactly this and mitigates it locally;
+    these two have the same exposure and no mitigation.
+11. `Atmosphere.shader` and `AerialPerspective.compute` derive the same span independently - the
+    write/read drift class `TransmittanceCommon.hlsl` was created to prevent.
+12. `DrawSky.shader` takes its sun direction from `_WorldSpaceLightPos0` rather than from
+    `AtmosphereEffect`: the one place in the project where the sun has a second source of truth.
+
+### Corrected along the way
+
+Two audit findings that were wrong, recorded because the second nearly caused a regression:
+
+- `BlueNoise` is **not** unbound when the atmosphere is off. It is published from
+  `BindGlobalResources`, which is reached in every arm precisely *because* it is ungated, and
+  because `PostProcessingManager` calls `OnEnable` on every effect regardless of its `enabled` flag.
+  A separate suggestion to gate that call on `enabled` would have created the bug rather than fixed
+  one. **Do not gate `BindGlobalResources` without first giving the blue noise another publisher.**
+- The march jitter did not sample before the span start at default settings - the `+0.5` midpoint
+  absorbs the negative end of the offset. It only does so above `jitterStrength` 1, and the range
+  allows 2. The defect was the mean, not the extent.

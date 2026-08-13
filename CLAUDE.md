@@ -49,15 +49,24 @@ performance and image output logged identically, for thesis figures/tables.
 
 1. ~~Strip Geography down to globe + camera scaffold~~ **done** — `TestbedCamera`
    (orbit + free-fly), scene down to 21 GameObjects
-2. Add controls and basic UI to allow for swapping between renderers, move around the globe with both keyboard and mouse, time controls
-   — *camera and time controls done (`TestbedCamera`, `TimeController`/`SolarTime`);
-   renderer-swap UI still outstanding*
-3. Build a measurement harness: fixed camera paths, frame timing / GPU timers,
-   screenshot capture, exportable data (CSV or similar)
-4. Baseline skybox/simple atmosphere renderer
-5. PBR atmosphere (transmittance/scattering LUTs, sky rendering integration)
-6. Volumetric cloud rendering
-7. Comparison tooling / parameter sweeps for thesis evaluation
+2. ~~Controls and UI: renderer swapping, globe navigation, time controls~~ **done** —
+   `TestbedCamera`, `TimeController`/`SolarTime`, and the F1–F10 overlay in
+   `BenchmarkHud`; renderer arms switch through `PostProcessRendererProfile`
+3. ~~Measurement harness: fixed camera paths, frame timing / GPU timers, screenshot
+   capture, exportable data~~ **done** — `Assets/Scripts/Benchmark/`, CSV + run.json,
+   13 `ProfilerRecorder` counters, `plan_hash` and a bake-staleness stamp
+4. ~~Baseline skybox/simple atmosphere renderer~~ **done** — `BaselineSkyRenderer`,
+   `AerialPerspectiveSimple`, plus a null arm for each so the pass structure can be
+   priced separately from what it draws
+5. ~~PBR atmosphere~~ **done** — transmittance, multiple-scattering, sky-view and
+   aerial-perspective LUTs, aligned with Hillaire 2020; see NOTES.md
+6. ~~Volumetric cloud rendering~~ **done** — two bands, weather/shadow/sky maps,
+   Full/Half/Temporal cost modes, plus a baseline cloud arm in two deliveries
+7. Comparison tooling / parameter sweeps for thesis evaluation — *profiles and the
+   subtraction algebra exist; no measurements taken yet, by design*
+
+Effectively everything but the measurements and the report is assembled. What remains
+is the optimization phase NOTES.md scopes, the runs, and the writing.
 
 ## Working conventions
 

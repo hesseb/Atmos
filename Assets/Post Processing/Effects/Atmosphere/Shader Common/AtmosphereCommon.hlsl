@@ -243,7 +243,7 @@ float3 integralFactor(float3 opticalDepth, float3 transmittance) {
 
 /// The body of the march, factored out so it can be resumed.
 ///
-/// The aerial perspective needs to continue one ray across 32 depth slices, writing the running
+/// The aerial perspective needs to continue one ray across every depth slice, writing the running
 /// totals as it passes each. Re-marching from the camera per slice is O(N^2) and, worse, makes
 /// consecutive slices discretisations of *different* integrals - they disagree by more than
 /// their own quadrature error, so the fog is not even monotonic in depth.
@@ -347,8 +347,8 @@ void raymarchSegment(inout ScatteringState state, float3 segmentStart, float3 ra
 		// scattering integral.
 		//
 		// How visible the result is depends entirely on the resolution each consumer marches at. The
-		// sky is 128x256; the aerial LUT is 32 texels across the SCREEN unless raised, which is about
-		// 80 pixels at 1440p, and a shaft narrower than one texel does not exist in the data.
+		// sky is 128x256; the aerial LUT is 64 texels across the SCREEN unless raised, which is about
+		// 40 pixels at 1440p, and a shaft narrower than one texel does not exist in the data.
 		float cloudVisibility = cloudSunVisibility(rayPos, dirToSun);
 		sunTransmittance *= cloudVisibility;
 
