@@ -13,6 +13,7 @@ MonoBehaviour:
   m_Name: altitude
   m_EditorClassIdentifier: Assembly-CSharp::BenchmarkDefinition
   id: altitude
+  includeInAll: 1
   description: Continuous climb from altitude 4 to 220 at a fixed nadir-ish pitch.
     Sweeps sky fraction and exercises the whole LOD range. Altitude interpolates
     logarithmically, so the apparent zoom rate is constant.

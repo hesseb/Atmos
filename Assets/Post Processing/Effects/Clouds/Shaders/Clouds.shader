@@ -282,7 +282,20 @@ Shader "Hidden/Clouds"
 				if (cloudTemporalPeriod > 1)
 				{
 					int2 pixel = (int2)(i.uv * _CloudMarchSize.xy);
-					int slot = (pixel.x & 1) + ((pixel.y & 1) << 1);
+
+					// The slot comes from bit 1 of each axis, not bit 0, so the pattern is 2x2
+					// BLOCKS rather than individual pixels. That distinction is the whole saving.
+					//
+					// A GPU shades in 2x2 quads and a wave costs what its slowest lane costs. Keying
+					// the slot on bit 0 puts exactly one marching pixel in every aligned quad, so
+					// every quad still contained a lane doing the full march and the early-out
+					// bought only the memory writes. Measured over seventeen segments on a 4090 at
+					// 1440p, Temporal came out at 87-102% of Full - against Half's 28-43% - which is
+					// to say it saved nothing while still carrying the ghosting.
+					//
+					// On bit 1 each aligned quad has a uniform slot, so three quads in four skip
+					// entirely and the wave genuinely retires early.
+					int slot = ((pixel.x >> 1) & 1) + (((pixel.y >> 1) & 1) << 1);
 					if (slot != cloudTemporalIndex) { return float4(0, 0, 0, -1); }
 				}
 
@@ -428,7 +441,14 @@ Shader "Hidden/Clouds"
 					// to a marched neighbour, since a hole would read as a hard dot pattern.
 					if (onScreen) { return history; }
 
-					float2 texel = _CloudMarchSize.zw;
+					// TWO texels, matching the block stride above.
+					//
+					// This searched one texel away, which was right while the pattern alternated
+					// per pixel - the nearest marched neighbour was always adjacent. Now that a slot
+					// covers a 2x2 block the nearest one is two texels away, so a one-texel search
+					// lands inside the same unmarched block and finds nothing, leaving the fallback
+					// returning "no cloud" and punching holes wherever the history is unusable.
+					float2 texel = _CloudMarchSize.zw * 2.0;
 					float4 best = float4(0, 0, 0, 1);
 					[unroll]
 					for (int k = 0; k < 4; k++)

@@ -13,6 +13,7 @@ MonoBehaviour:
   m_Name: orbit
   m_EditorClassIdentifier: Assembly-CSharp::BenchmarkDefinition
   id: orbit
+  includeInAll: 1
   description: 360 degree heading sweep at a typical strategy-game framing, over
     two different terrain types. The nearest thing here to a representative workload
     rather than an isolated condition.

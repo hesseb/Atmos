@@ -13,6 +13,7 @@ MonoBehaviour:
   m_Name: smoke
   m_EditorClassIdentifier: Assembly-CSharp::BenchmarkDefinition
   id: smoke
+  includeInAll: 0
   description: Two short holds. For checking the harness runs end to end; too few
     frames for a trustworthy 1% low.
   bootFrames: 30
