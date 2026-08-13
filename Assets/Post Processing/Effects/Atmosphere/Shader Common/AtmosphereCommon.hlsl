@@ -319,8 +319,17 @@ void raymarchSegment(inout ScatteringState state, float3 segmentStart, float3 ra
 		// float3 sunTransmittance = getSunTransmittance(rayPos, dirToSun);
 		float3 sunTransmittance = sampleTransmittanceLUT(transmittanceLUT, rayPos, dirToSun);
 
-		// Earth shadow
-		if (rayIntersectSphere(rayPos, dirToSun, earthShadowRadius) > 0) {
+		// Earth shadow.
+		//
+		// Behind a test on the radius, because the aerial perspective passes 0 and 0 can never
+		// occlude anything: c is dot(pos, pos), which is positive everywhere outside the planet's
+		// centre, so the intersection returns -1 on every one of the 1.5 million steps that LUT
+		// marches per frame. The branch is uniform across the dispatch, so it costs nothing on the
+		// consumers that do use it - the sky pass and the sky-view LUT both pass planetRadius.
+		//
+		// The aerial perspective can pass 0 safely because sampleTransmittanceLUT does its own
+		// below-horizon test, which is exactly the reason that test was moved inside the sampler.
+		if (earthShadowRadius > 0 && rayIntersectSphere(rayPos, dirToSun, earthShadowRadius) > 0) {
 			sunTransmittance = 0;
 		}
 
