@@ -358,6 +358,28 @@ float sampleCloudHigh(float3 pos, float shellHeight, float stepSize)
 /// light march, where the extra fidelity is invisible.
 float sampleCloudLow(float3 pos, float shellHeight, bool cheap, float stepSize)
 {
+	// Out of the layer's reach, decided from UNIFORMS ALONE and therefore before the weather tap.
+	//
+	// The high layer already rejects on altitude first (see sampleCloudHigh), which is what its
+	// "returns zero before touching a volume" claim rests on. This one could not: the band's floor
+	// comes out of the weather map's alpha, so the obvious test needs the very tap it would save.
+	//
+	// It can still be bounded, though. baseOffset is a saturate of either cloudGenusBaseOffset or
+	// weather.a * cloudBaseVariation, and weather.a cannot exceed 1 - so whichever branch is live,
+	// the floor is capped by a uniform. Precipitation only ever pushes the floor DOWN, so ignoring
+	// it keeps the bound conservative. The divisor h is measured against is capped the same way.
+	//
+	// Every gradient in cloudHeightGradient is zero at h = 1, so a sample above floor + thickness
+	// contributes nothing, and this rejects a strict subset of what the gradient test at the bottom
+	// already rejects. It is a saving, not a change: no sample that would have returned non-zero is
+	// turned away.
+	//
+	// Worth having because the light march calls this six times per view step, per light source,
+	// and the tap it skips is a normalize plus an atan2 plus an asin before the fetch.
+	float bandCeiling = saturate(cloudWeatherOverrideOn > 0 ? cloudGenusBaseOffset : cloudBaseVariation)
+		+ max(0.05, cloudBandThickness);
+	if (shellHeight >= bandCeiling) { return 0; }
+
 	float4 weather = sampleCloudWeather(pos);
 	float coverage = saturate(weather.r * cloudCoverageMultiplier);
 	if (coverage <= 0) { return 0; }
@@ -443,8 +465,16 @@ float sampleCloudLow(float3 pos, float shellHeight, bool cheap, float stepSize)
 /// a deck does not thicken it.
 ///
 /// The shell-height test is done ONCE here and handed to both, which is also what makes the second
-/// layer cheap: each returns zero outside its own altitude range before touching a volume, and the
-/// two ranges do not overlap, so a sample is inside at most one of them.
+/// layer cheap: each returns zero outside its own altitude range before touching a volume.
+///
+/// Both now reject before the WEATHER tap as well, which is the more valuable of the two - the
+/// volume tap was already behind a coverage test, while the weather tap sat in front of everything
+/// and costs an atan2 and an asin on top of the fetch. The high layer tests its own range directly;
+/// the low layer bounds its band from uniforms, because its floor is a field. See both.
+///
+/// The two ranges are not guaranteed disjoint, incidentally - the low band's ceiling is clamped to
+/// the top of the shell, which is territory the high band also occupies - so a sample can be inside
+/// both. max() below is what makes that harmless rather than additive.
 float sampleCloudDensity(float3 pos, bool cheap, float stepSize)
 {
 	float shellHeight = cloudHeightFraction(pos);
