@@ -212,6 +212,7 @@ public class AtmosphereEffect : PostProcessingEffect
 	bool settingsUpToDate;
 
 	ShaderValues sharedAtmosphereValues;
+	int settingsVersion;
 	public event System.Action onSettingsUpdated;
 	Material drawSkyMaterial;
 	bool lutUpdateRequired;
@@ -419,6 +420,17 @@ public class AtmosphereEffect : PostProcessingEffect
 
 			// Done
 			settingsUpToDate = true;
+
+			// A stamp of the settings the LUTs were built from, published the same decoupled way
+			// RenderingManager publishes skyReflectionStrength: one writer, a global, and no
+			// reference between the renderers. The cloud deck's radiance bake reads the
+			// transmittance and sky-view LUTs, so its exact-signature dispatch skip has to notice
+			// when their CONTENTS change - and every content change to a baked LUT passes through
+			// this branch. (The sky-view LUT also moves with the camera and the sun, which the
+			// cloud side hashes directly; this stamp covers the parameter axis.)
+			settingsVersion++;
+			Shader.SetGlobalFloat("atmosphereSettingsVersion", settingsVersion);
+
 			onSettingsUpdated?.Invoke();
 		}
 	}
