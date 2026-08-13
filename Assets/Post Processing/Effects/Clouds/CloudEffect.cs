@@ -488,10 +488,13 @@ namespace Clouds
 
 		void ReleaseSkyMap()
 		{
-			if (skyMap == null) { return; }
-			skyMap.Release();
-			DestroyImmediate(skyMap);
-			skyMap = null;
+			if (skyMap != null)
+			{
+				skyMap.Release();
+				DestroyImmediate(skyMap);
+				skyMap = null;
+			}
+			skyMapValid = false;
 		}
 
 		/// <summary>
@@ -531,25 +534,45 @@ namespace Clouds
 					name = "Cloud Sky Map"
 				};
 				skyMap.Create();
+				// A fresh target holds nothing - the guard below must not skip the first dispatch.
+				skyMapValid = false;
 			}
 
 			ResolveSun();
 			Vector3 sunDir = sunLight != null ? -sunLight.transform.forward : Vector3.up;
 
-			int kernel = skyMapKernel.Of(skyCompute, "CSCloudSkyMap");
-			BindDensity(skyCompute, kernel);
-			skyCompute.SetTexture(kernel, "Result", skyMap);
-			skyCompute.SetVector("cloudSkyMapSize", new Vector2(width, height));
-			skyCompute.SetVector("cloudSkySunDir", sunDir);
-			skyCompute.SetInt("cloudSkySteps", skySteps);
-			skyCompute.SetFloat("cloudSkyDetailScale", skyDetailScale);
+			// The same exact-signature skip as the shadow map above, and it buys more here: every
+			// vertical step of this bake pays a six-sample cone light march. See SkySignature for
+			// why this one also hashes the camera position and the atmosphere's settings stamp.
+			// The publishes below stay unconditional for the arm-swap reason the shadow map states.
+			int signature = SkySignature(width, height, sunDir);
+			if (!skyMapValid || signature != lastSkySignature)
+			{
+				lastSkySignature = signature;
+				skyMapValid = true;
 
-			// The march's own lighting parameters, bound identically. These have to stay in step with
-			// SetProperties below, exactly as BindDensity does - a divergence would read as the sea
-			// reflecting a deck that does not match the one drawn above it.
-			BindDeckLighting(skyCompute);
+				int kernel = skyMapKernel.Of(skyCompute, "CSCloudSkyMap");
+				BindDensity(skyCompute, kernel);
+				// This kernel reaches CloudShadowCommon.hlsl through SurfaceLighting.hlsl, so it
+				// compiles a declaration of CloudShadowMap. Nothing in it samples the map today,
+				// which is the only reason an unbound texture has not tripped the "Property ... is
+				// not set" failure CloudShadowGlobals documents - dead-stripping, not correctness.
+				// Bound like the atmosphere's three computes, so the first edit that makes a shared
+				// function touch the map does not start failing from inside a pre-cull callback.
+				CloudShadowGlobals.BindTo(skyCompute, kernel);
+				skyCompute.SetTexture(kernel, "Result", skyMap);
+				skyCompute.SetVector("cloudSkyMapSize", new Vector2(width, height));
+				skyCompute.SetVector("cloudSkySunDir", sunDir);
+				skyCompute.SetInt("cloudSkySteps", skySteps);
+				skyCompute.SetFloat("cloudSkyDetailScale", skyDetailScale);
 
-			skyCompute.Dispatch(kernel, Mathf.CeilToInt(width / 8f), Mathf.CeilToInt(height / 8f), 1);
+				// The march's own lighting parameters, bound identically. These have to stay in step
+				// with SetProperties below, exactly as BindDensity does - a divergence would read as
+				// the sea reflecting a deck that does not match the one drawn above it.
+				BindDeckLighting(skyCompute);
+
+				skyCompute.Dispatch(kernel, Mathf.CeilToInt(width / 8f), Mathf.CeilToInt(height / 8f), 1);
+			}
 
 			Shader.SetGlobalTexture("CloudSkyMap", skyMap);
 			Shader.SetGlobalFloat("cloudSkyStrength", skyStrength);
@@ -603,6 +626,7 @@ namespace Clouds
 				DestroyImmediate(shadowMap);
 				shadowMap = null;
 			}
+			shadowMapValid = false;
 		}
 
 		/// <summary>Weather and shadow maps, before anything opaque draws.</summary>
@@ -783,6 +807,10 @@ namespace Clouds
 		int lastAdvanceFrame = -1;
 		int lastWeatherSignature;
 		bool weatherMapValid;
+		int lastShadowSignature;
+		bool shadowMapValid;
+		int lastSkySignature;
+		bool skyMapValid;
 
 		/// <summary>
 		/// Everything the weather kernel reads, combined into one comparable value.
@@ -807,6 +835,81 @@ namespace Clouds
 			h.Add(precipitationScale); h.Add(precipitationBias);
 			h.Add(highCoverageScale); h.Add(highCoverageBias); h.Add(highCoverageContrast);
 			h.Add(highFormScale); h.Add(highFormBias);
+			return h.ToHashCode();
+		}
+
+		/// <summary>
+		/// Everything the DENSITY MODEL reads, as one comparable value - the weather map's signature
+		/// discipline extended to the two dispatches that march through it. The weather map's own
+		/// inputs are folded in through its signature, which stands in for the map's content: the
+		/// comparison there is exact, so equal signature means a bit-identical texture.
+		///
+		/// Must include every value BindDensity binds. If a uniform is added there, add it here.
+		/// </summary>
+		int DensitySignature()
+		{
+			var h = new System.HashCode();
+			h.Add(lastWeatherSignature);
+			h.Add(shapeNoise != null ? shapeNoise.GetInstanceID() : 0);
+			h.Add(shapeNoise != null ? shapeNoise.width : 0);
+			h.Add(detailNoise != null ? detailNoise.GetInstanceID() : 0);
+			h.Add(detailNoise != null ? detailNoise.width : 0);
+			h.Add(InnerRadius); h.Add(OuterRadius);
+			h.Add(shapeScale); h.Add(detailScale); h.Add(detailWeight);
+			h.Add(densityMultiplier); h.Add(coverageMultiplier); h.Add(typeOffset);
+			h.Add(baseVariation); h.Add(bandThickness); h.Add(edgeSoftness);
+			h.Add(precipDensity); h.Add(precipTypePush); h.Add(precipBaseDrop);
+			// The three winds are direction * (elapsed * speed): hashing the inputs is equivalent
+			// to hashing the bound vectors, and elapsed is frozen exactly when time is paused.
+			h.Add(elapsed);
+			h.Add(shapeWindDirection); h.Add(shapeWindSpeed); h.Add(detailWindSpeed);
+			h.Add(highWindDirection); h.Add(highWindSpeed);
+			h.Add(highStrength); h.Add(highBase); h.Add(highThickness); h.Add(highScale);
+			h.Add(highDensityMultiplier); h.Add(highCoverageMultiplier);
+			h.Add(highStretch); h.Add(highGranularity);
+			h.Add(genusOverride);
+			return h.ToHashCode();
+		}
+
+		/// <summary>Everything the shadow kernel reads: the density model, plus its own uniforms.
+		/// Same rule as the density signature - a value bound in RenderShadowMap is added here.</summary>
+		int ShadowSignature(int width, int height, Vector3 sunDir)
+		{
+			var h = new System.HashCode();
+			h.Add(DensitySignature());
+			h.Add(width); h.Add(height); h.Add(sunDir);
+			h.Add(shadowSteps); h.Add(shadowAbsorption); h.Add(shadowDetailScale);
+			return h.ToHashCode();
+		}
+
+		/// <summary>
+		/// Everything the sky-map kernel reads. Larger than the shadow's, because this kernel also
+		/// samples the ATMOSPHERE - sampleLightColourAt and sampleSkyViewSafe read the transmittance
+		/// and sky-view LUTs - so their inputs have to be here too or the deck's radiance would go
+		/// stale against a changing sky. Three values cover them: the camera position and sun
+		/// direction (the sky-view LUT is rebuilt each frame in a frame derived from exactly these),
+		/// and atmosphereSettingsVersion, which AtmosphereEffect bumps whenever the parameters any
+		/// baked LUT was built from change. skyReflectionStrength gates both samplers and feeds the
+		/// sun gradient, so it is here for two reasons at once.
+		/// </summary>
+		int SkySignature(int width, int height, Vector3 sunDir)
+		{
+			var h = new System.HashCode();
+			h.Add(DensitySignature());
+			h.Add(width); h.Add(height); h.Add(sunDir);
+			h.Add(skySteps); h.Add(skyDetailScale);
+			h.Add(cam != null ? cam.transform.position : Vector3.zero);
+			h.Add(Shader.GetGlobalFloat("atmosphereSettingsVersion"));
+			h.Add(Shader.GetGlobalFloat("skyReflectionStrength"));
+			// BindDeckLighting's own inputs.
+			h.Add(sunLight != null ? sunLight.color : Color.white);
+			h.Add(sunIntensity); h.Add(sunTransmittanceWeight);
+			h.Add(ambientIntensity); h.Add(ambientHorizon);
+			h.Add(ambientFallback); h.Add(nightAmbient);
+			h.Add(silverIntensity); h.Add(extinction);
+			h.Add(lightMarchLength); h.Add(lightAbsorption); h.Add(coneSpread);
+			h.Add(lightMarchDetail); h.Add(powderStrength);
+			h.Add(phaseForward); h.Add(phaseBackward); h.Add(phaseBlend); h.Add(silverSpread);
 			return h.ToHashCode();
 		}
 
@@ -1001,21 +1104,38 @@ namespace Clouds
 					name = "Cloud Shadow Map"
 				};
 				shadowMap.Create();
+				// A fresh target holds nothing - the guard below must not skip the first dispatch.
+				shadowMapValid = false;
 			}
 
 			ResolveSun();
 			Vector3 sunDir = sunLight != null ? -sunLight.transform.forward : Vector3.up;
 
-			int kernel = shadowKernel.Of(shadowCompute, "CSCloudShadow");
-			BindDensity(shadowCompute, kernel);
-			shadowCompute.SetTexture(kernel, "Result", shadowMap);
-			shadowCompute.SetVector("shadowMapSize", new Vector2(width, height));
-			shadowCompute.SetVector("shadowSunDir", sunDir);
-			shadowCompute.SetInt("shadowSteps", shadowSteps);
-			shadowCompute.SetFloat("shadowAbsorption", shadowAbsorption);
-			shadowCompute.SetFloat("shadowDetailScale", shadowDetailScale);
+			// The weather map's exact-signature skip, extended to this dispatch. This marched
+			// 512x256 texels x shadowSteps density samples every frame to reproduce the existing
+			// texture bit for bit whenever the sun, the wind and every density dial were all still -
+			// which is every held benchmark pose and every frame spent tuning a paused scene.
+			//
+			// Only the DISPATCH is skipped. The publish below stays unconditional: it is four
+			// global sets, and it is what re-claims the globals after the other cloud arm held them -
+			// a skipped publish after an arm swap would leave the shafts reading a retracted zero.
+			int signature = ShadowSignature(width, height, sunDir);
+			if (!shadowMapValid || signature != lastShadowSignature)
+			{
+				lastShadowSignature = signature;
+				shadowMapValid = true;
 
-			shadowCompute.Dispatch(kernel, Mathf.CeilToInt(width / 8f), Mathf.CeilToInt(height / 8f), 1);
+				int kernel = shadowKernel.Of(shadowCompute, "CSCloudShadow");
+				BindDensity(shadowCompute, kernel);
+				shadowCompute.SetTexture(kernel, "Result", shadowMap);
+				shadowCompute.SetVector("shadowMapSize", new Vector2(width, height));
+				shadowCompute.SetVector("shadowSunDir", sunDir);
+				shadowCompute.SetInt("shadowSteps", shadowSteps);
+				shadowCompute.SetFloat("shadowAbsorption", shadowAbsorption);
+				shadowCompute.SetFloat("shadowDetailScale", shadowDetailScale);
+
+				shadowCompute.Dispatch(kernel, Mathf.CeilToInt(width / 8f), Mathf.CeilToInt(height / 8f), 1);
+			}
 
 			// Through CloudShadowGlobals rather than Shader.SetGlobal directly, because the
 			// atmosphere's three COMPUTE consumers cannot read shader globals - a kernel's textures

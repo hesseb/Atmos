@@ -212,6 +212,7 @@ public class AtmosphereEffect : PostProcessingEffect
 	bool settingsUpToDate;
 
 	ShaderValues sharedAtmosphereValues;
+	int settingsVersion;
 	public event System.Action onSettingsUpdated;
 	Material drawSkyMaterial;
 	bool lutUpdateRequired;
@@ -419,6 +420,17 @@ public class AtmosphereEffect : PostProcessingEffect
 
 			// Done
 			settingsUpToDate = true;
+
+			// A stamp of the settings the LUTs were built from, published the same decoupled way
+			// RenderingManager publishes skyReflectionStrength: one writer, a global, and no
+			// reference between the renderers. The cloud deck's radiance bake reads the
+			// transmittance and sky-view LUTs, so its exact-signature dispatch skip has to notice
+			// when their CONTENTS change - and every content change to a baked LUT passes through
+			// this branch. (The sky-view LUT also moves with the camera and the sun, which the
+			// cloud side hashes directly; this stamp covers the parameter axis.)
+			settingsVersion++;
+			Shader.SetGlobalFloat("atmosphereSettingsVersion", settingsVersion);
+
 			onSettingsUpdated?.Invoke();
 		}
 	}
@@ -435,8 +447,10 @@ public class AtmosphereEffect : PostProcessingEffect
 	/// </summary>
 	public void ApplyAtmosphereValuesTo(ComputeShader compute)
 	{
-		// In edit mode SetProperties always takes its init branch, so this also guarantees
-		// transmittanceLUT has been rendered.
+		// SetProperties takes its init branch whenever the settings are dirty or a LUT is missing,
+		// so after this the transmittance LUT is guaranteed to exist and be current. (The comment
+		// here used to claim the branch always runs in edit mode - that path was removed; the
+		// guarantee now rests on the null check.)
 		SetProperties();
 		GetShaderValues().Apply(compute);
 

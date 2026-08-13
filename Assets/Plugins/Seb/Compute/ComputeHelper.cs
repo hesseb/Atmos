@@ -37,13 +37,11 @@ public static class ComputeHelper
 	/// It calculates the number of thread groups based on the size of the given texture.
 	public static void Dispatch(ComputeShader cs, RenderTexture texture, int kernelIndex = 0)
 	{
-		Vector3Int threadGroupSizes = GetThreadGroupSizes(cs, kernelIndex);
 		Dispatch(cs, texture.width, texture.height, texture.volumeDepth, kernelIndex);
 	}
 
 	public static void Dispatch(ComputeShader cs, Texture2D texture, int kernelIndex = 0)
 	{
-		Vector3Int threadGroupSizes = GetThreadGroupSizes(cs, kernelIndex);
 		Dispatch(cs, texture.width, texture.height, 1, kernelIndex);
 	}
 
