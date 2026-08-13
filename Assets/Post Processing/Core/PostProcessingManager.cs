@@ -57,6 +57,11 @@ public class PostProcessingManager : MonoBehaviour
 
 	void OnDrawGizmos()
 	{
+		// Guarded like OnEnable and OnRenderImage. These two ran unguarded, and both are reachable
+		// with the array still null: gizmos draw before the first OnRenderImage assigns it, and
+		// OnDestroy can run on a component that never rendered at all.
+		if (effects == null) { return; }
+
 		for (int i = 0; i < effects.Length; i++)
 		{
 			if (effects[i])
@@ -68,6 +73,8 @@ public class PostProcessingManager : MonoBehaviour
 
 	void OnDestroy()
 	{
+		if (effects == null) { return; }
+
 		for (int i = 0; i < effects.Length; i++)
 		{
 			if (effects[i])
