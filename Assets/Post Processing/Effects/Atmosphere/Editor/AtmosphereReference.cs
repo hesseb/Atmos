@@ -45,8 +45,11 @@ static class AtmosphereReference
 	{
 		float h = Mathf.Clamp(height, 0f, a.atmosphereThickness);
 
-		float rayleighDensity = Mathf.Exp(-h / (a.rayleighDensityAvg * a.atmosphereThickness));
-		float mieDensity = Mathf.Exp(-h / (a.mieDensityAvg * a.atmosphereThickness));
+		// Floored exactly as GetShaderValues floors what it sends to the GPU. The guard landed
+		// there in 199b61c and this mirror kept the unguarded form, so a zeroed slider made the
+		// validator NaN on inputs the shader itself now survives.
+		float rayleighDensity = Mathf.Exp(-h / Mathf.Max(1e-4f, a.rayleighDensityAvg * a.atmosphereThickness));
+		float mieDensity = Mathf.Exp(-h / Mathf.Max(1e-4f, a.mieDensityAvg * a.atmosphereThickness));
 
 		float ozonePeak = a.ozonePeakDensityAltitude * a.atmosphereThickness;
 		float ozoneHalfWidth = a.atmosphereThickness / Mathf.Max(1e-4f, a.ozoneDensityFalloff);
@@ -63,8 +66,10 @@ static class AtmosphereReference
 
 	// ---------------------------------------------------------------- Bruneton mapping mirror
 
-	static float LutUnitToSubUv(float unit, float size) => 0.5f / size + unit * (1f - 1f / size);
-	static float LutSubUvToUnit(float uv, float size) => (uv - 0.5f / size) / (1f - 1f / size);
+	// max(size, 2) exactly as LutMapping.hlsl guards, so the mirror is singular nowhere the
+	// shader is not.
+	static float LutUnitToSubUv(float unit, float size) { size = Mathf.Max(size, 2f); return 0.5f / size + unit * (1f - 1f / size); }
+	static float LutSubUvToUnit(float uv, float size) { size = Mathf.Max(size, 2f); return (uv - 0.5f / size) / (1f - 1f / size); }
 
 	/// <summary>Mirror of `transmittanceLutUv`. Radius and cosine to LUT coordinates.</summary>
 	public static Vector2 TransmittanceLutUv(AtmosphereEffect a, float radius, float cosZenith)
@@ -133,17 +138,19 @@ static class AtmosphereReference
 		}
 
 		float u = Mathf.Sqrt(Mathf.Clamp01(0.5f - 0.5f * Mathf.Clamp(cosAzimuth, -1f, 1f)));
+		// Through the shared helpers rather than restating their formula, so the size guard
+		// above applies here too.
 		return new Vector2(
-			0.5f / a.skyViewLUTSize.x + Mathf.Clamp01(u) * (1f - 1f / a.skyViewLUTSize.x),
-			0.5f / a.skyViewLUTSize.y + Mathf.Clamp01(v) * (1f - 1f / a.skyViewLUTSize.y));
+			LutUnitToSubUv(Mathf.Clamp01(u), a.skyViewLUTSize.x),
+			LutUnitToSubUv(Mathf.Clamp01(v), a.skyViewLUTSize.y));
 	}
 
 	/// <summary>Mirror of `skyViewLutParams`. LUT coordinates back to a direction.</summary>
 	public static void SkyViewLutParams(AtmosphereEffect a, Vector2 uv, float radius,
 		out float cosViewZenith, out float cosAzimuth)
 	{
-		float unitX = (uv.x - 0.5f / a.skyViewLUTSize.x) / (1f - 1f / a.skyViewLUTSize.x);
-		float unitY = (uv.y - 0.5f / a.skyViewLUTSize.y) / (1f - 1f / a.skyViewLUTSize.y);
+		float unitX = LutSubUvToUnit(uv.x, a.skyViewLUTSize.x);
+		float unitY = LutSubUvToUnit(uv.y, a.skyViewLUTSize.y);
 
 		float thetaH = SkyViewHorizonZenith(a, radius);
 
@@ -180,7 +187,7 @@ static class AtmosphereReference
 	public static float MieExtinction(AtmosphereEffect a, float height)
 	{
 		float h = Mathf.Clamp(height, 0f, a.atmosphereThickness);
-		float density = Mathf.Exp(-h / (a.mieDensityAvg * a.atmosphereThickness));
+		float density = Mathf.Exp(-h / Mathf.Max(1e-4f, a.mieDensityAvg * a.atmosphereThickness));
 		return (a.mieCoefficient + a.mieAbsorption) * a.densityMultiplier * density / a.atmosphereThickness;
 	}
 
@@ -204,7 +211,7 @@ static class AtmosphereReference
 	public static Vector3 RayleighExtinction(AtmosphereEffect a, float height)
 	{
 		float h = Mathf.Clamp(height, 0f, a.atmosphereThickness);
-		float scaleHeight = a.rayleighDensityAvg * a.atmosphereThickness;
+		float scaleHeight = Mathf.Max(1e-4f, a.rayleighDensityAvg * a.atmosphereThickness);
 		return RayleighCoefficients(a) * (Mathf.Exp(-h / scaleHeight) / a.atmosphereThickness);
 	}
 
