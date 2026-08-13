@@ -45,6 +45,12 @@ public class RenderingManager : MonoBehaviour
 	void Setup()
 	{
 		cam = Camera.main;
+
+		// Guarded like every other reference here. Under [ExecuteInEditMode] this runs during
+		// scene load and on domain reload, and there are frames in both where nothing is tagged
+		// MainCamera yet - at which point the whole method has nothing to attach buffers to.
+		if (cam == null) { return; }
+
 		cam.RemoveAllCommandBuffers();
 
 		outerSpaceRenderCommand = new CommandBuffer { name = "Outer Space Render" };
@@ -59,8 +65,15 @@ public class RenderingManager : MonoBehaviour
 		// Order matters: the outer-space buffer is added first and never removed, so every
 		// sky lands after it. The sky shaders composite against the stars and moon via the
 		// alpha channel, so a sky that ran first would have nothing to composite against.
-		physicallyBasedSkyCommand = new CommandBuffer { name = "Sky Render (PBR)" };
-		atmosphereEffect.SetupSkyRenderingCommand(physicallyBasedSkyCommand);
+		//
+		// Null-guarded like the baseline below. DesiredMode already tests atmosphereEffect for
+		// null, so an unassigned effect is a state the rest of this class expects to handle; only
+		// this line assumed otherwise.
+		if (atmosphereEffect != null)
+		{
+			physicallyBasedSkyCommand = new CommandBuffer { name = "Sky Render (PBR)" };
+			atmosphereEffect.SetupSkyRenderingCommand(physicallyBasedSkyCommand);
+		}
 
 		// A buffer is kept only if it actually recorded something. The alternative - attaching
 		// a buffer whose material is null because a shader has not been assigned yet - blits
@@ -154,12 +167,51 @@ public class RenderingManager : MonoBehaviour
 		PublishSkyReflectionStrength();
 	}
 
+	/// <summary>
+	/// Detaches before releasing, and forgets the buffers afterwards.
+	///
+	/// Releasing a command buffer that is still attached leaves the camera holding a native
+	/// reference to freed memory, and it executes that buffer on every frame until something calls
+	/// RemoveAllCommandBuffers - which only happens in <see cref="Setup"/>, i.e. not until this
+	/// component is enabled again. Under [ExecuteInEditMode] that window opens on every domain
+	/// reload, not just on teardown.
+	///
+	/// Only two buffers are ever attached: the outer-space one, added unconditionally in Setup and
+	/// previously never removed anywhere at all, and whichever sky ApplyMode last attached. The
+	/// other skies are recorded but detached, so releasing them is enough.
+	///
+	/// No OnDestroy is needed alongside this. Unity calls OnDisable before OnDestroy in every case
+	/// where the component goes away, so a teardown that fully cleans up here covers destruction
+	/// too - and a second method that ran after the fields were nulled would do nothing.
+	/// </summary>
 	void OnDisable()
 	{
+		if (cam != null)
+		{
+			if (outerSpaceRenderCommand != null)
+			{
+				cam.RemoveCommandBuffer(CameraEvent.BeforeForwardOpaque, outerSpaceRenderCommand);
+			}
+
+			CommandBuffer attachedSky = BufferFor(activeMode);
+			if (attachedSky != null)
+			{
+				cam.RemoveCommandBuffer(CameraEvent.BeforeForwardOpaque, attachedSky);
+			}
+		}
+
 		outerSpaceRenderCommand?.Release();
 		physicallyBasedSkyCommand?.Release();
 		baselineSkyCommand?.Release();
 		nullSkyCommand?.Release();
+
+		// Nulled so a re-enable cannot attach a released buffer, and so BufferFor cannot hand one
+		// back to ApplyMode. Setup reassigns all four, but only after this has run.
+		outerSpaceRenderCommand = null;
+		physicallyBasedSkyCommand = null;
+		baselineSkyCommand = null;
+		nullSkyCommand = null;
+
 		activeMode = SkyMode.None;
 	}
 }
