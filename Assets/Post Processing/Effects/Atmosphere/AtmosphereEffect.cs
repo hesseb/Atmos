@@ -258,9 +258,14 @@ public class AtmosphereEffect : PostProcessingEffect
 			if (activeCamera == cam)
 			{
 				lutUpdateRequired = false;
-				RenderSky(activeCamera);
+
+				// Derived once here rather than inside each consumer: both marches parameterise
+				// their rays off the same four corners, and deriving them costs a matrix inversion.
+				FrustumCorners corners = CalculateFrustumCorners(activeCamera);
+
+				RenderSky(corners);
 				RenderSkyViewLUT(activeCamera);
-				RenderAerialPerspectiveLUTs(activeCamera);
+				RenderAerialPerspectiveLUTs(activeCamera, corners);
 			}
 		}
 
@@ -399,6 +404,12 @@ public class AtmosphereEffect : PostProcessingEffect
 
 			// Again, after the multiple-scattering LUT exists: BindComputeResources ran before
 			// this branch, when the texture was still null.
+			//
+			// This is the ONLY rebind the Init calls above need. Three of them used to end with a
+			// BindComputeResources of their own, which made five full rebind passes per settings
+			// change where two do - one before the branch for the texture-less binds, and this one
+			// after every texture exists. They are only reachable from here, so there was never a
+			// caller that depended on the inner ones.
 			BindComputeResources();
 
 			// Set shader params after all LUTs have been initialized
@@ -603,8 +614,6 @@ public class AtmosphereEffect : PostProcessingEffect
 		// SFloat: this is a radiance like the sky texture, not a fraction like the transmittance LUT.
 		ComputeHelper.CreateRenderTexture(ref skyViewLUT, skyViewLUTSize.x, skyViewLUTSize.y,
 			FilterMode.Bilinear, GraphicsFormat.R16G16B16A16_SFloat, "Sky View LUT");
-
-		BindComputeResources();
 	}
 
 	void InitAeiralPerspectiveLUTs()
@@ -613,11 +622,9 @@ public class AtmosphereEffect : PostProcessingEffect
 		GraphicsFormat transmittance3DFormat = GraphicsFormat.R16G16B16A16_UNorm;
 		ComputeHelper.CreateRenderTexture3D(ref aerialPerspectiveLuminance, aerialPerspectiveLUTSize, aerialPerspectiveLUTFormat, TextureWrapMode.Clamp, "Aerial Perspective");
 		ComputeHelper.CreateRenderTexture3D(ref aerialPerspectiveTransmittance, aerialPerspectiveLUTSize, transmittance3DFormat, TextureWrapMode.Clamp, "Transmittance LUT 3D");
-
-		BindComputeResources();
 	}
 
-	void RenderAerialPerspectiveLUTs(Camera cam)
+	void RenderAerialPerspectiveLUTs(Camera cam, FrustumCorners corners)
 	{
 		// Guarded like RenderSkyViewLUT below. All three of these run from Camera.onPreCull, so an
 		// unresolved sun threw once per camera per frame from inside Unity's render loop rather
@@ -625,7 +632,7 @@ public class AtmosphereEffect : PostProcessingEffect
 		if (aerialPerspectiveLUTCompute == null || light == null) { return; }
 
 		// Assign dynamic values
-		SetRaymarchParams(cam, aerialPerspectiveLUTCompute);
+		SetRaymarchParams(aerialPerspectiveLUTCompute, corners);
 		aerialPerspectiveLUTCompute.SetFloat(ShaderParamID.nearClip, cam.nearClipPlane);
 		aerialPerspectiveLUTCompute.SetFloat(ShaderParamID.farClip, cam.farClipPlane);
 		aerialPerspectiveLUTCompute.SetVector(ShaderParamID.dirToSun, -light.transform.forward);
@@ -640,8 +647,6 @@ public class AtmosphereEffect : PostProcessingEffect
 	{
 		GraphicsFormat skyFormat = GraphicsFormat.R16G16B16A16_SFloat;
 		ComputeHelper.CreateRenderTexture(ref sky, skyRenderSize.x, skyRenderSize.y, FilterMode.Bilinear, skyFormat, "Sky", useMipMaps: true);
-
-		BindComputeResources();
 	}
 
 	/// <summary>
@@ -711,11 +716,11 @@ public class AtmosphereEffect : PostProcessingEffect
 
 	// Render the sky to a small texture, which then will be upscaled to reduce expensive raymarching
 	// This is rendered every frame
-	void RenderSky(Camera cam)
+	void RenderSky(FrustumCorners corners)
 	{
 		if (skyRenderCompute == null || light == null) { return; }
 
-		SetRaymarchParams(cam, skyRenderCompute);
+		SetRaymarchParams(skyRenderCompute, corners);
 		skyRenderCompute.SetVector(ShaderParamID.dirToSun, -light.transform.forward);
 		ComputeHelper.Dispatch(skyRenderCompute, sky);
 	}
@@ -746,18 +751,49 @@ public class AtmosphereEffect : PostProcessingEffect
 		ComputeHelper.Dispatch(skyViewLUTCompute, skyViewLUT);
 	}
 
-	void SetRaymarchParams(Camera cam, ComputeShader raymarchCompute)
+	/// <summary>
+	/// The frustum's four corner directions in world space, and the camera position they start at.
+	///
+	/// Computed once per frame and handed to both consumers, rather than derived per consumer per
+	/// corner. The old shape called CalculateViewDirection four times from here and inverted the
+	/// projection matrix inside each one - and SetRaymarchParams itself runs twice a frame, for the
+	/// sky render and for the aerial perspective LUT. That is eight inversions of the same matrix
+	/// where one will do, and four of them producing values byte-identical to the other four.
+	/// </summary>
+	struct FrustumCorners
 	{
-		Vector3 topLeftDir = CalculateViewDirection(cam, new Vector2(0, 1));
-		Vector3 topRightDir = CalculateViewDirection(cam, new Vector2(1, 1));
-		Vector3 bottomLeftDir = CalculateViewDirection(cam, new Vector2(0, 0));
-		Vector3 bottomRightDir = CalculateViewDirection(cam, new Vector2(1, 0));
+		public Vector3 topLeft, topRight, bottomLeft, bottomRight;
+		public Vector3 camPos;
+	}
 
-		raymarchCompute.SetVector(ShaderParamID.topLeftDir, topLeftDir);
-		raymarchCompute.SetVector(ShaderParamID.topRightDir, topRightDir);
-		raymarchCompute.SetVector(ShaderParamID.bottomLeftDir, bottomLeftDir);
-		raymarchCompute.SetVector(ShaderParamID.bottomRightDir, bottomRightDir);
-		raymarchCompute.SetVector(ShaderParamID.camPos, cam.transform.position);
+	static FrustumCorners CalculateFrustumCorners(Camera camera)
+	{
+		Matrix4x4 clipToView = GL.GetGPUProjectionMatrix(camera.projectionMatrix, true).inverse;
+		Matrix4x4 viewToWorld = camera.transform.localToWorldMatrix;
+
+		FrustumCorners corners;
+		corners.topLeft = CornerDirection(clipToView, viewToWorld, 0, 1);
+		corners.topRight = CornerDirection(clipToView, viewToWorld, 1, 1);
+		corners.bottomLeft = CornerDirection(clipToView, viewToWorld, 0, 0);
+		corners.bottomRight = CornerDirection(clipToView, viewToWorld, 1, 0);
+		corners.camPos = camera.transform.position;
+		return corners;
+	}
+
+	static Vector3 CornerDirection(Matrix4x4 clipToView, Matrix4x4 viewToWorld, float u, float v)
+	{
+		Vector3 viewVector = clipToView * new Vector4(u * 2 - 1, v * 2 - 1, 0, -1);
+		viewVector = viewToWorld * new Vector4(viewVector.x, viewVector.y, viewVector.z, 0);
+		return viewVector.normalized;
+	}
+
+	static void SetRaymarchParams(ComputeShader raymarchCompute, FrustumCorners corners)
+	{
+		raymarchCompute.SetVector(ShaderParamID.topLeftDir, corners.topLeft);
+		raymarchCompute.SetVector(ShaderParamID.topRightDir, corners.topRight);
+		raymarchCompute.SetVector(ShaderParamID.bottomLeftDir, corners.bottomLeft);
+		raymarchCompute.SetVector(ShaderParamID.bottomRightDir, corners.bottomRight);
+		raymarchCompute.SetVector(ShaderParamID.camPos, corners.camPos);
 	}
 
 	public static class ShaderParamID
@@ -772,16 +808,6 @@ public class AtmosphereEffect : PostProcessingEffect
 
 		public static int dirToSun = Shader.PropertyToID("dirToSun");
 
-	}
-
-	Vector3 CalculateViewDirection(Camera camera, Vector2 texCoord)
-	{
-		Matrix4x4 camInverseMatrix = GL.GetGPUProjectionMatrix(camera.projectionMatrix, true).inverse;
-		Matrix4x4 localToWorldMatrix = camera.transform.localToWorldMatrix;
-
-		Vector3 viewVector = camInverseMatrix * new Vector4(texCoord.x * 2 - 1, texCoord.y * 2 - 1, 0, -1);
-		viewVector = localToWorldMatrix * new Vector4(viewVector.x, viewVector.y, viewVector.z, 0);
-		return viewVector.normalized;
 	}
 
 	public override void OnDestroy()
