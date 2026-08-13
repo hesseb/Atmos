@@ -538,7 +538,7 @@ namespace Clouds
 			ResolveSun();
 			Vector3 sunDir = sunLight != null ? -sunLight.transform.forward : Vector3.up;
 
-			int kernel = skyCompute.FindKernel("CSCloudSkyMap");
+			int kernel = skyMapKernel.Of(skyCompute, "CSCloudSkyMap");
 			BindDensity(skyCompute, kernel);
 			skyCompute.SetTexture(kernel, "Result", skyMap);
 			skyCompute.SetVector("cloudSkyMapSize", new Vector2(width, height));
@@ -778,6 +778,10 @@ namespace Clouds
 			elapsed += Time.deltaTime * timeScale;
 		}
 
+		CachedKernel skyMapKernel;
+		CachedKernel weatherKernel;
+		CachedKernel shadowKernel;
+
 		int lastAdvanceFrame = -1;
 		int lastWeatherSignature;
 		bool weatherMapValid;
@@ -848,7 +852,7 @@ namespace Clouds
 			lastWeatherSignature = signature;
 			weatherMapValid = true;
 
-			int kernel = weatherCompute.FindKernel("CSWeatherMap");
+			int kernel = weatherKernel.Of(weatherCompute, "CSWeatherMap");
 			weatherCompute.SetTexture(kernel, "Result", weatherMap);
 			// One dispatch writes both layers, so they cannot drift out of step.
 			weatherCompute.SetTexture(kernel, "ResultHigh", weatherMapHigh);
@@ -966,7 +970,7 @@ namespace Clouds
 			compute.SetFloat("cloudHighGranularity", highGranularity);
 			compute.SetVector("cloudHighWindDir", HighWindDir);
 			compute.SetVector("cloudHighWind", HighWind);
-			BindGenusOverride(compute.SetFloat, compute.SetVector);
+			BindGenusOverride(compute);
 		}
 
 		void RenderShadowMap()
@@ -1004,7 +1008,7 @@ namespace Clouds
 			ResolveSun();
 			Vector3 sunDir = sunLight != null ? -sunLight.transform.forward : Vector3.up;
 
-			int kernel = shadowCompute.FindKernel("CSCloudShadow");
+			int kernel = shadowKernel.Of(shadowCompute, "CSCloudShadow");
 			BindDensity(shadowCompute, kernel);
 			shadowCompute.SetTexture(kernel, "Result", shadowMap);
 			shadowCompute.SetVector("shadowMapSize", new Vector2(width, height));
@@ -1106,15 +1110,40 @@ namespace Clouds
 			}
 		}
 
-		/// <summary>Binds the override to whichever consumer. Off leaves every field at its map value.</summary>
-		void BindGenusOverride(System.Action<string, float> setFloat, System.Action<string, Vector4> setVector)
+		/// <summary>
+		/// The override as the four values a consumer binds, whichever consumer that is.
+		///
+		/// This used to be one method taking `setFloat`/`setVector` delegates, called as
+		/// BindGenusOverride(compute.SetFloat, compute.SetVector). A method group converted to a
+		/// System.Action allocates, and both of those do, on every call - and the call sites run
+		/// three times a frame between them. Six delegates a frame of pure garbage to avoid writing
+		/// four lines twice.
+		///
+		/// The values stay in one place, which is the part that actually mattered about sharing.
+		/// </summary>
+		void GenusOverrideValues(out float on, out Vector4 low, out Vector4 high, out float baseOffset)
 		{
-			GenusSettings(genusOverride, out Vector4 low, out Vector2 high, out float baseOffset);
+			GenusSettings(genusOverride, out low, out Vector2 highPair, out baseOffset);
+			on = genusOverride == Genus.Off ? 0f : 1f;
+			high = new Vector4(highPair.x, highPair.y, 0, 0);
+		}
 
-			setFloat("cloudWeatherOverrideOn", genusOverride == Genus.Off ? 0f : 1f);
-			setVector("cloudWeatherOverride", low);
-			setVector("cloudHighWeatherOverride", new Vector4(high.x, high.y, 0, 0));
-			setFloat("cloudGenusBaseOffset", baseOffset);
+		void BindGenusOverride(Material target)
+		{
+			GenusOverrideValues(out float on, out Vector4 low, out Vector4 high, out float baseOffset);
+			target.SetFloat("cloudWeatherOverrideOn", on);
+			target.SetVector("cloudWeatherOverride", low);
+			target.SetVector("cloudHighWeatherOverride", high);
+			target.SetFloat("cloudGenusBaseOffset", baseOffset);
+		}
+
+		void BindGenusOverride(ComputeShader target)
+		{
+			GenusOverrideValues(out float on, out Vector4 low, out Vector4 high, out float baseOffset);
+			target.SetFloat("cloudWeatherOverrideOn", on);
+			target.SetVector("cloudWeatherOverride", low);
+			target.SetVector("cloudHighWeatherOverride", high);
+			target.SetFloat("cloudGenusBaseOffset", baseOffset);
 		}
 
 		void SetProperties()
@@ -1157,7 +1186,7 @@ namespace Clouds
 			material.SetFloat("cloudHighGranularity", highGranularity);
 			material.SetVector("cloudHighWindDir", HighWindDir);
 			material.SetVector("cloudHighWind", HighWind);
-			BindGenusOverride(material.SetFloat, material.SetVector);
+			BindGenusOverride(material);
 
 			material.SetFloat("cloudStepSize", stepSize);
 			// CameraRegion leaves the clouds rendering and shows the region as a corner swatch, so

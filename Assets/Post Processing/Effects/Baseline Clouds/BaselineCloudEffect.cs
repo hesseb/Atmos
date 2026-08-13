@@ -385,9 +385,9 @@ namespace Clouds
 
 			Vector3 dirToSun = ObserverGeometry.DirectionToSun(ref sun);
 
-			int kernel = shadowCompute.FindKernel("CSBaselineCloudShadow");
-			BindLayer(shadowCompute, kernel, "A", lower);
-			BindLayer(shadowCompute, kernel, "B", upper);
+			int kernel = shadowKernel.Of(shadowCompute, "CSBaselineCloudShadow");
+			BindLayer(shadowCompute, kernel, lowerIds, lower);
+			BindLayer(shadowCompute, kernel, upperIds, upper);
 			shadowCompute.SetInt("baselineLayerCount", UpperActive ? 2 : 1);
 			shadowCompute.SetFloat("baselineBodyRadius", bodyRadius);
 
@@ -503,12 +503,12 @@ namespace Clouds
 		{
 			EnsureGradients();
 
-			BindLayer(target, "A", lower);
+			BindLayer(target, lowerIds, lower);
 			// The upper deck's uniforms are bound whether or not it is drawn - a stale texture bound
 			// to an unused sampler costs nothing, whereas leaving it unbound after a toggle would
 			// leave whatever was there last, which is the class of bug an omitted benchmark toggle
 			// produces.
-			BindLayer(target, "B", upper);
+			BindLayer(target, upperIds, upper);
 			target.SetInt("baselineLayerCount", UpperActive ? 2 : 1);
 			target.SetFloat("baselineBodyRadius", bodyRadius);
 
@@ -541,18 +541,48 @@ namespace Clouds
 		/// A texture width of zero would put the mip footprint at infinity, so an unassigned deck
 		/// falls back to a sane one rather than reading black.
 		/// </summary>
-		void BindLayer(Material target, string suffix, LayerSettings layer)
+		/// <summary>
+		/// One deck's property IDs, built once per suffix instead of concatenated per bind.
+		///
+		/// The two BindLayer overloads used to compose seven names each from a "A"/"B" suffix, and
+		/// between them they run four times a frame - twenty-eight strings allocated and hashed per
+		/// frame, and twenty-eight more whenever the drawn-mesh delivery is also up. There are only
+		/// ever two suffixes, so the names are known at type-init time.
+		/// </summary>
+		readonly struct LayerIds
+		{
+			public readonly int texture, radius, thickness, opacity, contrast, relief, texels, drift;
+
+			public LayerIds(string suffix)
+			{
+				texture = Shader.PropertyToID("BaselineCloudLayer" + suffix);
+				radius = Shader.PropertyToID("baselineLayerRadius" + suffix);
+				thickness = Shader.PropertyToID("baselineLayerThickness" + suffix);
+				opacity = Shader.PropertyToID("baselineLayerOpacity" + suffix);
+				contrast = Shader.PropertyToID("baselineLayerContrast" + suffix);
+				relief = Shader.PropertyToID("baselineLayerRelief" + suffix);
+				texels = Shader.PropertyToID("baselineLayerTexels" + suffix);
+				drift = Shader.PropertyToID("baselineLayerDrift" + suffix);
+			}
+		}
+
+		static readonly LayerIds lowerIds = new LayerIds("A");
+		static readonly LayerIds upperIds = new LayerIds("B");
+
+		CachedKernel shadowKernel;
+
+		void BindLayer(Material target, in LayerIds ids, LayerSettings layer)
 		{
 			Texture2D tex = TextureFor(layer);
 
-			target.SetTexture("BaselineCloudLayer" + suffix, tex);
-			target.SetFloat("baselineLayerRadius" + suffix, bodyRadius + layer.altitude);
-			target.SetFloat("baselineLayerThickness" + suffix, layer.thickness);
-			target.SetFloat("baselineLayerOpacity" + suffix, layer.opacity);
-			target.SetFloat("baselineLayerContrast" + suffix, layer.contrast);
-			target.SetFloat("baselineLayerRelief" + suffix, layer.reliefStrength);
-			target.SetFloat("baselineLayerTexels" + suffix, tex != null ? tex.width : 2048);
-			target.SetMatrix("baselineLayerDrift" + suffix, DriftMatrix(layer.windScale));
+			target.SetTexture(ids.texture, tex);
+			target.SetFloat(ids.radius, bodyRadius + layer.altitude);
+			target.SetFloat(ids.thickness, layer.thickness);
+			target.SetFloat(ids.opacity, layer.opacity);
+			target.SetFloat(ids.contrast, layer.contrast);
+			target.SetFloat(ids.relief, layer.reliefStrength);
+			target.SetFloat(ids.texels, tex != null ? tex.width : 2048);
+			target.SetMatrix(ids.drift, DriftMatrix(layer.windScale));
 		}
 
 		/// <summary>
@@ -562,21 +592,21 @@ namespace Clouds
 		/// SetProperties do - a divergence here would read as shadows not matching the clouds
 		/// casting them, which looks like a plausible offset rather than an obvious fault.
 		/// </summary>
-		void BindLayer(ComputeShader compute, int kernel, string suffix, LayerSettings layer)
+		void BindLayer(ComputeShader compute, int kernel, in LayerIds ids, LayerSettings layer)
 		{
 			Texture2D tex = TextureFor(layer);
 
 			// A compute cannot take a null texture binding the way a material can, so an unassigned
 			// deck gets an opaque-black stand-in - alpha 0, which is no cloud and casts no shadow.
-			compute.SetTexture(kernel, "BaselineCloudLayer" + suffix,
+			compute.SetTexture(kernel, ids.texture,
 				tex != null ? (Texture)tex : Texture2D.blackTexture);
-			compute.SetFloat("baselineLayerRadius" + suffix, bodyRadius + layer.altitude);
-			compute.SetFloat("baselineLayerThickness" + suffix, layer.thickness);
-			compute.SetFloat("baselineLayerOpacity" + suffix, layer.opacity);
-			compute.SetFloat("baselineLayerContrast" + suffix, layer.contrast);
-			compute.SetFloat("baselineLayerRelief" + suffix, layer.reliefStrength);
-			compute.SetFloat("baselineLayerTexels" + suffix, tex != null ? tex.width : 2048);
-			compute.SetMatrix("baselineLayerDrift" + suffix, DriftMatrix(layer.windScale));
+			compute.SetFloat(ids.radius, bodyRadius + layer.altitude);
+			compute.SetFloat(ids.thickness, layer.thickness);
+			compute.SetFloat(ids.opacity, layer.opacity);
+			compute.SetFloat(ids.contrast, layer.contrast);
+			compute.SetFloat(ids.relief, layer.reliefStrength);
+			compute.SetFloat(ids.texels, tex != null ? tex.width : 2048);
+			compute.SetMatrix(ids.drift, DriftMatrix(layer.windScale));
 		}
 
 		/// <summary>Once per enable, not once per frame.</summary>
@@ -617,13 +647,18 @@ namespace Clouds
 		/// </summary>
 		static bool NeedsAuthoring(Gradient gradient)
 		{
-			if (gradient == null || gradient.colorKeys == null || gradient.colorKeys.Length < 2)
-			{
-				return true;
-			}
-			if (gradient.colorKeys.Length > 2) { return false; }
+			if (gradient == null) { return true; }
 
-			foreach (GradientColorKey key in gradient.colorKeys)
+			// Read ONCE. Gradient.colorKeys is a property that copies into a fresh array on every
+			// access, and this used to touch it three times - so a check that runs every frame from
+			// ApplyShadingValuesTo, for two gradients, allocated six arrays a frame to answer a
+			// question about two.
+			GradientColorKey[] keys = gradient.colorKeys;
+
+			if (keys == null || keys.Length < 2) { return true; }
+			if (keys.Length > 2) { return false; }
+
+			foreach (GradientColorKey key in keys)
 			{
 				Color c = key.color;
 				if (c.r < 0.999f || c.g < 0.999f || c.b < 0.999f) { return false; }
