@@ -45,7 +45,19 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 {
 	if (id.x >= size || id.y >= size) { return; }
 
-	float2 uv = id.xy / (size - 1.0);
+	// (id.xy + 0.5) / size, not id.xy / (size - 1), and for exactly the reason the depth axis
+	// below already gives: Atmosphere.shader reads this volume with tex3Dlod at a raw screen uv,
+	// which lands at texel coordinate uv * size - 0.5. The corner form wrote texel i as though it
+	// held the value for i / (size - 1) while the composite read it as (i + 0.5) / size - the two
+	// agreeing only at the centre of the screen and differing by half a texel at the edges.
+	//
+	// Half a texel here is 0.78% of the screen, about 11 pixels at 1440p, so the aerial perspective
+	// was sheared outwards from the centre of the frame. Invisible as a shift, because there is no
+	// edge to see it against; it shows up as haze that does not sit on the terrain it belongs to.
+	//
+	// The z fix landed with its own note and this one was missed, which is the usual shape of it:
+	// one axis of a mapping gets corrected and the others keep the old convention.
+	float2 uv = (id.xy + 0.5) / size;
 
 	float3 rayDir = calculateViewDir(uv);
 
