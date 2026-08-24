@@ -138,7 +138,7 @@ public class AtmosphereEffect : PostProcessingEffect
 	/// </summary>
 	[Range(0.5f, 1f)] public float skyViewHorizonV = 1f;
 
-	[Header("Aerial Perpspective LUT")]
+	[Header("Aerial Perspective LUT")]
 	public ComputeShader aerialPerspectiveLUTCompute;
 	public int aerialPerspectiveLUTSize;
 	// Allow control over how strongly atmosphere affects appearance of terrain
