@@ -69,7 +69,6 @@ namespace SolarSystem
 							temperatureRange.AddValue(colorIndex);
 						}
 						magnitudeRange.AddValue(magnitude);
-						//temperatureRange.AddValue(colorIndex);
 						Coordinate coord = new Coordinate((rightAscension * 360f / 24 - 180) * Mathf.Deg2Rad, declination * Mathf.Deg2Rad);
 
 						Vector3 dir = GeoMaths.CoordinateToPoint(coord, 1);
@@ -84,8 +83,8 @@ namespace SolarSystem
 				}
 			}
 
-			// Scale magnitude between 0 and 1
-			// (with 1 being brightest, i.e the one with the lowest magnitude since lower is brighter for whatever reason!)
+			// Scale magnitude between 0 and 1, with 1 the brightest. Astronomical magnitude runs
+			// the other way - lower is brighter - so the lowest magnitude in range maps to 1.
 			for (int i = 0; i < starList.Count; i++)
 			{
 				Star star = starList[i];
