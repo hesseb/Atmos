@@ -35,10 +35,12 @@ performance and image output logged identically, for thesis figures/tables.
   `SolarSystemManager.SetTimes` is a better time API for measurement anyway
 
 **Kept despite looking removable** — don't delete these without reading NOTES.md:
-- `Assets/Scripts/Editor/EditorShaderHelper.cs` — shared by `AtmosphereEffect` and
-  `StarRenderer`, not owned by either; both the class and every call site are already
-  guarded with `#if UNITY_EDITOR`, so living in a real `Editor` folder is redundant
-  safety, not a risk
+- `Assets/Scripts/Editor Helper/` — deliberately **not** a real `Editor` folder despite
+  the name: `AtmosphereEffect.cs` and `StarRenderer.cs` are ordinary runtime scripts in
+  `Assembly-CSharp` and reference `EditorShaderHelper` under `#if UNITY_EDITOR`, but a
+  folder literally named `Editor` compiles into `Assembly-CSharp-Editor` instead — a
+  separate assembly that `Assembly-CSharp` cannot see into, guard or no guard. Renaming
+  this folder to `Editor/` breaks the build; verified the hard way once already
 - `WorldLookup` — idles, but is the only terrain-height-at-a-coordinate query, which
   the measurement harness needs
 - `PlaceholderWorld` — deactivates itself on play; the only thing showing where the
