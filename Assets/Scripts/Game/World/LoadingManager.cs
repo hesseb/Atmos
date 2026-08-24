@@ -82,7 +82,10 @@ public class LoadingManager : MonoBehaviour
 	{
 		// Release any memory from stuff no longer needed after all generation is finished
 		heightProcessor.Release();
-		Resources.UnloadUnusedAssets(); // not sure if any good reason to do this (?)
+		// heightProcessor.Release() just dropped the last references to the generation-time
+		// textures/buffers; this forces Unity to actually reclaim that memory now rather than
+		// leaving it until the next automatic unused-asset sweep.
+		Resources.UnloadUnusedAssets();
 
 		// Start game
 		SetActiveStateAll(deactivateWhileLoading, true);

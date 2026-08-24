@@ -10,7 +10,6 @@ namespace SolarSystem
 		public SolarSystemManager solarSystemManager;
 		public Shader starInstanceShader;
 		public Light sun;
-		//public Vector3 testParams;
 		public float size;
 		Material starMaterial;
 
@@ -34,7 +33,6 @@ namespace SolarSystem
 			{
 				cam = Camera.main;
 
-				//stars = loader.LoadStars();
 				CreateQuadMesh();
 				EditorOnlyInit();
 
@@ -61,7 +59,7 @@ namespace SolarSystem
 
 		public void UpdateFixedStars(EarthOrbit earth, bool geocentric)
 		{
-			if (Application.isPlaying)//
+			if (Application.isPlaying)
 			{
 				starMaterial.SetFloat("size", size);
 				starMaterial.SetFloat("brightnessMultiplier", brightnessMultiplier);
@@ -73,11 +71,6 @@ namespace SolarSystem
 				}
 
 				starMaterial.SetMatrix("rotationMatrix", rotMatrix);
-
-
-				//bounds.center = cam.transform.position;
-				//Graphics.DrawMeshInstancedIndirect(quadMesh, 0, starMaterial, bounds, argsBuffer, castShadows: ShadowCastingMode.Off, receiveShadows: false);
-				//Graphics.DrawMeshInstanced(quadMesh, 0, starInstanceShader,)//
 			}
 		}
 
@@ -109,6 +102,6 @@ namespace SolarSystem
 #if UNITY_EDITOR
 			EditorShaderHelper.onRebindRequired += () => SetBuffer();
 #endif
-		}//
+		}
 	}
 }

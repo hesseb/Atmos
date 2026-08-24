@@ -18,10 +18,13 @@ public class CountryDataEditor : Editor
 			Undo.RecordObject(countryData, "Load Country Data");
 			countryData.Load();
 
-			// I wouldn't expect this to be necessary in addition to Undo.RecordObject, but for some reason
-			// changes are not appearing in version control after saving unless I mark as dirty... (?)
+			// Undo.RecordObject alone does not mark an asset dirty for serialization - that is
+			// what SetDirty is for, and a ScriptableObject asset needs it explicitly to be
+			// written back to disk on the next save.
 			EditorUtility.SetDirty(countryData);
-			// Mark active scene as dirty since a save is required for scriptable object data to be saved (even though it's not part of the scene)
+			// The asset isn't part of any scene, but Unity's "save" action saves the active
+			// scene plus any dirty assets together - marking the scene dirty too keeps a plain
+			// Ctrl+S from silently skipping this asset.
 			EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
 
 		}
