@@ -2,10 +2,12 @@
 // pass shape, star/moon composite, tone map and dither - so only the radiance computation
 // (a texture lookup vs. a raymarch) differs between baseline and PBR.
 //
-// Two variants selected by keyword: SKY_GRADIENT, a 2D LUT by (view elevation, sun elevation);
-// SKY_CUBEMAP, a single static cubemap that cannot respond to the sun moving.
+// A 2D LUT by (view elevation, sun elevation). A cubemap variant was explored and dropped - it
+// could not respond to the sun moving - so this used to be one of two keyword-selected paths;
+// see git history if that comparison is ever wanted again.
 //
-// The gradient LUT stores linear radiance, not tone-mapped colour, so both paths share toneMap().
+// The gradient LUT stores linear radiance, not tone-mapped colour, so it shares toneMap() with
+// the physically based sky.
 Shader "Hidden/DrawSkyBaseline"
 {
 	Properties
@@ -21,7 +23,6 @@ Shader "Hidden/DrawSkyBaseline"
 			CGPROGRAM
 			#pragma vertex vert
 			#pragma fragment frag
-			#pragma multi_compile SKY_GRADIENT SKY_CUBEMAP
 
 			#include "UnityCG.cginc"
 			#include "Assets/Scripts/Shader Common/DrawAtmosphereCommon.hlsl"
@@ -52,12 +53,9 @@ Shader "Hidden/DrawSkyBaseline"
 			sampler2D _MainTex;
 
 			sampler2D SkyGradient;
-			samplerCUBE SkyCubemap;
 
 			// The planet orbits, so its centre is not the origin. Supplied per frame.
 			float3 planetCentre;
-			// The planet's rotation axis, for building the observer's local frame.
-			float3 planetAxis;
 			// saturate(dot(dirToSun, up) * 0.5 + 0.5), computed once per frame on the CPU
 			// since it does not vary across the screen.
 			float sunElevation01;
@@ -100,23 +98,10 @@ Shader "Hidden/DrawSkyBaseline"
 				float3 dirToSun = _WorldSpaceLightPos0;
 				float3 up = normalize(_WorldSpaceCameraPos - planetCentre);
 
-#if defined(SKY_CUBEMAP)
-				// Sampled in the observer's frame, not world space - a globe means a cubemap
-				// sampled by raw world direction only lines up with the real horizon at one
-				// point on the planet. Azimuth origin is arbitrary but must stay continuous as
-				// the camera moves. Singular at the poles (unhandled; no benchmark goes there).
-				float3 reference = abs(dot(up, planetAxis)) > 0.99 ? float3(0, 0, 1) : planetAxis;
-				float3 east = normalize(cross(reference, up));
-				float3 north = cross(up, east);
-				float3 localDir = float3(dot(viewDir, east), dot(viewDir, up), dot(viewDir, north));
-
-				float3 skyLum = texCUBE(SkyCubemap, localDir).rgb * skyIntensity;
-#else
 				// Full -1..1 range, not just horizon-to-zenith: on a globe the camera can look
 				// down past the horizon.
 				float viewElevation01 = saturate(dot(viewDir, up) * 0.5 + 0.5);
 				float3 skyLum = tex2D(SkyGradient, float2(viewElevation01, sunElevation01)).rgb * skyIntensity;
-#endif
 
 				float cosTheta = saturate(dot(viewDir, dirToSun));
 				skyLum += glowColour * pow(cosTheta, glowPower) * glowStrength;

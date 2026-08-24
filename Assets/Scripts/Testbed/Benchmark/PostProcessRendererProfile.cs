@@ -50,12 +50,12 @@ public class PostProcessRendererProfile : RendererProfile
 		/// <summary>Same shader and same cost as Gradient, but the LUT is baked off the physically
 		/// based renderer. Isolates authoring from cost.</summary>
 		GradientBaked,
-		/// <summary>A single static cubemap that cannot respond to the sun moving. The literal
-		/// reading of "textured skybox".</summary>
-		Cubemap,
 		/// <summary>Raymarched sky with multiple scattering, plus the scattering-LUT aerial
 		/// perspective.</summary>
-		Pbr,
+		// Pinned rather than left to auto-increment: a cubemap arm used to sit at 5 here (explored,
+		// dropped - it could not respond to the sun moving), and every profile under
+		// Assets/Profiles/RenderingProfiles that asks for Pbr is serialized as atmosphereArm: 6.
+		Pbr = 6,
 	}
 
 	/// <summary>
@@ -170,8 +170,7 @@ public override void Apply(BenchmarkSceneRefs refs, RestoreScope scope)
 		bool wantsBaselineSky = atmosphereArm != AtmosphereArm.Off && !wantsPbr;
 		bool wantsAerial = atmosphereArm == AtmosphereArm.NullWithAerial ||
 						   atmosphereArm == AtmosphereArm.Gradient ||
-						   atmosphereArm == AtmosphereArm.GradientBaked ||
-						   atmosphereArm == AtmosphereArm.Cubemap;
+						   atmosphereArm == AtmosphereArm.GradientBaked;
 
 		AtmosphereEffect atmosphere = FindAtmosphere(refs);
 		if (atmosphere != null)
@@ -213,7 +212,6 @@ public override void Apply(BenchmarkSceneRefs refs, RestoreScope scope)
 			BaselineSkyRenderer.Variant variant;
 			switch (atmosphereArm)
 			{
-				case AtmosphereArm.Cubemap: variant = BaselineSkyRenderer.Variant.Cubemap; break;
 				case AtmosphereArm.GradientBaked: variant = BaselineSkyRenderer.Variant.GradientBaked; break;
 				case AtmosphereArm.Null:
 				case AtmosphereArm.NullWithAerial: variant = BaselineSkyRenderer.Variant.Null; break;
