@@ -18,8 +18,8 @@
 // Assets-absolute, not relative: these are included from Assets/Scripts/Shaders/Game, outside the
 // atmosphere tree, and a nested relative include resolves against the *includer's* directory. That
 // is what turned the ocean pink the first time.
-#include "Assets/Post Processing/Effects/Atmosphere/Shader Common/TransmittanceCommon.hlsl"
-#include "Assets/Post Processing/Effects/Atmosphere/Shader Common/SkyViewCommon.hlsl"
+#include "Assets/Post Processing/Effects/PBR/Atmosphere/Shader Common/TransmittanceCommon.hlsl"
+#include "Assets/Post Processing/Effects/PBR/Atmosphere/Shader Common/SkyViewCommon.hlsl"
 // For toneMap. The sky is written to the colour buffer already tone-mapped, so anything derived
 // from raw sky radiance has to go through the same transform to sit at the same exposure as the
 // sky one pixel away.
@@ -38,7 +38,7 @@
 #include "Assets/Scripts/Shader Common/GeoMath.hlsl"
 // The cloud deck's occlusion, for surfaces and for the air. Its own header because
 // AtmosphereCommon.hlsl needs it too and cannot include this one - see the note there.
-#include "Assets/Post Processing/Effects/Atmosphere/Shader Common/CloudShadowCommon.hlsl"
+#include "Assets/Post Processing/Effects/PBR/Atmosphere/Shader Common/CloudShadowCommon.hlsl"
 
 // Deliberately absent: AtmosphereCommon.hlsl. It is the only declaration of the global `dirToSun`,
 // and including it here would shadow the local sun direction of every forward shader that includes

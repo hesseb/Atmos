@@ -3,16 +3,16 @@
 
 // Declares atmosphereThickness / atmosphereRadius / planetRadius and the single definition of
 // the transmittance LUT's parameterisation, shared with DrawSky.shader.
-#include "Assets/Post Processing/Effects/Atmosphere/Shader Common/TransmittanceCommon.hlsl"
+#include "Assets/Post Processing/Effects/PBR/Atmosphere/Shader Common/TransmittanceCommon.hlsl"
 // The cloud deck's occlusion of the sun, which is what turns in-scattered light into shafts.
 //
 // Its own header rather than SurfaceLighting.hlsl, which also needs it: that file cannot include
 // this one, because this one owns the global `dirToSun` and would shadow the local sun direction of
 // every forward shader. Declaring the map in both would collide as soon as a shader wanted both.
-#include "Assets/Post Processing/Effects/Atmosphere/Shader Common/CloudShadowCommon.hlsl"
+#include "Assets/Post Processing/Effects/PBR/Atmosphere/Shader Common/CloudShadowCommon.hlsl"
 
 // Must follow TransmittanceCommon.hlsl, which declares the planet dimensions its mapping uses.
-#include "Assets/Post Processing/Effects/Atmosphere/Shader Common/MultipleScatteringCommon.hlsl"
+#include "Assets/Post Processing/Effects/PBR/Atmosphere/Shader Common/MultipleScatteringCommon.hlsl"
 
 // PI, which this file used to declare itself.
 //
