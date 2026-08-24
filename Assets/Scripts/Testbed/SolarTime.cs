@@ -3,26 +3,15 @@ using UnityEngine;
 namespace SolarSystem
 {
 	/// <summary>
-	/// Solves for the time of day that puts the sun at a given elevation above an
-	/// observer. Pure maths, no scene state - safe to call from the measurement harness.
+	/// Solves for the time of day that puts the sun at a given elevation above an observer.
+	/// Pure maths, no scene state. Assumes GEOCENTRIC mode (Earth fixed at the origin, sun
+	/// moved instead) - in heliocentric mode an observer's latitude/longitude is not fixed
+	/// and these results do not apply.
 	///
-	/// Assumes the solar system is running in GEOCENTRIC mode (the mode the scene uses),
-	/// where the Earth is fixed at the origin with identity rotation and the sun is moved
-	/// instead. In heliocentric mode the Earth transform rotates under a stationary
-	/// camera, so an observer's latitude/longitude is not fixed and these results do not
-	/// apply.
-	///
-	/// The key fact that makes this exact rather than a search: in geocentric mode
-	///
-	///     dirToSun = Ry(360*(dayT + yearT)) * Rz(tilt) * (-earthPosNormalised)
-	///
-	/// so as dayT advances the sun direction simply rotates about the world Y axis. The
-	/// dot product with any fixed observer up-vector is therefore a pure sinusoid in dayT:
-	///
-	///     sin(elevation) = offset + amplitude * cos(360*(dayT + yearT) - phase)
-	///
-	/// which inverts directly. Verified against a brute-force evaluation of
-	/// EarthOrbit.UpdateOrbit + Sun.UpdateOrbit to within 3e-15.
+	/// Exact rather than a search because in geocentric mode the sun direction is just
+	/// world-Y rotation by 360*(dayT + yearT), so the dot with any fixed observer up-vector
+	/// is a pure sinusoid in dayT that inverts directly:
+	/// sin(elevation) = offset + amplitude * cos(360*(dayT + yearT) - phase)
 	/// </summary>
 	public static class SolarTime
 	{
@@ -74,13 +63,9 @@ namespace SolarSystem
 		}
 
 		/// <summary>
-		/// Finds the dayT at which the sun sits at <paramref name="elevationDegrees"/>
-		/// above the observer's horizon, either while rising or while setting.
-		///
-		/// Returns false when the elevation is unreachable at this latitude and time of
-		/// year (polar day or polar night), or when the observer is at a pole, where
-		/// elevation does not change over the day at all. In both cases the caller should
-		/// leave the time alone or adjust yearT instead.
+		/// Finds the dayT at which the sun sits at <paramref name="elevationDegrees"/> above the
+		/// observer's horizon, while rising or setting. Returns false when unreachable (polar
+		/// day/night, or at a pole) - caller should leave the time alone or adjust yearT instead.
 		/// </summary>
 		public static bool TrySolveDayT(EarthOrbit earth, Vector3 observerUp, float yearT,
 			float elevationDegrees, bool rising, out float dayT)
@@ -109,11 +94,8 @@ namespace SolarSystem
 			return Mathf.Repeat(theta / 360f - yearT, 1f);
 		}
 
-		/// <summary>
-		/// Local solar time in hours [0, 24), where 12 is the moment the sun is highest.
-		/// This is solar time at the observer's longitude, not a clock time - there are no
-		/// time zones here.
-		/// </summary>
+		/// <summary>Local solar time in hours [0, 24), 12 = sun highest. Not a clock time -
+		/// there are no time zones here.</summary>
 		public static float LocalSolarHours(EarthOrbit earth, Vector3 observerUp, float dayT, float yearT)
 		{
 			DayCurve curve = GetDayCurve(earth, observerUp, yearT);

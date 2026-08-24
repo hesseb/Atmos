@@ -1,27 +1,14 @@
 // Header revision this file was last rebuilt against: 750 km planet + densityMultiplier.
 
-// Bakes the physically based sky into the baseline's 2D gradient LUT.
-//
-// Deliberately includes AtmosphereCommon.hlsl and calls the same raymarch() the runtime sky
-// compute does, rather than reimplementing the scattering. A reimplementation would mean any
-// difference between the baked baseline and the physically based sky could be a difference
-// in the bake, which is the one thing the comparison cannot tolerate.
-//
-// One dispatch per output row: the sun direction is a shader global set once per dispatch,
-// and each row of the LUT is a different sun elevation.
+// Bakes the physically based sky into the baseline's 2D gradient LUT, reusing raymarch()
+// directly so the baseline and PBR sky can never silently diverge. One dispatch per row.
 #pragma kernel BakeSkyGradientRow
 #pragma kernel BakeSkyCubemapFace
 
 #include "Assets/Scripts/Shader Common/AtmosphereCommon.hlsl"
 
-// Unity does not reliably rebuild a .compute when an included .hlsl changes - the include is
-// not tracked as an import dependency. If the atmosphere's output looks uniformly scaled or
-// otherwise stale after editing anything under Shader Common, reimport this file.
-//
-// That is not hypothetical: editing AtmosphereCommon.hlsl to work in absolute altitude left
-// this compute running the previous code against the new uniforms, which divided every
-// optical depth by the atmosphere thickness - a transmittance of 0.994 where it should have
-// been 0.525, with the colour ratios still perfectly correct.
+// Unity does not reliably rebuild a .compute when an included .hlsl changes - reimport this
+// file if the output looks stale after editing anything under Shader Common.
 
 RWTexture2D<float4> Result;
 sampler2D TransmittanceLUT;
@@ -30,39 +17,18 @@ uint width;
 uint row;
 int numScatteringSteps;
 
-// The LUT has no azimuth axis, so one horizontal direction has to stand for all of them.
-//
-// Averaging over azimuth was the obvious choice and it was wrong. At low sun elevations the
-// sky is bright only TOWARD the sun, so the mean is far darker than the sunward sky that
-// dominates the visual impression - and the shared tone map has a pedestal at 0.155, below
-// which everything crushes to black. The average fell under it, so sunsets did not come out
-// dim, they came out ABSENT, while noon survived because the sky is near-uniform there.
-//
-// So the sample is taken at a fixed azimuth instead, measured from the sun. 0 keeps the
-// sunset colours that make a sunset legible; the cost is that the anti-solar sky is rendered
-// too warm and too bright. That trade is the honest limitation of a 2D sky LUT, and stating
-// which way it was taken matters more than the value.
+// The LUT has no azimuth axis, so the sample is taken at a fixed azimuth from the sun rather
+// than averaged - averaging washes out sunset colour, which matters more than anti-solar accuracy.
 float bakeAzimuthDegrees;
 
-// The LUT has no altitude axis either. Everything is baked from one observer height, so the
-// result is correct at that altitude and progressively wrong away from it. This is a real
-// limitation of the technique rather than of this implementation, and it is worth reporting
-// as one: a strategy-game camera ranges over a large fraction of the atmosphere's thickness.
+// Baked from a single observer altitude; a real limitation since the camera ranges widely.
 float bakeAltitude;
 
 float3 observerUp;
 float3 observerEast;
 
-/// Folds downward rays up onto the horizon.
-///
-/// A baked sky is a *background*, drawn behind real terrain, so it must contain only sky.
-/// Stopping rays at the planet instead bakes in a hard dark edge at the horizon as seen from
-/// the bake altitude - and the real horizon moves with altitude, by 11 degrees between the
-/// bake height and the orbit benchmark, so that edge ends up sitting in open sky. It reads as
-/// a serrated dark line because it is a hard edge in a low-resolution map.
-///
-/// Clamping instead makes the lower hemisphere a smooth continuation of horizon colour, which
-/// is both what a skybox looks like and altitude-independent. Terrain covers it in practice.
+// Folds downward rays up onto the horizon, so the baked sky has no hard planet edge baked in
+// at the wrong altitude - terrain covers the lower hemisphere in practice.
 float3 clampToHorizon(float3 dir, float3 up, float3 fallback)
 {
 	float upDot = dot(dir, up);
@@ -81,16 +47,14 @@ void BakeSkyGradientRow (uint3 id : SV_DispatchThreadID)
 
 	float3 pos = observerUp * (planetRadius + bakeAltitude);
 
-	// U axis: 0 = straight down, 0.5 = horizon, 1 = zenith. Matches the hand-authored
-	// gradient's layout exactly, so the two are interchangeable in the shader.
+	// U axis: 0 = straight down, 0.5 = horizon, 1 = zenith, matching the hand-authored gradient.
 	float viewElevation01 = width <= 1 ? 0.5 : id.x / (float)(width - 1);
 	float cosView = viewElevation01 * 2.0 - 1.0;
 	float sinView = sqrt(saturate(1.0 - cosView * cosView));
 
 	float3 north = normalize(cross(observerUp, observerEast));
 
-	// observerEast is the sun's azimuth by construction - the baker places the sun in the
-	// up/east plane - so this angle is measured from the sun.
+	// observerEast is the sun's azimuth by construction, so this angle is measured from the sun.
 	float azimuth = radians(bakeAzimuthDegrees);
 	float3 horizontal = observerEast * cos(azimuth) + north * sin(azimuth);
 	float3 viewDir = normalize(observerUp * cosView + horizontal * sinView);
@@ -116,14 +80,8 @@ void BakeSkyGradientRow (uint3 id : SV_DispatchThreadID)
 
 // ---------------------------------------------------------------- cubemap
 
-// One cubemap face per dispatch. Unlike the gradient this keeps full directional detail -
-// azimuth variation, the Mie forward lobe, the sun's own glow - which is what a real painted
-// skybox would have and what the 2D LUT necessarily averages away.
-//
-// The face basis arrives from the CPU as three vectors rather than being derived from a face
-// index here. Cubemap face orientation is a well-known source of silently mirrored or rotated
-// results, and keeping it in C# means it can be verified against edge continuity rather than
-// trusted.
+// One cubemap face per dispatch; keeps full directional detail the 2D gradient averages away.
+// Face basis comes from the CPU as three vectors, verifiable against edge continuity there.
 RWTexture2D<float4> FaceResult;
 uint faceSize;
 float3 faceForward;

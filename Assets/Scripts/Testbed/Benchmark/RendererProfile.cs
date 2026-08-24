@@ -1,14 +1,9 @@
 using UnityEngine;
 
 /// <summary>
-/// A renderer configuration to measure.
-///
-/// Abstract so the baseline renderer (milestone 4) can slot in without redesign - today
-/// the only distinction that exists is whether the physically based atmosphere is enabled.
-///
-/// Concrete subclasses must live in a file named after the class: Unity resolves a
-/// ScriptableObject's script by file name, and a mismatch produces an asset with no script
-/// attached, which then cannot be assigned to anything.
+/// A renderer configuration to measure. Abstract so baseline and PBR renderers can both
+/// slot in. Concrete subclasses must live in a file named after the class, or Unity fails
+/// to bind the script to the asset.
 /// </summary>
 public abstract class RendererProfile : ScriptableObject
 {
@@ -17,15 +12,11 @@ public abstract class RendererProfile : ScriptableObject
 	[TextArea(1, 3)] public string description;
 
 	/// <summary>
-	/// Applies the configuration. Every change must be registered with the scope so it is
-	/// undone when the pass ends - several of these are asset-level state that would
-	/// otherwise reach disk.
+	/// Applies the configuration. Register every change with the scope so it is undone
+	/// when the pass ends.
 	/// </summary>
 	public abstract void Apply(BenchmarkSceneRefs refs, RestoreScope scope);
 
-	/// <summary>
-	/// The settings that determine this configuration's cost, for run.json. These are
-	/// RQ3's independent variables; a result that does not record them is not defensible.
-	/// </summary>
+	/// <summary>The settings that determine this configuration's cost, recorded to run.json.</summary>
 	public abstract string DescribeSettings(BenchmarkSceneRefs refs);
 }

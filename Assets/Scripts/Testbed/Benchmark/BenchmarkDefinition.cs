@@ -81,9 +81,7 @@ public struct BenchmarkSegment
 	public string label;
 	public SegmentKind kind;
 	[Min(1)] public int frames;
-	// 0 (the default for a serialized int) uses the definition's default. Only a positive
-	// value overrides - otherwise every segment authored in the inspector would silently
-	// get zero settle frames, and a pose discontinuity would land in the statistics.
+	// 0 uses the definition's default; only a positive value overrides.
 	[Min(0)] public int settleFramesOverride;
 
 	public ViewRef from;
@@ -104,52 +102,35 @@ public struct BenchmarkSegment
 }
 
 /// <summary>
-/// A reproducible camera-and-sun script for the benchmark harness.
-///
-/// All four segment kinds collapse to the same evaluator - a segment is always
-/// "interpolate a (view, sun) pair from A to B over N frames"; the kind only decides how B
-/// is derived from A when the plan is built. That is what lets the whole run be flattened
-/// into a fixed array of frames before a single one is rendered, which in turn is what
-/// makes "both renderers saw identical poses" provable by hash rather than merely intended.
+/// A reproducible camera-and-sun script for the benchmark harness. All segment kinds collapse
+/// to the same evaluator - interpolate a (view, sun) pair from A to B over N frames - so the
+/// whole run flattens into a fixed frame array before rendering, making "both renderers saw
+/// identical poses" provable by hash.
 /// </summary>
 [CreateAssetMenu(menuName = "Testbed/Benchmark Definition", fileName = "Benchmark")]
 public class BenchmarkDefinition : ScriptableObject
 {
 	public string id = "benchmark";
 
-	/// <summary>
-	/// Whether "All" queues this one.
-	///
-	/// Exists for the smoke test, whose own description says it has too few frames to be
-	/// meaningful. Once All became the default selection, that benchmark started costing time on
-	/// every full run and dropping a row into the batch summary that reads like a result. Leaving
-	/// it out of availableBenchmarks instead would also make it unreachable from the cycle key,
-	/// which is the one thing it is for.
-	/// </summary>
+	/// <summary>Whether "All" queues this one. False for the smoke test, which has too few
+	/// frames to be a meaningful result but still needs to stay reachable individually.</summary>
 	public bool includeInAll = true;
 
 	[TextArea(2, 5)] public string description;
 
 	[Header("Phase lengths (frames)")]
 	public int bootFrames = 60;
-	// One prewarm frame per N frames of content. 0 disables prewarm entirely.
-	//
-	// Prewarm steps through a decimated sample of the run's own poses so Direct3D creates
-	// the pipeline states for every terrain tile variant and both extremes of the raymarch
-	// before anything is measured - there is no ShaderVariantCollection in this project, so
-	// otherwise that compilation lands inside the measured frames.
-	//
-	// It looks alarming: the camera teleports through the whole route in a fraction of a
-	// second. That is expected. Roughly content/40 frames, so about half a second for a
-	// 2400-frame benchmark.
+	// One prewarm frame per N frames of content (0 disables). Steps a decimated sample of the
+	// run's poses so pipeline-state compilation happens before measurement, not during it -
+	// there is no ShaderVariantCollection in this project. The camera teleporting through the
+	// route in a fraction of a second is expected.
 	[Min(0)] public int prewarmPosesEvery = 40;
 	public int warmupFrames = 120;
 	public int defaultSettleFrames = 6;
 	public int flushFrames = 16;
 
 	[Header("Simulation")]
-	// Time.captureDeltaTime is set to 1/this. Measured: it fixes Time.deltaTime without
-	// throttling, so the run advances as fast as the hardware allows.
+	// Time.captureDeltaTime is set to 1/this - fixes Time.deltaTime without throttling the run.
 	public float simulatedFps = 60f;
 	[Range(0f, 1f)] public float monthT = 0.404f;
 	[Range(0f, 1f)] public float yearT = 0.288f;
