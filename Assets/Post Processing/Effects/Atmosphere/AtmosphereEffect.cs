@@ -17,11 +17,8 @@ public class AtmosphereEffect : PostProcessingEffect
 
 
 	/// <summary>
-	/// Raymarch steps per depth slice of the aerial perspective LUT.
-	///
-	/// Was `numAerialScatteringSteps`, the steps for a whole march from the atmosphere boundary
-	/// to each slice - which meant the far slices covered the entire clip distance in 20 steps.
-	/// The march is now incremental, so this is per slice and the total is size x this.
+	/// Raymarch steps per depth slice of the aerial perspective LUT (total cost is size x this,
+	/// since the march is incremental per slice).
 	/// </summary>
 	public int aerialStepsPerSlice = 6;
 
@@ -42,35 +39,25 @@ public class AtmosphereEffect : PostProcessingEffect
 	// Strength of mie absorption
 	public float mieAbsorption;
 	/// <summary>
-	/// Asymmetry of the Cornette-Shanks phase function. 0 is isotropic (and reduces exactly to
-	/// the Rayleigh phase); higher values scatter more sharply forward. Was hardcoded at 0.8.
+	/// Asymmetry of the Cornette-Shanks phase function. 0 is isotropic (reduces to the Rayleigh
+	/// phase); higher values scatter more sharply forward.
 	/// </summary>
 	[Range(0, 0.99f)] public float mieAsymmetry = 0.8f;
 
 	[Header("Density")]
 	/// <summary>
-	/// Multiplies every scattering and absorption coefficient at once - i.e. how much denser
-	/// this atmosphere is than Earth's, at the same composition and the same vertical structure.
-	///
-	/// This exists because the planet is too small for Earth-calibrated coefficients to produce
-	/// a sunset. Reddening needs blue extinguished along the slant path to the horizon, and the
-	/// amplification of that path over the vertical one is sqrt(pi*R/2H) - about 12 here against
-	/// Earth's 35, because the planet is 750 km rather than 6371. The shortfall has to be made up
-	/// somewhere, and density is the honest place: one named number with a stated reason, rather
-	/// than six constants quietly bent away from their published values.
-	///
-	/// The value is not free either. It is set so the horizon optical depth in blue matches
-	/// Earth's, which is the quantity a sunset is actually made of - the validation harness
-	/// reports both and the ratio between them.
+	/// Multiplies every scattering/absorption coefficient - how much denser this atmosphere is
+	/// than Earth's. Needed because the small planet's slant path is too short to redden a sunset
+	/// at Earth's coefficients; density is the one named compensating factor, rather than several
+	/// constants quietly bent away from their published values. Tuned so the horizon optical
+	/// depth in blue matches Earth's (see the validation harness).
 	/// </summary>
 	public float densityMultiplier = 1;
 
 	[Header("Illumination")]
 	/// <summary>
-	/// Illuminance arriving at the top of the atmosphere. 4*PI is the value at which the
-	/// normalised Rayleigh phase reproduces the average in-scatter the old hardcoded
-	/// `rayleighPhaseValue = 1` produced, so it is the natural starting point rather than a
-	/// physical measurement - the units here are not yet tied to SI radiometry.
+	/// Illuminance at the top of the atmosphere. 4*PI matches the average in-scatter the old
+	/// hardcoded `rayleighPhaseValue = 1` produced; not yet tied to SI radiometry.
 	/// </summary>
 	public float sunIlluminance = 4 * Mathf.PI;
 
@@ -92,49 +79,32 @@ public class AtmosphereEffect : PostProcessingEffect
 
 	[Header("Multiple Scattering LUT (2D)")]
 	public ComputeShader multipleScatteringLUTCompute;
-	/// <summary>
-	/// 32x32 is Hillaire's size and is ample: Psi_ms is smooth in both altitude and sun
-	/// elevation, having had every angular feature averaged out of it by construction.
-	/// </summary>
+	/// <summary>32x32 is Hillaire's size and is ample: Psi_ms is smooth in both altitude and sun elevation.</summary>
 	public Vector2Int multipleScatteringLUTSize = new Vector2Int(32, 32);
-	/// <summary>
-	/// 0 turns multiple scattering off, leaving single scattering alone. This is the control
-	/// condition for the comparison, so it is a runtime value rather than a shader variant.
-	/// </summary>
+	/// <summary>0 disables multiple scattering, leaving single scattering alone - the control condition for the comparison.</summary>
 	[Range(0, 2)] public float multipleScatteringStrength = 1;
-	/// <summary>
-	/// Ground reflectance used by the Lambertian bounce inside the LUT. 0.1 is Hillaire's
-	/// default and is about right for ocean-and-land average.
-	/// </summary>
+	/// <summary>Ground reflectance for the LUT's Lambertian bounce. 0.1 is Hillaire's default, about right for ocean-and-land average.</summary>
 	[Range(0, 1)] public float groundAlbedo = 0.1f;
 
 	[Header("Sky View LUT (2D)")]
 	public ComputeShader skyViewLUTCompute;
 	/// <summary>
-	/// 192 x 128 is Hillaire's size. The parameterisation crowds v hard toward the horizon, so
-	/// most of that height is spent on the band that actually varies.
+	/// 192 x 128 is Hillaire's size. The parameterisation crowds v toward the horizon, so most of
+	/// that height is spent on the band that actually varies.
 	/// </summary>
 	public Vector2Int skyViewLUTSize = new Vector2Int(192, 128);
 	public int numSkyViewScatteringSteps = 32;
 	/// <summary>
-	/// Altitude the LUT is evaluated at. 0 - sea level - is right for a surface reflection, for
-	/// two reasons that happen to agree.
-	///
-	/// The Mie scale height is 1.32 world units, so at the camera's 10 units there is 0.05% of
-	/// sea-level Mie density overhead: a camera-altitude LUT would hand the ocean a clean blue sky
-	/// exactly when the warm horizon glow is what is wanted. And the aerial perspective already
-	/// applies the camera-to-surface segment over the ocean pixel afterwards, so evaluating at sea
-	/// level is what makes that segment count exactly once rather than twice.
+	/// Altitude the LUT is evaluated at. 0 (sea level) is correct for the ocean's reflection: the
+	/// Mie scale height is tiny next to camera altitude, so a camera-altitude LUT would give the
+	/// ocean a clean sky where a warm horizon glow belongs; sea level also avoids double-counting
+	/// the camera-to-surface segment the aerial perspective already applies over the ocean pixel.
 	/// </summary>
 	public float skyViewLutAltitude = 0f;
 	/// <summary>
-	/// Where the horizon sits in v. 1 stores the upper hemisphere only.
-	///
-	/// A sea-level LUT has a definitionally black lower half - a below-horizon ray hits the ground
-	/// at distance zero and the march clips there. Storing it would waste half the texels and put a
-	/// black texel adjacent to the horizon, where bilinear filtering would darken the single most
-	/// visible band in the image. 0.5 recovers Hillaire's full-sphere split for a consumer at
-	/// altitude, from the same definition.
+	/// Where the horizon sits in v. 1 stores only the upper hemisphere, since a sea-level LUT's
+	/// lower half is definitionally black; 0.5 recovers Hillaire's full-sphere split for a future
+	/// consumer at altitude.
 	/// </summary>
 	[Range(0.5f, 1f)] public float skyViewHorizonV = 1f;
 
@@ -144,21 +114,17 @@ public class AtmosphereEffect : PostProcessingEffect
 	// Allow control over how strongly atmosphere affects appearance of terrain
 	[Range(0, 1)] public float aerialPerspectiveStrength = 1;
 
-	[Tooltip("How much the cloud deck occludes the MULTIPLY-scattered light, as well as the direct " +
-		"sun. Without it the shafts wash out: this atmosphere is optically thick, so multiple " +
-		"scattering is a large share of the in-scatter and it fills the shadowed air back in. " +
-		"Partial, because some of that light really does arrive from the sides. 0 is the previous " +
-		"behaviour exactly.")]
+	[Tooltip("How much the cloud deck occludes multiply-scattered light, in addition to direct sun. " +
+		"Without this, multiple scattering (a large share of in-scatter here) fills shafts back in " +
+		"and washes them out. Partial, since some of that light genuinely arrives from the sides. " +
+		"0 matches the previous behaviour.")]
 	[Range(0, 1)] public float cloudShaftMultipleScattering = 0.7f;
 
 	/// <summary>
-	/// Draws the light-shaft occlusion term instead of the scene, so "no shafts" can be told apart
-	/// from "shafts too faint to see".
-	///
-	/// Those two have completely different causes and no shared fix, and guessing between them is
-	/// how the cloud pop-in cost four attempts. White everywhere means cloudSunVisibility is
-	/// returning 1 - a plumbing or geometry fault. Cloud-shaped darkening means the term works and
-	/// the question is magnitude, which is a tuning problem in a different file.
+	/// Draws the light-shaft occlusion term instead of the scene, to tell "no shafts" apart from
+	/// "shafts too faint to see" - different causes, different fixes. White means
+	/// cloudSunVisibility is returning 1 (a plumbing/geometry fault); cloud-shaped darkening means
+	/// the term works and it's a tuning issue.
 	/// </summary>
 	public enum DebugMode
 	{
@@ -193,12 +159,8 @@ public class AtmosphereEffect : PostProcessingEffect
 
 	[Header("Debug")]
 	/// <summary>
-	/// Derived from wavelengthsRGB and wavelengthScale, shown for inspection only - editing it
-	/// does nothing, it is overwritten on the next settings update.
-	///
-	/// It is serialized, so writing it from GetShaderValues dirtied the asset on every call.
-	/// It is now computed into a local and mirrored here once, which keeps the inspector
-	/// readout without the write-back.
+	/// Derived from wavelengthsRGB/wavelengthScale, shown for inspection only - editing it does
+	/// nothing, it is overwritten on the next settings update.
 	/// </summary>
 	public Vector3 rayleighCoefficients;
 
@@ -207,7 +169,7 @@ public class AtmosphereEffect : PostProcessingEffect
 	public RenderTexture multipleScatteringLUT;
 	public RenderTexture skyViewLUT;
 	public RenderTexture aerialPerspectiveLuminance;
-	public RenderTexture aerialPerspectiveTransmittance;//
+	public RenderTexture aerialPerspectiveTransmittance;
 	public RenderTexture sky;
 	bool settingsUpToDate;
 
@@ -232,8 +194,8 @@ public class AtmosphereEffect : PostProcessingEffect
 	{
 		lutUpdateRequired = true;
 
-		// HideAndDontSave: this is recreated on every domain reload under [ExecuteInEditMode],
-		// and without it each reload leaked a material.
+		// HideAndDontSave: recreated every domain reload under [ExecuteInEditMode], otherwise
+		// each reload leaks a material.
 		if (drawSkyMaterial == null || drawSkyMaterial.shader != drawSkyShader)
 		{
 			drawSkyMaterial = new Material(drawSkyShader) { hideFlags = HideFlags.HideAndDontSave };
@@ -266,36 +228,26 @@ public class AtmosphereEffect : PostProcessingEffect
 			}
 		}
 
-		// Deliberately outside the dirty-flag branch, and deliberately here rather than in
-		// SetProperties.
-		//
-		// This runs on Camera.onPreCull, so it lands before opaque geometry is drawn. SetProperties
-		// runs from OnRenderImage - after the ocean has already been shaded for the frame - so
-		// binding there would leave scene shaders reading last frame's values, or none at all on
-		// the first frame.
+		// Outside the dirty-flag branch and outside SetProperties on purpose: this runs on
+		// Camera.onPreCull, before opaque geometry, while SetProperties runs from OnRenderImage
+		// after the ocean has already shaded - binding there would leave scene shaders reading
+		// last frame's values, or none at all on the first frame.
 		BindGlobalResources();
 	}
 
 	/// <summary>
-	/// Publishes the atmosphere's values and LUTs as globals, for scene shaders this effect does
-	/// not own a reference to.
-	///
-	/// The ocean is the first such consumer: it colours its sun glint by sun transmittance, which
-	/// needs the transmittance LUT and the four size/geometry uniforms its parameterisation reads.
+	/// Publishes the atmosphere's values and LUTs as globals, for scene shaders this effect
+	/// doesn't own a reference to (the ocean's sun-transmittance glint is the first consumer).
 	/// See ShaderValues.ApplyGlobal for why globals rather than a material reference.
 	/// </summary>
 	void BindGlobalResources()
 	{
 		sharedAtmosphereValues?.ApplyGlobal();
 
-		// The tone map, so a scene shader can put sky radiance into the camera buffer at the same
-		// exposure the sky pass used.
-		//
-		// Not part of ShaderValues, which the atmosphere's own materials get - these are set
-		// per-material there. They matter here because the sky is written to the colour buffer
-		// already tone-mapped, so an ocean reflecting raw radiance would be at a wildly different
-		// brightness from the sky one pixel above it. They also change with the world-scale preset,
-		// which is the reason none of this can be authored on the ocean material.
+		// The tone map, so scene shaders can put sky radiance into the colour buffer at the same
+		// exposure the sky pass used. Not part of ShaderValues (which only the atmosphere's own
+		// materials get) since these change with the world-scale preset and can't be authored
+		// directly on the ocean material.
 		Shader.SetGlobalFloat("intensity", intensity);
 		Shader.SetGlobalFloat("contrast", contrast);
 		Shader.SetGlobalFloat("whitePoint", whitePoint);
@@ -309,13 +261,9 @@ public class AtmosphereEffect : PostProcessingEffect
 
 	void OnDisable()
 	{
-		// This effect owns no command buffer. RenderingManager creates the sky buffer, passes
-		// it to SetupSkyRenderingCommand to be filled, and owns its lifetime - so there is
-		// nothing here to release, and the RemoveAllCommandBuffers() that used to be here was
-		// pure collateral damage: as a ScriptableObject this fires on domain reload, and it
-		// detached the stars and the moon along with the sky while RenderingManager still
-		// believed all three were attached. Its Update only reacts to `enabled` *changing*,
-		// so it never repaired them.
+		// This effect owns no command buffer - RenderingManager creates and owns the sky buffer's
+		// lifetime. The RemoveAllCommandBuffers() that used to be here was collateral damage: it
+		// also detached the stars and moon on domain reload, and nothing then reattached them.
 		Camera.onPreCull -= RenderLUTs;
 	}
 
@@ -327,15 +275,9 @@ public class AtmosphereEffect : PostProcessingEffect
 	}
 
 	/// <summary>
-	/// Finds the Sun, once, and stops asking if the project has no "Sun" tag at all.
-	///
-	/// FindGameObjectWithTag does not return null for an undefined tag - it throws. This runs from
-	/// SetProperties on every frame and from three LUT renderers, so in a project where the tag has
-	/// not been created that is an exception per frame rather than a missing sun, and the message
-	/// points at the lookup rather than at the tag.
-	///
-	/// The retry itself stays: the effect's OnEnable can run before the scene's Sun exists, so
-	/// giving up after one miss would leave the atmosphere permanently unlit in that ordering.
+	/// Finds the Sun once, and stops asking if the project has no "Sun" tag. FindGameObjectWithTag
+	/// throws rather than returning null for an undefined tag, so this guards against an exception
+	/// per frame. The retry stays because OnEnable can run before the scene's Sun exists.
 	/// </summary>
 	void ResolveSun()
 	{
@@ -368,18 +310,13 @@ public class AtmosphereEffect : PostProcessingEffect
 		{
 			material.SetVector(ShaderParamID.dirToSun, -light.transform.forward);
 		}
-		// Was `!settingsUpToDate || !Application.isPlaying`, so in edit mode the whole init
-		// branch - including the transmittance LUT dispatch - ran on EVERY frame. That is a
-		// measurement confound and it grows once there is a multiple-scattering LUT to rebuild
-		// too. The dirty flag alone is sufficient: OnValidate sets it on any inspector edit,
-		// OnEnable clears it on load and domain reload, and EditorShaderHelper sets it when the
-		// editor regains focus and compute bindings are lost.
-		//
-		// The null check is the belt: a lost render texture is the one case that would not
-		// otherwise re-trigger, and it costs one reference comparison per frame.
-		// Bindings are refreshed unconditionally: they are cheap, and they do not survive a
-		// domain reload. The expensive part - creating render textures and dispatching the
-		// transmittance LUT - stays behind the dirty flag.
+		// Was `!settingsUpToDate || !Application.isPlaying`, which reran the whole init branch
+		// (including the transmittance LUT dispatch) every frame in edit mode. The dirty flag
+		// alone suffices: OnValidate sets it on inspector edits, OnEnable clears it on load, and
+		// EditorShaderHelper sets it when focus regain drops compute bindings. The null check
+		// catches a lost render texture, the one case that wouldn't otherwise re-trigger.
+		// Bindings are rebound unconditionally since they're cheap and don't survive a domain
+		// reload; only LUT creation and dispatch stay behind the dirty flag.
 		BindComputeResources();
 
 		if (!settingsUpToDate || transmittanceLUT == null || multipleScatteringLUT == null)
@@ -399,14 +336,9 @@ public class AtmosphereEffect : PostProcessingEffect
 			InitAeiralPerspectiveLUTs();
 			InitSkyLUT();
 
-			// Again, after the multiple-scattering LUT exists: BindComputeResources ran before
-			// this branch, when the texture was still null.
-			//
-			// This is the ONLY rebind the Init calls above need. Three of them used to end with a
-			// BindComputeResources of their own, which made five full rebind passes per settings
-			// change where two do - one before the branch for the texture-less binds, and this one
-			// after every texture exists. They are only reachable from here, so there was never a
-			// caller that depended on the inner ones.
+			// Rebind now that the multiple-scattering LUT exists (BindComputeResources ran before
+			// this branch, when it was still null). This is the only rebind the Init calls need -
+			// they used to each end with their own, giving five rebind passes where two suffice.
 			BindComputeResources();
 
 			// Set shader params after all LUTs have been initialized
@@ -421,13 +353,9 @@ public class AtmosphereEffect : PostProcessingEffect
 			// Done
 			settingsUpToDate = true;
 
-			// A stamp of the settings the LUTs were built from, published the same decoupled way
-			// RenderingManager publishes skyReflectionStrength: one writer, a global, and no
-			// reference between the renderers. The cloud deck's radiance bake reads the
-			// transmittance and sky-view LUTs, so its exact-signature dispatch skip has to notice
-			// when their CONTENTS change - and every content change to a baked LUT passes through
-			// this branch. (The sky-view LUT also moves with the camera and the sun, which the
-			// cloud side hashes directly; this stamp covers the parameter axis.)
+			// Stamp of the settings the LUTs were built from, published as a global the same
+			// decoupled way RenderingManager publishes skyReflectionStrength. The cloud deck's
+			// radiance bake reads this to notice when the baked LUTs' contents change.
 			settingsVersion++;
 			Shader.SetGlobalFloat("atmosphereSettingsVersion", settingsVersion);
 
@@ -436,28 +364,21 @@ public class AtmosphereEffect : PostProcessingEffect
 	}
 
 	/// <summary>
-	/// Applies the current atmosphere parameters to an arbitrary compute shader, after making
-	/// sure the LUTs they depend on are up to date.
-	///
-	/// Exists for the baseline renderer's offline sky bake, which evaluates the *same*
-	/// scattering code as the runtime renderer rather than a reimplementation of it. If the
-	/// bake carried its own copy of the physics, a difference between the baked baseline and
-	/// the physically based sky could be a difference in the bake rather than in the
-	/// technique - which is exactly the confound the comparison cannot afford.
+	/// Applies the atmosphere parameters to an arbitrary compute shader, after ensuring its LUTs
+	/// are current. Used by the baseline renderer's offline sky bake, so it evaluates the same
+	/// scattering code as the runtime renderer rather than a reimplementation that could silently
+	/// diverge from it.
 	/// </summary>
 	public void ApplyAtmosphereValuesTo(ComputeShader compute)
 	{
-		// SetProperties takes its init branch whenever the settings are dirty or a LUT is missing,
-		// so after this the transmittance LUT is guaranteed to exist and be current. (The comment
-		// here used to claim the branch always runs in edit mode - that path was removed; the
-		// guarantee now rests on the null check.)
+		// SetProperties takes its init branch whenever settings are dirty or a LUT is missing, so
+		// after this call the transmittance LUT is guaranteed current.
 		SetProperties();
 		GetShaderValues().Apply(compute);
 
-		// The bakers call raymarch(), so they need the multiple-scattering LUT bound like every
-		// other consumer. This matters more than it looks: `baseline-baked` exists to be the
-		// physically based sky flattened into a texture, so if the bake omitted a term the
-		// runtime has, the comparison would be measuring the bake rather than the technique.
+		// The bakers call raymarch() too, so they need the multiple-scattering LUT bound like
+		// every other consumer - otherwise the bake would omit a term the runtime has, measuring
+		// the bake rather than the technique.
 		if (multipleScatteringLUT != null) { compute.SetTexture(0, "MultipleScatteringLUT", multipleScatteringLUT); }
 	}
 
@@ -469,25 +390,18 @@ public class AtmosphereEffect : PostProcessingEffect
 		values.floats.Add(("atmosphereRadius", bodyRadius + atmosphereThickness));
 		values.floats.Add(("planetRadius", bodyRadius));
 
-		// The transmittance mapping divides by this on both the write and the read, so it has to
-		// be one value rather than two int uniforms that could drift apart.
+		// Divided by on both write and read, so this has to be one shared value rather than two
+		// int uniforms that could drift apart.
 		values.vectors.Add(("transmittanceLutSize", new Vector2(transmittanceLUTSize.x, transmittanceLUTSize.y)));
 
-		// The shader now works in absolute altitude and per-world-unit coefficients, so the
-		// inspector's normalised fields are converted here rather than inside the march.
-		//
-		// The inspector fields are still fractions of the atmosphere thickness. Expressing
-		// them in kilometres is part of adopting physical constants; converting here first
-		// keeps this step numerically identical, which is what makes it checkable.
+		// The shader works in absolute altitude and per-world-unit coefficients; the inspector's
+		// normalised fields are converted here so the physics stays numerically checkable.
 		float thickness = atmosphereThickness;
 
 		// Rayleigh values
-		//
-		// Floored for the same reason ozoneHalfWidth below is. Both scale heights are inspector
-		// fractions in [0, 1] times the thickness, so both reach exactly zero on a slider drag -
-		// and getScatteringValues divides by them inside exp(). At the surface that is exp(-0/0),
-		// which is NaN rather than the infinity a non-zero altitude would give, so it survives
-		// every saturate and clamp downstream and poisons all three LUTs at once.
+		// Floored like ozoneHalfWidth below: both scale heights are inspector fractions that can
+		// hit exactly zero, and getScatteringValues divides by them inside exp() - producing a NaN
+		// that survives every downstream saturate/clamp rather than a harmless infinity.
 		values.floats.Add(("rayleighScaleHeight", Mathf.Max(1e-4f, rayleighDensityAvg * thickness)));
 		// Arbitrary scale to give nicer range of reasonable values for the scattering constant
 		// Strength of (rayleigh) scattering is dependent on wavelength (~ 1/wavelength^4)
@@ -495,8 +409,7 @@ public class AtmosphereEffect : PostProcessingEffect
 		Vector3 rayleigh = Pow(inverseWavelengths * wavelengthScale, 4);
 		values.vectors.Add(("rayleighCoefficients", rayleigh * densityMultiplier / thickness));
 
-		// Mirror into the serialized debug field only when it has actually changed. Writing it
-		// unconditionally from here marked the asset dirty on every settings update.
+		// Mirrored only when changed - writing unconditionally dirtied the asset on every update.
 		if (rayleighCoefficients != rayleigh) { rayleighCoefficients = rayleigh; }
 
 		// Mie values
@@ -505,14 +418,12 @@ public class AtmosphereEffect : PostProcessingEffect
 		values.floats.Add(("mieAbsorption", mieAbsorption * densityMultiplier / thickness));
 		values.floats.Add(("mieAsymmetry", mieAsymmetry));
 
-		// Dimensionless, so no thickness conversion - it multiplies in-scatter, never optical
-		// depth. That asymmetry is the whole reason it can fix the phase without disturbing
-		// transmittance, which no change to a scattering coefficient could have done.
+		// Dimensionless, so no thickness conversion - it only affects the phase, not optical
+		// depth/transmittance.
 		values.floats.Add(("sunIlluminance", sunIlluminance));
 
-		// Multiple scattering. The LUT size goes to the shader as a float2 because both the
-		// write and the read divide by it; sending it as an int pair would mean two conversions
-		// that have to agree.
+		// Sent as float2 since both write and read divide by it - an int pair could let two
+		// conversions disagree.
 		values.vectors.Add(("multipleScatteringLutSize", new Vector2(multipleScatteringLUTSize.x, multipleScatteringLUTSize.y)));
 		values.floats.Add(("multipleScatteringStrength", multipleScatteringStrength));
 		values.floats.Add(("cloudShaftMultipleScattering", cloudShaftMultipleScattering));
@@ -542,9 +453,8 @@ public class AtmosphereEffect : PostProcessingEffect
 		// Values
 		drawSky.SetFloat("atmosphereThickness", atmosphereThickness);
 		drawSky.SetFloat("planetRadius", bodyRadius);
-		// Bruneton's parameterisation needs both of these. The radius was already being set in
-		// anticipation; the size is new, and a silent zero here would divide the whole mapping
-		// by nothing and put every sample in one corner of the LUT.
+		// Bruneton's parameterisation needs both radius and size - a silent zero here would
+		// divide the whole mapping by nothing and put every sample in one corner of the LUT.
 		drawSky.SetFloat("atmosphereRadius", bodyRadius + atmosphereThickness);
 		drawSky.SetVector("transmittanceLutSize", new Vector2(transmittanceLUTSize.x, transmittanceLUTSize.y));
 		drawSky.SetFloat("sunDiscSize", sunDiscSize);
@@ -579,7 +489,7 @@ public class AtmosphereEffect : PostProcessingEffect
 	// This only needs to be created once at the start (or whenever atmosphere parameters are changed)
 	void InitAndRenderTransmittanceLUT()
 	{
-		GraphicsFormat transmittanceLUTFormat = GraphicsFormat.R16G16B16A16_UNorm;//
+		GraphicsFormat transmittanceLUTFormat = GraphicsFormat.R16G16B16A16_UNorm;
 		ComputeHelper.CreateRenderTexture(ref transmittanceLUT, transmittanceLUTSize.x, transmittanceLUTSize.y, FilterMode.Bilinear, transmittanceLUTFormat, "Transmittance LUT");
 		transmittanceLUTCompute.SetTexture(0, "TransmittanceLUT", transmittanceLUT);
 		transmittanceLUTCompute.SetInt("width", transmittanceLUTSize.x);
@@ -588,22 +498,17 @@ public class AtmosphereEffect : PostProcessingEffect
 	}
 
 	/// <summary>
-	/// Bakes Hillaire's multiple-scattering LUT.
-	///
-	/// Init-time, not per-frame, and that is a property of the quantity rather than an
-	/// optimisation: Psi_ms depends only on altitude and sun elevation, both of which the
-	/// parameterisation already spans, so nothing about it changes as the sun moves or the
-	/// camera flies. It has to be rebuilt when the atmosphere parameters change, which is
-	/// exactly when this branch runs.
-	///
-	/// Must follow the transmittance LUT, which it marches against.
+	/// Bakes Hillaire's multiple-scattering LUT. Init-time rather than per-frame because Psi_ms
+	/// depends only on altitude and sun elevation, which the parameterisation already spans -
+	/// nothing changes as the sun moves or the camera flies. Must follow the transmittance LUT,
+	/// which it marches against.
 	/// </summary>
 	void InitAndRenderMultipleScatteringLUT()
 	{
 		if (multipleScatteringLUTCompute == null) { return; }
 
-		// SFloat, unlike the transmittance LUT's UNorm. Psi_ms is a radiance, not a fraction,
-		// and is not bounded to [0, 1] - a UNorm would clamp the bright end silently.
+		// SFloat, unlike the transmittance LUT's UNorm - Psi_ms is unbounded radiance, not a
+		// fraction, and a UNorm would clamp the bright end silently.
 		ComputeHelper.CreateRenderTexture(ref multipleScatteringLUT, multipleScatteringLUTSize.x, multipleScatteringLUTSize.y,
 			FilterMode.Bilinear, GraphicsFormat.R16G16B16A16_SFloat, "Multiple Scattering LUT");
 
@@ -613,8 +518,8 @@ public class AtmosphereEffect : PostProcessingEffect
 	}
 
 	/// <summary>
-	/// Creates the sky view LUT. Filled per frame by RenderSkyViewLUT, not here: unlike the
-	/// transmittance and multiple-scattering LUTs it depends on the sun's elevation, which moves.
+	/// Creates the sky view LUT. Filled per frame by RenderSkyViewLUT, not here, since unlike the
+	/// other two LUTs it depends on the sun's elevation.
 	/// </summary>
 	void InitSkyViewLUT()
 	{
@@ -635,20 +540,18 @@ public class AtmosphereEffect : PostProcessingEffect
 
 	void RenderAerialPerspectiveLUTs(Camera cam, FrustumCorners corners)
 	{
-		// Guarded like RenderSkyViewLUT below. All three of these run from Camera.onPreCull, so an
-		// unresolved sun threw once per camera per frame from inside Unity's render loop rather
-		// than failing anywhere a stack trace would point at this effect.
+		// Guarded like RenderSkyViewLUT below - all three run from Camera.onPreCull, so an
+		// unresolved sun would throw once per camera per frame from inside Unity's render loop.
 		if (aerialPerspectiveLUTCompute == null || light == null) { return; }
 
 		// Assign dynamic values
-		// nearClip and farClip used to be set here. The compute declared both and read neither -
-		// the depth axis is normalised per ray against the atmosphere chord, not against the
-		// camera's clip planes, and has been since that axis stopped being a fixed distance.
+		// nearClip/farClip used to be set here; the depth axis is normalised per ray against the
+		// atmosphere chord now, not the camera's clip planes.
 		SetRaymarchParams(aerialPerspectiveLUTCompute, corners);
 		aerialPerspectiveLUTCompute.SetVector(ShaderParamID.dirToSun, -light.transform.forward);
 
-		// 2D, over (x, y) only: each thread now walks the depth slices itself, so dispatching
-		// over the volume would launch `size` threads per column all writing the same voxels.
+		// 2D over (x, y) only - each thread walks the depth slices itself, so a 3D dispatch would
+		// have multiple threads writing the same voxels.
 		ComputeHelper.Dispatch(aerialPerspectiveLUTCompute, aerialPerspectiveLUTSize, aerialPerspectiveLUTSize, 1);
 	}
 
@@ -656,34 +559,23 @@ public class AtmosphereEffect : PostProcessingEffect
 	void InitSkyLUT()
 	{
 		GraphicsFormat skyFormat = GraphicsFormat.R16G16B16A16_SFloat;
-		// No mip chain. It asked for one, ComputeHelper sets autoGenerateMips false, and nothing
-		// ever called GenerateMips - so the levels below 0 were allocated and left undefined, and
-		// DrawSky samples this with tex2D, which is free to pick one of them the moment the sky
-		// texture is minified rather than magnified. It is not today, at 128x256 against any screen
-		// the resolution cycle offers, but that is a property of the current numbers rather than
-		// something the code guarantees.
+		// No mip chain: ComputeHelper sets autoGenerateMips false and nothing calls GenerateMips,
+		// so the levels below 0 are undefined. DrawSky samples with tex2D, which could pick an
+		// undefined mip once the sky texture is minified - not an issue at today's sizes, but not
+		// guaranteed by the code.
 		ComputeHelper.CreateRenderTexture(ref sky, skyRenderSize.x, skyRenderSize.y, FilterMode.Bilinear, skyFormat, "Sky");
 	}
 
 	/// <summary>
-	/// Re-points the compute shaders at their textures and constants. Cheap, and separate from
-	/// the render textures' creation on purpose.
-	///
-	/// Compute shader bindings do not survive a domain reload or the editor losing focus, and
-	/// nothing else restores them: `EditorShaderHelper` covers focus changes but not every path
-	/// that drops them. Until the per-frame re-init was removed this was masked, because that
-	/// re-ran the whole init - including these binds - on every editor frame. Removing the
-	/// per-frame *dispatch* was worth doing; removing the per-frame *rebind* was not, and it
-	/// showed up immediately as "Property (TransmittanceLUT) at kernel index (0) is not set".
-	///
-	/// So bindings are refreshed on every SetProperties and only the dispatch stays behind the
-	/// dirty flag.
+	/// Re-points the compute shaders at their textures and constants. Bindings don't survive a
+	/// domain reload or the editor losing focus, and nothing else restores them - EditorShaderHelper
+	/// only covers focus changes. Refreshed on every SetProperties; only the expensive dispatch
+	/// stays behind the dirty flag.
 	/// </summary>
 	void BindComputeResources()
 	{
-		// Every consumer of raymarch() now reads the multiple-scattering LUT, so every one of
-		// them has to have it bound - including the material, and including the offline bakers
-		// via ApplyAtmosphereValuesTo. A compute with an unbound texture does not fail loudly.
+		// Every raymarch() consumer needs the multiple-scattering LUT bound, including via
+		// ApplyAtmosphereValuesTo - an unbound compute texture fails silently rather than loudly.
 		if (multipleScatteringLUT != null)
 		{
 			if (material != null) { material.SetTexture("MultipleScatteringLUT", multipleScatteringLUT); }
@@ -691,15 +583,10 @@ public class AtmosphereEffect : PostProcessingEffect
 			if (aerialPerspectiveLUTCompute != null) { aerialPerspectiveLUTCompute.SetTexture(0, "MultipleScatteringLUT", multipleScatteringLUT); }
 		}
 
-		// The cloud deck, for the light shafts in raymarchSegment.
-		//
-		// Explicit, and it has to be: a compute does not receive Shader.SetGlobalTexture, so every
-		// kernel referencing CloudShadowMap must be bound by hand or the dispatch fails outright with
-		// "Property (CloudShadowMap) at kernel index (0) is not set". Fragment shaders pick the same
-		// map up from the globals for free, which is why this asymmetry is easy to miss.
-		//
-		// Bound every frame rather than once: the map is a RenderTexture the cloud renderer may
-		// recreate, and which renderer owns it can change between profiles.
+		// The cloud deck, for light shafts in raymarchSegment. Bound explicitly since computes
+		// don't receive Shader.SetGlobalTexture - every kernel referencing CloudShadowMap needs
+		// an explicit bind or the dispatch fails outright. Rebound every frame since the owning
+		// renderer can change between profiles.
 		CloudShadowGlobals.BindTo(skyViewLUTCompute, 0);
 		CloudShadowGlobals.BindTo(skyRenderCompute, 0);
 		CloudShadowGlobals.BindTo(aerialPerspectiveLUTCompute, 0);
@@ -742,18 +629,12 @@ public class AtmosphereEffect : PostProcessingEffect
 	}
 
 	/// <summary>
-	/// Fills the sky view LUT for this frame's sun elevation.
-	///
-	/// Built in a canonical frame - up is +Y, sun in the +X/+Y half-plane - rather than the world
-	/// one, which is why `dirToSun` is fabricated here instead of being the real sun direction.
-	/// `raymarch` reads that global internally and HLSL globals are read-only in-shader, so the
-	/// frame has to come from the CPU. MultipleScattering.compute is set up the same way.
-	///
-	/// Exact rather than approximate, by spherical symmetry: the sky at a point depends only on the
-	/// local sun elevation and the direction relative to (up, sun). The consequence worth knowing is
-	/// that the LUT holds ONE sun elevation - the reference point's - while the visible ocean spans
-	/// up to 20 degrees of arc, so the far water is given the near water's sun. Aerial perspective
-	/// hides much of that; the clean fix is a third LUT axis, noted in NOTES.
+	/// Fills the sky view LUT for this frame's sun elevation, in a canonical frame (up=+Y, sun in
+	/// the +X/+Y half-plane) fabricated here since HLSL globals are read-only in-shader and
+	/// raymarch reads dirToSun directly (MultipleScattering.compute does the same). Exact by
+	/// spherical symmetry, but the LUT holds only the reference point's sun elevation while the
+	/// visible ocean spans up to 20 degrees of arc - a third LUT axis is the clean fix, noted in
+	/// NOTES.
 	/// </summary>
 	void RenderSkyViewLUT(Camera cam)
 	{
@@ -768,13 +649,8 @@ public class AtmosphereEffect : PostProcessingEffect
 	}
 
 	/// <summary>
-	/// The frustum's four corner directions in world space, and the camera position they start at.
-	///
-	/// Computed once per frame and handed to both consumers, rather than derived per consumer per
-	/// corner. The old shape derived each corner in its own call and inverted the projection matrix
-	/// inside every one of them - and SetRaymarchParams itself runs twice a frame, for the sky
-	/// render and for the aerial perspective LUT. That is eight inversions of the same matrix where
-	/// one will do, and four of them producing values byte-identical to the other four.
+	/// The frustum's four corner directions and the camera position, computed once per frame and
+	/// shared by both consumers rather than each inverting the projection matrix per corner.
 	/// </summary>
 	struct FrustumCorners
 	{
@@ -834,12 +710,8 @@ public class AtmosphereEffect : PostProcessingEffect
 
 
 	/// <summary>
-	/// Forces the LUTs to be rebuilt on the next frame.
-	///
-	/// OnValidate covers inspector edits, which is every edit-mode change. Anything that writes
-	/// these fields from script at runtime - the world-scale presets - has no such hook, and
-	/// without this the transmittance and multiple-scattering LUTs would keep describing the
-	/// previous atmosphere while every other uniform described the new one.
+	/// Forces the LUTs to rebuild next frame. OnValidate covers inspector edits, but runtime
+	/// writes to these fields (the world-scale presets) have no such hook.
 	/// </summary>
 	public void MarkSettingsDirty() => settingsUpToDate = false;
 
@@ -861,7 +733,7 @@ public class AtmosphereEffect : PostProcessingEffect
 #if UNITY_EDITOR
 		EditorShaderHelper.onRebindRequired += () => settingsUpToDate = false;
 #endif
-	}//
+	}
 
 
 
@@ -915,19 +787,12 @@ public class AtmosphereEffect : PostProcessingEffect
 		}
 
 		/// <summary>
-		/// Pushes the same values as globals, for shaders the atmosphere does not own.
-		///
-		/// The ocean samples the transmittance LUT to colour its sun glint, and it is scene
-		/// geometry rather than one of this effect's own materials - so either this effect holds a
-		/// reference to a game material, or the values go out globally. Globals win on one
-		/// decisive point: `planetRadius`, `atmosphereRadius`, `intensity`, `contrast` and
-		/// `whitePoint` all change when a world-scale preset is swapped, so anything authored on
-		/// the ocean material would be silently wrong the moment F7 is pressed.
-		///
-		/// Per-material properties shadow globals in Unity, so nothing that already sets these on
-		/// itself - the atmosphere material, the draw-sky material - changes behaviour. The names
-		/// are generic enough to be worth knowing about: a future shader declaring `float
-		/// intensity;` would inherit this one.
+		/// Pushes the same values as globals, for shaders this effect doesn't own (the ocean's
+		/// sun-glint tint). Globals win over a material reference because several of these values -
+		/// planetRadius, atmosphereRadius, intensity, contrast, whitePoint - change with the active
+		/// world-scale preset. Per-material properties still shadow globals, so nothing that sets
+		/// these on itself is affected; a future shader declaring one of these generic names would
+		/// inherit it, though.
 		/// </summary>
 		public void ApplyGlobal()
 		{

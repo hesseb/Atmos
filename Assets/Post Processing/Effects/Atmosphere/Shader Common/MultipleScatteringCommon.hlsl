@@ -1,37 +1,28 @@
-// The multiple-scattering LUT's parameterisation, defined once so the compute that writes it
-// and the marches that read it cannot disagree. Same reasoning as TransmittanceCommon.hlsl:
-// a write/read mismatch in a LUT mapping produces a plausible sky rather than a visible fault,
-// which is the worst possible failure mode for something a thesis measures.
-//
-// Requires TransmittanceCommon.hlsl for planetRadius / atmosphereThickness.
+// The multiple-scattering LUT's parameterisation, defined once so writer and readers can't
+// disagree. Requires TransmittanceCommon.hlsl for planetRadius / atmosphereThickness.
 
 #ifndef MULTIPLE_SCATTERING_COMMON_INCLUDED
 #define MULTIPLE_SCATTERING_COMMON_INCLUDED
 
 float2 multipleScatteringLutSize;
 
-// 0 disables the term entirely, which is what the comparison renderer profiles need: a
-// single-scattering-only image is the thing multiple scattering has to be measured against.
+// 0 disables the term entirely - the single-scattering-only control condition the comparison
+// renderer profiles need.
 float multipleScatteringStrength;
 
-// Reflectance of the ground for the Lambertian bounce inside the LUT. Light that leaves the
-// surface and scatters back down is a real part of the multiply-scattered field, and omitting
-// it darkens the lower atmosphere noticeably at high sun angles.
+// Ground reflectance for the LUT's Lambertian bounce; omitting it noticeably darkens the lower
+// atmosphere at high sun angles.
 float groundAlbedo;
 
-// Declared as a global rather than threaded through raymarch's signature, unlike the
-// transmittance LUT. That one is a parameter because the compute that *writes* it needs a
-// RWTexture2D of the same name in scope; nothing here has that conflict, and a global avoids
-// touching all four raymarch call sites.
+// Global rather than threaded through raymarch's signature, unlike the transmittance LUT (which
+// needs to be a parameter since the writing compute has a RWTexture2D of the same name in scope).
 sampler2D MultipleScatteringLUT;
 
 // Half-texel inset comes from LutMapping.hlsl, via TransmittanceCommon.hlsl.
 
-/// Maps a radius and a sun-zenith cosine to multiple-scattering LUT coordinates.
-///
-/// The LUT depends only on altitude and sun elevation - not on the view direction, because
-/// orders beyond the first are treated as isotropic, and not on the sun's azimuth, because the
-/// atmosphere is spherically symmetric. That is what makes a 32x32 texture sufficient.
+/// Radius and sun-zenith cosine to LUT coordinates. Depends only on altitude and sun elevation -
+/// not view direction (orders beyond the first are isotropic) or sun azimuth (spherical symmetry) -
+/// which is what makes a 32x32 texture sufficient.
 float2 multipleScatteringLutUv(float radius, float cosSunZenith) {
 	float2 unit = float2(saturate(cosSunZenith * 0.5 + 0.5),
 	                     saturate((radius - planetRadius) / atmosphereThickness));

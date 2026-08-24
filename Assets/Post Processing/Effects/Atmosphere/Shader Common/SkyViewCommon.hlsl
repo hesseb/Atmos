@@ -1,28 +1,17 @@
-// The sky-view LUT's parameterisation: sky radiance as a function of *direction*, not of screen
-// position.
-//
-// The existing `sky` texture cannot answer this. It is indexed by `calculateViewDir(uv)` over the
-// current camera's four frustum corners, so it only holds directions that happen to be on screen -
-// which a reflected ray routinely is not. This LUT is what lets the ocean ask "what colour is the
-// sky in the direction I am reflecting towards".
-//
-// Hillaire 2020 section 5.3. Two deliberate differences from his, both explained below:
-// `skyViewHorizonV`, and the radius being a uniform rather than the camera's.
-//
-// Everything that writes or reads this LUT includes this file, and nothing restates the mapping -
-// the same rule as TransmittanceCommon.hlsl, for the same reason: a write/read mismatch produces a
-// plausible sky rather than an obvious fault.
+// The sky-view LUT's parameterisation: sky radiance as a function of direction rather than screen
+// position, which is what lets the ocean ask "what colour is the sky where I'm reflecting towards" -
+// the `sky` texture only holds directions on screen. Hillaire 2020 §5.3, with skyViewHorizonV and a
+// uniform (not camera) radius as the two deliberate deviations.
 
 #ifndef SKY_VIEW_COMMON_INCLUDED
 #define SKY_VIEW_COMMON_INCLUDED
 
-// For planetRadius, and lutUnitToSubUv / lutSubUvToUnit. Assets-absolute so this header can be
-// included from outside the atmosphere tree - Ocean.shader does exactly that.
+// Assets-absolute so this header can be included from outside the atmosphere tree - Ocean.shader
+// does exactly that, for planetRadius and the LUT mapping helpers.
 #include "Assets/Post Processing/Effects/Atmosphere/Shader Common/TransmittanceCommon.hlsl"
 
-// Own constant rather than AtmosphereCommon's PI: the ocean includes this header without including
-// AtmosphereCommon (which declares the global `dirToSun` and would shadow the ocean's own), and a
-// distinct name cannot collide when a compute includes both.
+// Own PI rather than AtmosphereCommon's, since including AtmosphereCommon here would shadow the
+// ocean's own dirToSun with the global one.
 static const float SKYVIEW_PI = 3.14159265359;
 
 float2 skyViewLutSize;
@@ -43,18 +32,10 @@ float skyViewHorizonZenith(float radius) {
 	return SKYVIEW_PI - asin(saturate(planetRadius / max(radius, planetRadius)));
 }
 
-/// Direction to LUT coordinates.
-///
-/// v crowds hard toward the horizon (`1 - sqrt(1 - theta/thetaH)`, whose derivative diverges
-/// there), because the horizon is where sunset colour lives and where a grazing ocean reflection
-/// lands. A linear mapping would give it no more resolution than the zenith, where the sky is
-/// nearly constant.
-///
-/// u is indexed by the cosine of the azimuth *relative to the sun*, which does two jobs at once:
-/// it folds the two sun-symmetric halves of the sky onto each other - lossless, because a
-/// spherically symmetric atmosphere with one sun is exactly mirror-symmetric about the sun-zenith
-/// plane - and it crowds texels toward the sun, where the Mie forward lobe is. It also means the
-/// LUT does not need rebuilding when the camera yaws.
+/// Direction to LUT coordinates. V crowds hard toward the horizon, where sunset colour and grazing
+/// reflections live. U indexes the cosine of azimuth relative to the sun, which folds the sky's two
+/// mirror-symmetric halves together, crowds texels toward the Mie forward lobe, and means the LUT
+/// never needs rebuilding when the camera yaws.
 float2 skyViewLutUv(float radius, float cosViewZenith, float cosAzimuth) {
 	float thetaH = skyViewHorizonZenith(radius);
 	float theta = acos(clamp(cosViewZenith, -1, 1));
@@ -93,20 +74,15 @@ void skyViewLutParams(float2 uv, float radius, out float cosViewZenith, out floa
 	cosAzimuth = 1 - 2 * unit.x * unit.x;   // inverse of sqrt(0.5 - 0.5c)
 }
 
-/// Sky radiance arriving from `dir`, for a surface whose local up is `up`.
-///
-/// `sunDir` is a parameter rather than a global on purpose: AtmosphereCommon.hlsl owns the only
-/// `dirToSun` uniform, and a header that redeclared it would shadow the local of any forward
-/// shader that includes this one.
-///
-/// Radiance, pre-tone-map, exactly like the `sky` texture - so a consumer writing into the camera
-/// colour buffer must tone map it first, with the same constants the sky pass used.
+/// Sky radiance from `dir`, for a surface with local up `up`. `sunDir` is a parameter rather than a
+/// global since AtmosphereCommon.hlsl owns the only `dirToSun` uniform. Pre-tone-map, like the `sky`
+/// texture - callers writing to the camera buffer must tone map with the same constants the sky
+/// pass used.
 float3 sampleSkyView(float3 up, float3 dir, float3 sunDir) {
 	float cosViewZenith = dot(up, dir);
 
-	// Azimuth of `dir` relative to the sun, both projected onto the local horizontal plane.
-	// Degenerate when either is near vertical - and in exactly those cases the sky is nearly
-	// azimuthally symmetric, so the fallback is unobservable.
+	// Azimuth of `dir` relative to the sun, projected onto the local horizontal; degenerates near
+	// vertical, where the sky is nearly azimuthally symmetric anyway, so the fallback is unobservable.
 	float3 sunTangent = sunDir - up * dot(sunDir, up);
 	float3 dirTangent = dir - up * dot(dir, up);
 	float sunLen = length(sunTangent);
