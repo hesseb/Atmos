@@ -1,22 +1,10 @@
-// The measurement control for the cloud pass: its structure with no shading at all.
-//
-// Structurally identical to Hidden/BaselineClouds - the same two passes, the same offscreen
-// ARGBHalf target allocated by the same code, the same composite. The only difference is that the
-// first pass returns "no cloud, background fully intact" without reading a texture, intersecting a
-// sphere or lighting anything.
-//
-// DrawSkyNull.shader exists for exactly this reason on the sky side, and states the argument: some
-// of what a pass costs is not shading. A render-target allocation, two full-screen blits, the
-// bandwidth of writing and then reading a half-precision buffer, and the composite's four depth
-// taps are all paid before a single cloud is evaluated. Subtracting them is what turns a frame time
-// into a statement about a technique:
+// The measurement control for the cloud pass: structurally identical to Hidden/BaselineClouds (same
+// passes, target, composite) but the first pass returns "no cloud" without shading anything, so
+// pass-structure cost can be subtracted from shading cost:
 //
 //   baseline-null  - clouds-off     the pass structure alone
 //   baseline       - baseline-null  the cheap shading model
 //   volumetric     - baseline-null  the march
-//
-// Without this arm, "the baseline costs X" silently includes the scaffolding that any cloud
-// renderer in this chain would pay, and the ratio against the volumetric is understated.
 Shader "Hidden/BaselineCloudsNull"
 {
 	Properties
@@ -27,8 +15,7 @@ Shader "Hidden/BaselineCloudsNull"
 	{
 		Cull Off ZWrite Off ZTest Always
 
-		// Shade - or rather, decline to. Returns the identity for the compositing convention: rgb 0
-		// is "adds nothing", alpha 1 is "all of the background survives".
+		// Shade - or rather, decline to: rgb 0 is "adds nothing", alpha 1 is "background survives".
 		Pass
 		{
 			CGPROGRAM
@@ -64,10 +51,8 @@ Shader "Hidden/BaselineCloudsNull"
 			ENDCG
 		}
 
-		// The SAME composite the shaded path and the volumetric both use. Included rather than
-		// stubbed out, because the composite is part of the structure being priced - replacing it
-		// with a blit here would move its cost out of "structure" and into "shading", which is the
-		// one boundary this control exists to draw.
+		// The same composite the shaded path and the volumetric both use - stubbing it out would move
+		// its cost from "structure" into "shading", the one boundary this control exists to draw.
 		Pass
 		{
 			CGPROGRAM

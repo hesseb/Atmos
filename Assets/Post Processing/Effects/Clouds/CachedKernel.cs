@@ -3,19 +3,10 @@ using UnityEngine;
 namespace Clouds
 {
 	/// <summary>
-	/// A FindKernel result, held until the compute shader it came from is replaced.
-	///
-	/// FindKernel is a name lookup across the interop boundary, and both cloud renderers were doing
-	/// one per dispatch per frame - four between them - to re-derive an index that had not changed
-	/// since the last domain reload.
-	///
-	/// Keyed on the ComputeShader reference rather than resolved once at enable, because the compute
-	/// fields on both effects are public and can be repointed from the inspector. A kernel index is
-	/// only meaningful against the shader it was looked up in, so a stale one does not fail loudly -
-	/// it dispatches a different kernel.
-	///
-	/// Its own file rather than a nested type, so the volumetric and the baseline share one
-	/// definition instead of one owning it and the other reaching into it.
+	/// A FindKernel result, cached until the compute shader it came from is replaced - avoids
+	/// re-deriving an unchanged index every dispatch. Keyed on the ComputeShader reference rather
+	/// than resolved once at enable, since the compute fields are public and can be repointed from
+	/// the inspector, and a stale index would silently dispatch the wrong kernel.
 	/// </summary>
 	public struct CachedKernel
 	{

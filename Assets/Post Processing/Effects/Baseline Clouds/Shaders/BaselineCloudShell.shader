@@ -1,27 +1,16 @@
-// The baseline clouds delivered as DRAWN GEOMETRY rather than as a post-process.
+// The baseline clouds delivered as drawn geometry rather than as a post-process: same shading model
+// (shares BaselineCloudCommon.hlsl and calls the same baselineCloudLayer), reached by rasterising a
+// sphere at the deck's radius so only pixels the deck covers ever run a fragment - the cost trade-off
+// against the post-process's full-screen quad is the point of the comparison.
 //
-// Same shading model, reached differently. BaselineClouds.shader rasterises a full-screen quad and
-// intersects the deck analytically for every pixel on screen; this rasterises a sphere at the deck's
-// radius so only the pixels the deck actually covers ever run a fragment. Which of those is cheaper
-// is not obvious in advance - the post-process pays for sky pixels it will discard, the mesh pays
-// for vertex work and a transparent pass with no depth prepass - and measuring the gap is the point.
-//
-// It includes BaselineCloudCommon.hlsl and calls the SAME baselineCloudLayer. Nothing about the
-// look is restated here, so a visible difference between the two deliveries means the header is not
-// actually shared, which is the one thing this pairing is meant to prove.
-//
-// The mesh is only a rasterisation proxy. The fragment still intersects the analytic sphere, so
-// faceting does not affect the shading at all - it decides which pixels get shaded and nothing else.
-// That is why a fairly coarse icosphere is enough, and why the shell is inflated very slightly: an
-// inscribed polyhedron's silhouette sits inside the true sphere and would clip a thin crescent off
-// the limb.
+// The mesh is only a rasterisation proxy: the fragment still intersects the analytic sphere, so
+// faceting only decides which pixels get shaded. A coarse icosphere suffices, inflated slightly so
+// its inscribed silhouette doesn't clip a thin crescent off the limb.
 Shader "Hidden/BaselineCloudShell"
 {
 	Properties
 	{
-		// Set per frame from BaselineCloudShell. Back when the camera is outside the deck, Front
-		// when it is inside - which is the geometric counterpart of baselineLayerHit taking the
-		// near hit from outside and the exit hit from inside.
+		// Set per frame: Back when the camera is outside the deck, Front when inside.
 		_Cull ("Cull", Float) = 2
 	}
 	SubShader
@@ -32,11 +21,8 @@ Shader "Hidden/BaselineCloudShell"
 		{
 			Cull [_Cull]
 			ZWrite Off
-			// The shading returns premultiplied colour with TRANSMITTANCE in alpha - rgb is what the
-			// deck adds, a is how much of the background survives. So the blend is src + dst*srcA,
-			// which is exactly the expression CloudComposite.hlsl applies for the post-process path.
-			// Getting this wrong would make the two deliveries differ in compositing rather than in
-			// delivery, which is the confound this whole pairing exists to avoid.
+			// Premultiplied colour with transmittance in alpha, so src + dst*srcA matches exactly what
+			// CloudComposite.hlsl does for the post-process path - the two deliveries must not differ in compositing.
 			Blend One SrcAlpha
 
 			CGPROGRAM
@@ -79,10 +65,8 @@ Shader "Hidden/BaselineCloudShell"
 				float3 rayOrigin = _WorldSpaceCameraPos;
 				float3 rayDir = normalize(i.worldPos - rayOrigin);
 
-				// Scene depth, converted from eye-space Z into distance along this ray. The ray is
-				// normalised, so the eye depth has to be divided by its cosine against the camera's
-				// forward - the post-process gets the same conversion for free by leaving its view
-				// vector unnormalised.
+				// Scene depth, converted from eye-space Z into distance along this (normalised) ray by
+				// dividing by its cosine against the camera's forward.
 				float2 screenUV = i.screenPos.xy / max(1e-6, i.screenPos.w);
 				float eyeDepth = LinearEyeDepth(SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, screenUV));
 				float3 cameraForward = -UNITY_MATRIX_V[2].xyz;

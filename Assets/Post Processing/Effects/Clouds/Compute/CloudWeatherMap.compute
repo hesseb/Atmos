@@ -3,34 +3,18 @@
 #include "Assets/Scripts/Shader Common/GeoMath.hlsl"
 #include "Assets/Post Processing/Effects/Clouds/Shader Common/CloudNoiseCommon.hlsl"
 
-// Schneider's weather map, on a globe.
+// Schneider's weather map, on a globe. Two layers, written by one dispatch so they cannot drift
+// apart:
+//   Result (low/mid layer, seven of ten genera): R coverage, G precipitation, B form
+//     (sheet -> cellular -> heaped -> towering), A base altitude as a fraction of the shell.
+//   ResultHigh (ice layer): R coverage, G form (fibrous -> granular -> veil), B/A spare.
+// Two layers because the genera table (THESIS.md 3.5) is altitude band crossed with form, and one
+// layer can only walk one row of it; the bands are separated in altitude, so a density sample is
+// inside at most one and the second layer costs a texture tap rather than a second noise evaluation.
 //
-// TWO layers, written by one dispatch so they cannot drift out of step.
-//
-// Result - the low/mid layer, which carries seven of the ten genera:
-//   R  coverage      how much cloud there is here at all
-//   G  precipitation thickens the cloud, drops its base, and is the -nimbus affix
-//   B  form          sheet -> cellular -> heaped -> towering
-//   A  base altitude where the layer's floor sits in the shell, as a fraction of it
-//
-// ResultHigh - the ice layer, which carries the other three:
-//   R  coverage      cirrus is usually sparse, so this sits low by default
-//   G  form          fibrous (Ci) -> granular (Cc) -> veil (Cs)
-//   B, A  spare
-//
-// Why two. THESIS.md 3.5 makes the genera table RQ1's rubric, and that table is two-dimensional -
-// altitude BAND crossed with FORM. One layer with one form axis can only walk one row of it, which
-// is why three genera were unreachable and the mid band was unrepresented. The bands are separated
-// in altitude by construction, so a density sample is inside at most one and the second layer costs
-// a texture tap rather than a second noise evaluation.
-//
-// Equirectangular, sampled with pointToUV, the same parameterisation the terrain, the ocean and the
-// city light field already use - so it needs no container and is invariant under the world scale.
-//
-// The noise is evaluated in 3D AT THE POINT ON THE SPHERE, not in 2D over the UV rectangle. That is
-// the difference between a weather system and a weather map: sampling 2D noise over an
-// equirectangular grid squashes every feature toward the poles and leaves a seam down the
-// antimeridian, whereas the sphere is a closed domain with no distortion and no edge to match up.
+// Sampled with pointToUV like the terrain, ocean and city light field, so it needs no container and
+// is scale-invariant. Noise is evaluated in 3D at the point on the sphere, not in 2D over the UV
+// rectangle, to avoid distortion toward the poles and a seam down the antimeridian.
 
 RWTexture2D<float4> Result;
 RWTexture2D<float4> ResultHigh;
@@ -41,18 +25,10 @@ int octaves;
 float lacunarity;
 float gain;
 
-/// Stretches each field to fill [-1, 1] before it is folded to [0, 1].
-///
-/// cloudFbm normalises by the sum of its octave amplitudes, and an FBM never reaches that sum
-/// because the octaves rarely peak together. Measured over these settings the raw output spans only
-/// about +/-0.40, which folds to [0.30, 0.70] - so every field sat in the middle third of its range
-/// and the whole globe had nearly the same weather.
-///
-/// It was worst for cloud type, whose tent weights need 0 for stratus and 1 for cumulonimbus: mean
-/// cumulus weight across the globe was 0.90, and neither other genus was reachable at all.
-///
-/// Same correction, and the same reason, as perlinGain in CloudNoiseGen.compute. The default is
-/// that measured range; it depends on the octave count, so re-check it if that changes.
+/// Stretches each field to fill [-1, 1] before it is folded to [0, 1]. cloudFbm normalises by the
+/// sum of its octave amplitudes, which an FBM rarely reaches, so without this every field sits in
+/// the middle third of its range. Same correction as perlinGain in CloudNoiseGen.compute; the
+/// default depends on octave count, so re-check it if that changes.
 float weatherRangeGain;
 
 float coverageScale;
@@ -69,18 +45,16 @@ float precipitationBias;
 float baseHeightScale;
 float baseHeightBias;
 
-/// The ice layer. Its own scales, because high cloud arrives on its own weather - a cirrus shield
-/// runs ahead of a front and has nothing to do with the cumulus underneath it. Tying the two would
-/// collapse exactly the band axis the rubric scores.
+/// The ice layer's own scales, since high cloud arrives independently of the cumulus below it -
+/// tying the two would collapse the altitude-band axis the genera rubric scores.
 float highCoverageScale;
 float highCoverageBias;
 float highCoverageContrast;
 float highFormScale;
 float highFormBias;
 
-/// Advances the noise field so weather drifts. Applied as an offset in the sphere's own space
-/// rather than as a UV scroll, which would slide features along latitude lines and pull them apart
-/// near the poles.
+/// Advances the noise field so weather drifts, applied in the sphere's own space rather than as a
+/// UV scroll (which would distort near the poles).
 float3 windOffset;
 
 [numthreads(8, 8, 1)]
@@ -92,47 +66,34 @@ void CSWeatherMap(uint3 id : SV_DispatchThreadID)
 	float2 uv = (id.xy + 0.5) / weatherMapSize;
 	float3 p = uvToPointOnSphere(uv);
 
-	// Coverage. Biased first, then put through a contrast curve, so the bias reads as "more or less
-	// cloud" and the contrast as "broken versus overcast" - two dials that do one thing each, which
-	// is what makes a parameter set authorable rather than merely adjustable.
+	// Coverage: biased first, then put through a contrast curve, so bias reads as "more or less
+	// cloud" and contrast as "broken versus overcast" - two independent dials.
 	float coverageNoise = cloudFbm(p * coverageScale + windOffset, octaves, lacunarity, gain);
 	float coverage = saturate(coverageNoise * weatherRangeGain * 0.5 + 0.5 + coverageBias);
 	coverage = saturate(cloudRemap(coverage, 0.5 - 0.5 / max(0.01, coverageContrast),
 									0.5 + 0.5 / max(0.01, coverageContrast), 0, 1));
 
-	// Cloud type, on its own much larger scale and its own offset. Independent of coverage on
-	// purpose: a region can be heavily covered in flat stratus or lightly dotted with cumulus, and
-	// tying the two together would collapse the genera axis RQ1 scores.
-	// Contrast as well as bias, matching coverage. Without it there is no way to push type toward
-	// the extremes, so stratus and cumulonimbus stay unreachable however the bias is set.
+	// Cloud type: its own scale and offset, independent of coverage (a region can be flat stratus or
+	// dotted cumulus regardless of how covered it is). Contrast as well as bias, so stratus and
+	// cumulonimbus stay reachable at the extremes.
 	float typeNoise = cloudFbm(p * typeScale + windOffset * 0.35 + 31.7, max(2, octaves - 2), lacunarity, gain);
 	float type = saturate(typeNoise * weatherRangeGain * 0.5 + 0.5 + typeBias);
 	type = saturate(cloudRemap(type, 0.5 - 0.5 / max(0.01, typeContrast),
 								0.5 + 0.5 / max(0.01, typeContrast), 0, 1));
 
-	// Precipitation, correlated with coverage but not identical - rain sits inside the thicker
-	// parts of a system rather than being spread evenly across it.
+	// Precipitation: correlated with coverage but not identical, so rain sits in the thicker parts of a system.
 	float precipNoise = cloudFbm(p * precipitationScale + windOffset * 0.6 - 17.3, max(2, octaves - 1), lacunarity, gain);
 	float precipitation = saturate((precipNoise * weatherRangeGain * 0.5 + 0.5 + precipitationBias) * coverage);
 
-	// How far up the shell the cloud starts, as a fraction of it rather than in world units - so it
-	// is scale-invariant under the world-scale presets like everything else here.
-	//
-	// Its own field on its own scale. Cloud type already moves the TOP of the layer, because the
-	// three height gradients end at different heights, but all of them begin at the bottom of the
-	// shell - so without this the base is the one thing that is identical everywhere on the planet.
+	// How far up the shell the cloud starts, as a fraction of it so it stays scale-invariant. Its own
+	// field: cloud type moves the top of the layer, but without this the base is identical everywhere.
 	float baseNoise = cloudFbm(p * baseHeightScale + windOffset * 0.5 + 73.1, max(2, octaves - 2), lacunarity, gain);
 	float baseHeight = saturate(baseNoise * weatherRangeGain * 0.5 + 0.5 + baseHeightBias);
 
 	Result[id.xy] = float4(coverage, precipitation, type, baseHeight);
 
-	// The ice layer, on its own offsets so it is not a copy of the low layer shifted upward.
-	//
-	// Range-corrected like every other field here. An FBM normalised by the sum of its octave
-	// amplitudes never reaches that sum, and this project has now been caught by that three times -
-	// in the Perlin, in this file's own type channel, and in the baseline's authored bake. A new
-	// field without weatherRangeGain would sit in the middle third of its range and cirrus would be
-	// neither absent nor complete anywhere on the globe.
+	// The ice layer, on its own offsets so it is not a copy of the low layer shifted upward, and
+	// range-corrected like every other field here.
 	float highNoise = cloudFbm(p * highCoverageScale + windOffset * 1.4 + 53.9,
 								max(2, octaves - 2), lacunarity, gain);
 	float highCoverage = saturate(highNoise * weatherRangeGain * 0.5 + 0.5 + highCoverageBias);

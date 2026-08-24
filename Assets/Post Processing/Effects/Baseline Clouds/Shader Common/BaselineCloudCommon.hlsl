@@ -1,37 +1,23 @@
-// The baseline cloud shading model: a textured sheet on a sphere, relief-shaded.
+// The baseline cloud shading model: a textured sheet on a sphere, relief-shaded - the cheap
+// counterpart to the volumetric raymarch (one sphere intersection and two texture taps, against up
+// to 192 density evaluations per ray). That cost ratio is RQ2's measurement, so it only means
+// something if everything else is held constant: hence the shared composite, cost modes and output
+// convention, and this file being shared by both delivery paths (post-process and drawn mesh) so
+// they cannot disagree about what a cloud looks like.
 //
-// This is the cheap counterpart to the volumetric raymarch. Where CloudCommon.hlsl evaluates a
-// density field at up to 192 points along a ray and marches toward the sun from each of them, this
-// intersects one sphere and takes two texture taps. That ratio is the measurement RQ2 asks for, and
-// it only means anything if everything around it is held constant - hence the shared composite, the
-// shared cost modes and the shared output convention.
+// Deliberately missing, as RQ1 findings about the method rather than implementation shortcomings:
+// view-dependent scattering (no phase function, no silver lining), self-shadowing, and silhouette
+// (a height field cannot express a cumulonimbus tower as a sheet).
 //
-// Shared by BOTH delivery paths - the post-process and the drawn mesh - so the two cannot disagree
-// about what a cloud looks like, the same way ObserverGeometry is shared by the baseline sky and
-// the baseline aerial perspective "so the two cannot disagree about what time of day it is". A
-// visible difference between the deliveries would then be a real finding about the delivery rather
-// than two shading models drifting apart.
-//
-// What this deliberately does NOT do, recorded rather than hidden because each is an RQ1 finding
-// about the method rather than a shortcoming of the implementation:
-//
-//   - No view-dependent scattering. No phase function, so no forward brightening and no silver
-//     lining: the baseline cannot respond to being looked at toward the sun at all.
-//   - No self-shadowing. Relief shading fakes the surface, but one cloud cannot shade another and
-//     no cloud has an inside.
-//   - No silhouette. A height field can suggest thickness, but a cumulonimbus tower against the
-//     sky is not expressible as a sheet - which is the central RQ1 finding.
-//
-// It does not sample the atmosphere's transmittance LUT or sky-view LUT. DrawSkyBaseline.shader
-// refuses the same lookup because it "would smuggle physically based data into the baseline", and
-// the reasoning carries over exactly: light colour here comes from an authored Gradient keyed on
-// sun elevation, evaluated once per frame on the CPU.
+// Does not sample the atmosphere's transmittance or sky-view LUTs, for the same reason
+// DrawSkyBaseline.shader refuses to: light colour comes from an authored Gradient keyed on sun
+// elevation, evaluated once per frame on the CPU.
 
 #ifndef BASELINE_CLOUD_COMMON_INCLUDED
 #define BASELINE_CLOUD_COMMON_INCLUDED
 
-// Assets-absolute, never relative: a nested relative include resolves against the *including*
-// file's directory, which is what turned the ocean pink the first time.
+// Assets-absolute, never relative: a nested relative include resolves against the including file's
+// own directory, not this one.
 #include "Assets/Scripts/Shader Common/GeoMath.hlsl"
 
 // ---------------------------------------------------------------------------------------------
@@ -40,13 +26,9 @@
 
 float3 baselineCloudSunDir;
 
-/// Sun and sky colour, both evaluated on the CPU from a Gradient keyed on ObserverGeometry's
-/// SunElevation01 and bound as flat colours.
-///
-/// A Gradient is about the most artist-facing authoring surface Unity has, which is itself a data
-/// point for RQ3's authoring comparison - and it costs nothing at run time, because sun elevation
-/// does not vary across the screen. AerialPerspectiveSimple drives its haze colour the same way and
-/// for the same reasons.
+/// Sun and sky colour, evaluated on the CPU from a Gradient keyed on ObserverGeometry's
+/// SunElevation01 and bound as flat colours - free at runtime since sun elevation doesn't vary
+/// across the screen, and itself a data point for RQ3's authoring comparison.
 float3 baselineCloudSunColour;
 float3 baselineCloudAmbientColour;
 
@@ -54,30 +36,27 @@ float baselineCloudSunIntensity;
 float baselineCloudAmbientIntensity;
 
 /// Wraps the terminator around the back of the relief so the unlit side is shaded rather than
-/// black. Real cloud is deep enough to scatter light well past the geometric terminator, and a
-/// bare saturate(N.L) on a sheet reads as embossed metal.
+/// black - a bare saturate(N.L) on a sheet reads as embossed metal.
 float baselineCloudWrap;
 
-/// How much sunlight reaches the UNDERSIDE. A sheet shaded only by its outward normal looks
-/// identical from below, which is wrong in the one view a strategy camera never takes but a
-/// low-flying one always does. Light that has come through the layer is dimmer and unshaped by the
-/// relief, so this is a flat term rather than another N.L.
+/// How much sunlight reaches the underside. A sheet shaded only by its outward normal looks
+/// identical from below, so this is a flat term (light through the layer is dimmer and unshaped by
+/// the relief) rather than another N.L.
 float baselineCloudBaseLight;
 
 // ---------------------------------------------------------------------------------------------
 // Per layer
 // ---------------------------------------------------------------------------------------------
 
-/// One cloud layer's geometry and authored look. Passed by value so stage 4's second layer is a
-/// second call rather than a second copy of this code.
+/// One cloud layer's geometry and authored look. Passed by value so a second layer is a second call
+/// rather than a second copy of this code.
 struct BaselineLayer
 {
 	/// Sphere the sheet sits on, in world units from the planet centre.
 	float radius;
 
-	/// How far the height channel can lift the sheet above that sphere. This is what produces
-	/// parallax WITHIN a layer - the sheet is not flat, so its features slide against each other as
-	/// the camera moves, which a single flat overlay cannot do.
+	/// How far the height channel can lift the sheet above that sphere - produces parallax within a
+	/// layer, since its features then slide against each other as the camera moves.
 	float thickness;
 
 	float opacity;
@@ -87,17 +66,14 @@ struct BaselineLayer
 	/// Texels across, for the mip footprint below.
 	float texelsAcross;
 
-	/// Rotation from world space into the layer's own texture space. A ROTATION rather than a UV
-	/// scroll: scrolling u slides features along latitude lines and tears them at the poles, which
-	/// is the mistake the volumetric's weather map already documents. Rotating the sample point
-	/// moves the whole pattern rigidly, so it is seamless everywhere including over a pole.
+	/// Rotation from world space into the layer's own texture space. A rotation rather than a UV
+	/// scroll, since scrolling would tear the pattern at the poles; rotating the sample point keeps
+	/// it seamless everywhere.
 	float4x4 drift;
 };
 
-// A is the lower deck, B the upper. Declared here rather than in each consumer so the shading path,
-// the shadow pass and (stage 6) the mesh delivery all read the same bindings - the same rule
-// CloudCommon.hlsl states for the volumetric's density model. A shadow that disagreed with the
-// cloud casting it produces a plausible offset rather than an obvious fault.
+// A is the lower deck, B the upper. Declared here so the shading path, shadow pass and mesh
+// delivery all read the same bindings, so a shadow can never disagree with the cloud casting it.
 Texture2D<float4> BaselineCloudLayerA;
 SamplerState samplerBaselineCloudLayerA;
 
@@ -120,8 +96,8 @@ float baselineLayerReliefB;
 float baselineLayerTexelsB;
 float4x4 baselineLayerDriftB;
 
-/// 1 or 2. A uniform, so the second deck costs exactly nothing when it is off - which is what makes
-/// one deck against two a clean measurement of what the depth cue is worth.
+/// 1 or 2. A uniform, so the second deck costs exactly nothing when off - a clean measurement of
+/// what the depth cue is worth.
 int baselineLayerCount;
 
 /// Sea level. Needed by the shadow pass, which starts its ray at the ground.
@@ -153,14 +129,10 @@ BaselineLayer baselineLayerB()
 	return layer;
 }
 
-/// Local copy of the ray-sphere test rather than an include of CloudCommon.hlsl.
+/// Local copy of the ray-sphere test, not an include of CloudCommon.hlsl - that would drag the
+/// entire volumetric density model into a shader whose whole claim is that it doesn't have one.
 ///
-/// Including that header would drag the entire volumetric density model - three texture bindings
-/// and twenty uniforms - into a shader whose whole claim is that it does not have one. The baseline
-/// has to be independently costed, so it gets its own twelve lines.
-///
-/// Returns (distance to the sphere, distance through it). x is 0 when already inside; y is 0 on a
-/// miss.
+/// Returns (distance to the sphere, distance through it). x is 0 when already inside; y is 0 on a miss.
 float2 baselineRaySphere(float radius, float3 rayOrigin, float3 rayDir)
 {
 	float b = dot(rayOrigin, rayDir);
@@ -177,11 +149,9 @@ float2 baselineRaySphere(float radius, float3 rayOrigin, float3 rayDir)
 	return float2(near, far - near);
 }
 
-/// Where this ray meets the layer's sphere. Returns a negative distance if it never does.
-///
-/// From above, that is the near hit - the top of the sheet. From below, the camera is inside the
-/// sphere and the near hit is clamped to zero, so the exit is the answer: the underside. Both fall
-/// out of the same expression, which is why there are no camera-position cases here.
+/// Where this ray meets the layer's sphere; negative if it never does. From above this is the near
+/// hit (sheet top); from below, the near hit clamps to zero so the exit (underside) is the answer -
+/// both fall out of the same expression with no camera-position cases needed.
 float baselineLayerHit(float radius, float3 rayOrigin, float3 rayDir)
 {
 	float2 hit = baselineRaySphere(radius, rayOrigin, rayDir);
@@ -192,16 +162,10 @@ float baselineLayerHit(float radius, float3 rayOrigin, float3 rayDir)
 /// Angular size of one screen pixel, in radians. Bound per frame; used for the mip footprint.
 float baselineCloudPixelAngle;
 
-/// Mip level at which the layer should be read here.
-///
-/// The same rule the density volumes and the cloud shadow map both follow: read the texture at the
-/// scale the consumer can actually represent. A sheet 2048 texels around, seen from orbit, puts
-/// dozens of texels inside one pixel, and point-sampling that aliases into a crawling shimmer as
-/// the camera moves - the exact failure that made the cloud shadows flicker.
-///
-/// Divided by the incidence cosine, because a grazing view stretches a pixel's footprint along the
-/// surface without changing its angular size. Without that, the horizon aliases while everything
-/// else is clean.
+/// Mip level at which the layer should be read here, following the same rule the density volumes
+/// and the cloud shadow map do: read at the scale the consumer can represent, or point-sampling
+/// aliases into a crawling shimmer. Divided by the incidence cosine, since a grazing view stretches
+/// a pixel's footprint along the surface without changing its angular size.
 float baselineLodForFootprint(BaselineLayer layer, float footprint)
 {
 	float texelWorld = layer.radius * 6.28318530718 / max(1.0, layer.texelsAcross);
@@ -213,12 +177,9 @@ float baselineLayerLod(BaselineLayer layer, float distance, float cosIncidence)
 	return baselineLodForFootprint(layer, distance * baselineCloudPixelAngle / max(0.05, cosIncidence));
 }
 
-/// How much this deck hides, at a point on it.
-///
-/// Shared by the shading path and the shadow pass so the two cannot disagree about where a cloud
-/// is. `up` is the outward unit normal at the point, `cosIncidence` the cosine between the ray and
-/// that normal - a grazing ray crosses more cloud than a perpendicular one, which is as true of a
-/// sun ray casting a shadow at dusk as it is of a view ray at the horizon.
+/// How much this deck hides, at a point on it. Shared by the shading path and the shadow pass so the
+/// two cannot disagree about where a cloud is. `cosIncidence` (between the ray and the outward
+/// normal `up`) accounts for a grazing ray crossing more cloud than a perpendicular one.
 float baselineLayerCoverage(
 	Texture2D<float4> layerTex, SamplerState layerSampler, BaselineLayer layer,
 	float3 up, float cosIncidence, float lod, out float4 texel)
@@ -233,20 +194,12 @@ float baselineLayerCoverage(
 	return 1 - pow(max(1e-4, 1 - coverage), 1.0 / max(0.08, cosIncidence));
 }
 
-/// The layer's contribution along a ray.
-///
-/// Returns the same convention the volumetric march does - rgb is the radiance the layer ADDS,
-/// premultiplied, and a is the fraction of whatever is behind it that survives - so the shared
-/// composite blends both renderers with the same expression and the two can be swapped without the
-/// compositing changing.
-///
-/// `maxDistance` is the scene depth. Terrain rises above the sphere the layer sits on, so depth -
-/// not a ground intersection - is what actually occludes cloud, exactly as in the volumetric.
-///
-/// `hitDistance` comes back so the caller can order two layers front-to-back. Which one is nearer
-/// is not fixed: from above the deck the upper layer is in front, from below it is behind, and the
-/// camera crosses between them. Returns a huge distance on a miss so a missing layer sorts last
-/// without a special case.
+/// The layer's contribution along a ray, in the same convention the volumetric march returns: rgb is
+/// premultiplied added radiance, a is how much behind it survives - so the shared composite can
+/// blend either renderer with the same expression. `maxDistance` is scene depth, since terrain rises
+/// above the layer's sphere. `hitDistance` lets the caller order two layers front-to-back (which is
+/// nearer isn't fixed - it flips as the camera crosses the deck); a miss returns a huge distance so
+/// it sorts last without a special case.
 float4 baselineCloudLayer(
 	Texture2D<float4> layerTex, SamplerState layerSampler, BaselineLayer layer,
 	float3 rayOrigin, float3 rayDir, float maxDistance, out float hitDistance)
@@ -265,13 +218,9 @@ float4 baselineCloudLayer(
 	float alpha = baselineLayerCoverage(
 		layerTex, layerSampler, layer, up, cosIncidence, baselineLayerLod(layer, t, cosIncidence), s);
 
-	// One parallax refinement. The height channel says how far above the base sphere this bit of
-	// cloud actually reaches, so re-intersecting at that radius puts the sample where the cloud top
-	// is rather than where the sheet nominally sits. At a strategy camera's tilt that is the
-	// difference between a decal and something with a top and a side.
-	//
-	// A single step, not a search: the height field is smooth at the scale one screen pixel covers,
-	// and a second tap is already half the shading cost of this entire renderer.
+	// One parallax refinement: re-intersect at the radius the height channel says this cloud actually
+	// reaches, so the sample lands on the cloud top rather than the sheet's nominal sphere. A single
+	// step, not a search - the height field is smooth at screen-pixel scale.
 	if (layer.thickness > 1e-4)
 	{
 		float lifted = baselineLayerHit(layer.radius + s.b * layer.thickness, rayOrigin, rayDir);
@@ -288,32 +237,26 @@ float4 baselineCloudLayer(
 
 	if (alpha <= 0.001) { return float4(0, 0, 0, 1); }
 
-	// Only now, once there is actually cloud here: a layer whose texture is clear at this point
-	// must not sort in front of one that is not, or a hole in the top layer would still occlude the
-	// bottom one.
+	// Only now, once there's actually cloud here: a hole in the top layer must not occlude the bottom one.
 	hitDistance = t;
 
-	// Everything below happens in TEXTURE space - the sphere as the bake saw it. The drift rotation
-	// is applied to the sample point going in and undone on the normal coming out, which keeps the
-	// relief attached to the clouds as they move rather than lighting a stationary shell.
+	// Everything below happens in texture space - the drift rotation is applied going in and undone
+	// on the normal coming out, so relief stays attached to the clouds as they move.
 	float3 pTex = mul(drift, up);
 
-	// Tangent-space normal, unpacked and re-steepened. Scaling xy and renormalising rather than
-	// scaling the unpacked vector: the stored normal is already unit length, so multiplying it
-	// outright would only change its length and not its slope.
+	// Tangent-space normal, unpacked and re-steepened by scaling xy and renormalising (the stored
+	// normal is already unit length, so scaling it directly would only change length, not slope).
 	float2 nxy = s.rg * 2 - 1;
 	float nz = sqrt(saturate(1 - dot(nxy, nxy)));
 	float3 nTangent = normalize(float3(nxy * layer.reliefStrength, max(1e-3, nz)));
 
-	// The bake's own frame: east from the pole axis, north completing it. It has to match, or the
-	// relief lights from the wrong side.
+	// The bake's own frame - has to match, or the relief lights from the wrong side.
 	float3 poleAxis = float3(0, 1, 0);
 	float3 east = abs(pTex.y) > 0.9999 ? float3(1, 0, 0) : normalize(cross(poleAxis, pTex));
 	float3 north = cross(pTex, east);
 	float3 nTex = east * nTangent.x + north * nTangent.y + pTex * nTangent.z;
 
-	// Back out of texture space. mul(v, M) is M-transpose times v, which for a rotation is its
-	// inverse - so this undoes the drift exactly rather than approximately.
+	// Back out of texture space: mul(v, M) is M-transpose times v, the inverse of a rotation.
 	float3 worldNormal = mul(nTex, drift);
 
 	float ndl = dot(worldNormal, baselineCloudSunDir);
@@ -323,8 +266,7 @@ float4 baselineCloudLayer(
 		baselineCloudSunColour * lit * baselineCloudSunIntensity +
 		baselineCloudAmbientColour * baselineCloudAmbientIntensity;
 
-	// The underside: ambient, plus whatever came through the sheet. Flat rather than relief-shaded,
-	// because light that has scattered through a cloud has lost the surface it came in on.
+	// The underside: ambient plus whatever came through the sheet, flat rather than relief-shaded.
 	float3 baseColour =
 		baselineCloudAmbientColour * baselineCloudAmbientIntensity +
 		baselineCloudSunColour * baselineCloudSunIntensity *
@@ -337,25 +279,17 @@ float4 baselineCloudLayer(
 	return float4(colour * alpha, 1 - alpha);
 }
 
-/// Two layers composited in view order.
-///
-/// Sorted per pixel rather than assumed, because which layer is in front is not a constant: from
-/// above the deck the upper one is nearer, from below it is behind, and the camera crosses between
-/// them. Assuming an order puts the high cirrus in front of the cumulus it should be behind for
-/// every pixel below the deck - and near the horizon both orders appear in the same frame.
-///
-/// This is where the depth cue comes from. Two sheets at different radii subtend different angles
-/// from a moving camera, so they slide across one another exactly as real cloud decks do. A single
-/// flat overlay cannot do it on a globe at all, which is why the plan spends a second texture tap
-/// on it rather than making the one layer denser.
+/// Two layers composited in view order, sorted per pixel since which layer is nearer flips as the
+/// camera crosses the deck - both orders can appear in the same frame near the horizon. This
+/// per-radius sorting is where the depth cue comes from: the two sheets slide across one another as
+/// the camera moves, which a single flat overlay cannot do.
 float4 baselineCombineLayers(float4 a, float aDistance, float4 b, float bDistance)
 {
 	bool aFirst = aDistance <= bDistance;
 	float4 near = aFirst ? a : b;
 	float4 far = aFirst ? b : a;
 
-	// Compositing far under near, both premultiplied: the background survives both, and the far
-	// layer's own contribution is dimmed by whatever the near one hides.
+	// Far under near, both premultiplied: the far layer's contribution is dimmed by what the near one hides.
 	return float4(near.rgb + far.rgb * near.a, near.a * far.a);
 }
 
