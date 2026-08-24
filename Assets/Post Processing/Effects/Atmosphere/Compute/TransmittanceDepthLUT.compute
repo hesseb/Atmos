@@ -1,5 +1,5 @@
 #pragma kernel CreateTransmittanceLUT
-#include "../Shader Common/AtmosphereCommon.hlsl"
+#include "Assets/Scripts/Shader Common/AtmosphereCommon.hlsl"
 
 // Header revision this file was last rebuilt against: 750 km planet + densityMultiplier.
 

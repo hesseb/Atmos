@@ -7,7 +7,7 @@
 #include "Assets/Post Processing/Effects/Clouds/Shader Common/CloudLightingCommon.hlsl"
 // sampleLightColourAt and sampleSkyViewSafe, the same two the march lights each sample with. This
 // header only became includable from a compute once its tone map was split out; see the note there.
-#include "Assets/Post Processing/Effects/Atmosphere/Shader Common/SurfaceLighting.hlsl"
+#include "Assets/Scripts/Shader Common/SurfaceLighting.hlsl"
 
 // What the cloud deck looks like FROM BELOW, and how much sky it hides.
 //

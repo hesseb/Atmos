@@ -1,5 +1,5 @@
 #pragma kernel CSMain
-#include "../Shader Common/AtmosphereCommon.hlsl"
+#include "Assets/Scripts/Shader Common/AtmosphereCommon.hlsl"
 #include "../Shader Common/RaymarchCommon.hlsl"
 
 // Header revision this file was last rebuilt against: continuous horizon span.

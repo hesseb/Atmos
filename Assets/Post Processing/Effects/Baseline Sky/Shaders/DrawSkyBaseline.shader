@@ -33,7 +33,7 @@ Shader "Hidden/DrawSkyBaseline"
 			#pragma multi_compile SKY_GRADIENT SKY_CUBEMAP
 
 			#include "UnityCG.cginc"
-			#include "../../Atmosphere/Shader Common/DrawAtmosphereCommon.hlsl"
+			#include "Assets/Scripts/Shader Common/DrawAtmosphereCommon.hlsl"
 
 			struct appdata
 			{
