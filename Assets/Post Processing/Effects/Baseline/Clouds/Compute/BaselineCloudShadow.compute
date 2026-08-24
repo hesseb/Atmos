@@ -8,7 +8,7 @@
 // cloudShadowStrength), so Terrain.shader and Ocean.shader need no change and cannot tell which
 // renderer wrote the map. Without this the baseline would be missing a feature rather than merely
 // rendering it more cheaply, confounding the comparison. Also its own clean cost sub-comparison: one
-// texture tap per deck here against the volumetric's ten-step density march, same output and resolution.
+// texture tap per deck here against the volumetric's density march, same output and resolution.
 
 RWTexture2D<float4> Result;
 
