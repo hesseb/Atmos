@@ -19,7 +19,7 @@ static class SkyGradientBaker
 {
 	const string Folder = "Assets/Post Processing/Effects/Baseline Sky/Textures";
 	const string BakedPath = Folder + "/SkyGradientBaked.exr";
-	const string ComputePath = "Assets/Post Processing/Effects/Baseline Sky/BakeSkyGradient.compute";
+	const string ComputePath = "Assets/Post Processing/Effects/Baseline Sky/Compute/BakeSkyGradient.compute";
 
 	// Matches the hand-authored gradient so the two are drop-in replacements for each other.
 	const int Width = 128;
