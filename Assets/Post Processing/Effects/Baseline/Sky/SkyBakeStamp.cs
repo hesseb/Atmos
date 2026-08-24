@@ -33,8 +33,8 @@ public class SkyBakeStamp : ScriptableObject
 	/// </summary>
 	public enum Recipe
 	{
-		/// <summary>Depends on the atmosphere's parameters. The baked gradient and the cubemap
-		/// store raw radiance, so the tone map is applied at runtime and does not stale them.</summary>
+		/// <summary>Depends on the atmosphere's parameters. The baked gradient stores raw
+		/// radiance, so the tone map is applied at runtime and does not stale it.</summary>
 		Atmosphere,
 		/// <summary>Depends only on the tone-map constants: the hand-authored gradient is
 		/// inverse-mapped against them, so it goes stale when they move even though no

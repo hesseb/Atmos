@@ -28,10 +28,11 @@ public class BaselineSkyRenderer : MonoBehaviour
 		/// <summary>The same lookup, but from a LUT baked off the physically based renderer.
 		/// Identical cost to Gradient - the difference is entirely in the authoring.</summary>
 		GradientBaked,
-		/// <summary>A single static cubemap. Cheapest, but blind to the sun moving.</summary>
-		Cubemap,
 		/// <summary>No shading at all - the measurement control. See DrawSkyNull.shader.</summary>
-		Null
+		// Pinned rather than left to auto-increment: a cubemap variant used to sit at 2 here
+		// (explored, dropped - it could not respond to the sun moving), and nothing serialized
+		// should silently start meaning something else if that slot is ever reused.
+		Null = 3
 	}
 
 	public Variant variant = Variant.Gradient;
@@ -46,7 +47,6 @@ public class BaselineSkyRenderer : MonoBehaviour
 	[Tooltip("Baked from the physically based renderer. Same shader path as the hand-authored " +
 		"gradient, so the two differ only in how the texture was produced.")]
 	public Texture2D skyGradientBaked;
-	public Cubemap skyCubemap;
 	public float skyIntensity = 1f;
 
 	[Header("Sun")]
@@ -187,38 +187,20 @@ public class BaselineSkyRenderer : MonoBehaviour
 		Material material = EnsureMaterial(ref baselineMaterial, baselineShader);
 		if (material == null) { return; }
 
-		// Keywords rather than separate materials: the variant is switched per benchmark
-		// profile, and a keyword change does not require re-recording the command buffer.
-		if (variant == Variant.Cubemap)
-		{
-			material.EnableKeyword("SKY_CUBEMAP");
-			material.DisableKeyword("SKY_GRADIENT");
+		// Gradient and GradientBaked take the same path and cost the same. That is the
+		// point of the pair: the only difference between them is how the texture was
+		// authored, so any measured difference is noise and any visual difference is
+		// entirely attributable to the authoring method.
+		Texture2D gradient = variant == Variant.GradientBaked ? skyGradientBaked : skyGradient;
+		if (gradient != null) { material.SetTexture("SkyGradient", gradient); }
+		else { WarnMissingTexture(variant == Variant.GradientBaked ? "Sky Gradient Baked" : "Sky Gradient"); }
 
-			if (skyCubemap != null) { material.SetTexture("SkyCubemap", skyCubemap); }
-			else { WarnMissingTexture("Sky Cubemap"); }
-		}
-		else
-		{
-			material.EnableKeyword("SKY_GRADIENT");
-			material.DisableKeyword("SKY_CUBEMAP");
-
-			// Gradient and GradientBaked take the same path and cost the same. That is the
-			// point of the pair: the only difference between them is how the texture was
-			// authored, so any measured difference is noise and any visual difference is
-			// entirely attributable to the authoring method.
-			Texture2D gradient = variant == Variant.GradientBaked ? skyGradientBaked : skyGradient;
-			if (gradient != null) { material.SetTexture("SkyGradient", gradient); }
-			else { WarnMissingTexture(variant == Variant.GradientBaked ? "Sky Gradient Baked" : "Sky Gradient"); }
-		}
 		if (blueNoise != null) { material.SetTexture("BlueNoise", blueNoise); }
 
 		Vector3 planetCentre = ObserverGeometry.PlanetCentre(ref planet);
 		Vector3 dirToSun = ObserverGeometry.DirectionToSun(ref sun);
 
 		material.SetVector("planetCentre", planetCentre);
-		// The cubemap variant needs a full observer frame, not just an up vector, so it can be
-		// sampled relative to the local horizon rather than to world space.
-		material.SetVector("planetAxis", planet != null ? planet.up : Vector3.up);
 		// Computed once per frame on the CPU rather than per pixel: it does not vary across
 		// the screen, and the whole point of the baseline is that it is cheap.
 		material.SetFloat("sunElevation01", ObserverGeometry.SunElevation01(

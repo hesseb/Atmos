@@ -3,7 +3,6 @@
 // Bakes the physically based sky into the baseline's 2D gradient LUT, reusing raymarch()
 // directly so the baseline and PBR sky can never silently diverge. One dispatch per row.
 #pragma kernel BakeSkyGradientRow
-#pragma kernel BakeSkyCubemapFace
 
 #include "Assets/Scripts/Shader Common/AtmosphereCommon.hlsl"
 
@@ -59,8 +58,7 @@ void BakeSkyGradientRow (uint3 id : SV_DispatchThreadID)
 	float3 horizontal = observerEast * cos(azimuth) + north * sin(azimuth);
 	float3 viewDir = normalize(observerUp * cosView + horizontal * sinView);
 
-	// Below the horizon the LUT stores horizon colour rather than the planet, for the same
-	// reason the cubemap does - see clampToHorizon.
+	// Below the horizon the LUT stores horizon colour rather than the planet - see clampToHorizon.
 	viewDir = clampToHorizon(viewDir, observerUp, observerEast);
 
 	float3 col = 0;
@@ -76,42 +74,4 @@ void BakeSkyGradientRow (uint3 id : SV_DispatchThreadID)
 	}
 
 	Result[uint2(id.x, row)] = float4(col, 1);
-}
-
-// ---------------------------------------------------------------- cubemap
-
-// One cubemap face per dispatch; keeps full directional detail the 2D gradient averages away.
-// Face basis comes from the CPU as three vectors, verifiable against edge continuity there.
-RWTexture2D<float4> FaceResult;
-uint faceSize;
-float3 faceForward;
-float3 faceRight;
-float3 faceUp;
-
-[numthreads(8, 8, 1)]
-void BakeSkyCubemapFace (uint3 id : SV_DispatchThreadID)
-{
-	if (id.x >= faceSize || id.y >= faceSize) { return; }
-
-	float2 uv = (id.xy + 0.5) / faceSize * 2.0 - 1.0;
-	float3 viewDir = normalize(faceForward + faceRight * uv.x + faceUp * uv.y);
-
-	// Sky only: no planet occlusion baked in.
-	viewDir = clampToHorizon(viewDir, observerUp, observerEast);
-
-	float3 pos = observerUp * (planetRadius + bakeAltitude);
-
-	float2 hitInfo = raySphere(0, atmosphereRadius, pos, viewDir);
-	float rayLength = hitInfo.y;
-
-	float3 col = 0;
-	if (rayLength > 0)
-	{
-		float3 inPoint = pos + viewDir * hitInfo.x;
-		ScatteringResult result = raymarch(inPoint, viewDir, rayLength,
-			numScatteringSteps, TransmittanceLUT, planetRadius);
-		col = result.luminance;
-	}
-
-	FaceResult[id.xy] = float4(col, 1);
 }
