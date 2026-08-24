@@ -124,16 +124,12 @@ float4 sampleCloudSkyAlong(float3 pos, float3 dir) {
 	// this is a guard rather than a path.
 	if (dot(dir, up) <= 0) { return sampleCloudSky(up); }
 
-	// Always the far root: a surface point is inside the deck's sphere, so there is exactly one
-	// exit. Local rather than an include of AtmosphereCommon's raySphere, which owns the global
-	// dirToSun and would shadow the local sun direction of every shader including this header.
-	float b = dot(pos, dir);
-	float c = dot(pos, pos) - cloudDeckRadius * cloudDeckRadius;
-	float d = b * b - c;
-	if (d < 0) { return sampleCloudSky(up); }
+	// cloudDeckRayHit (CloudShadowCommon.hlsl, included above) always returns the far root when the
+	// origin is inside the sphere, which a surface point always is - so this needs no altitude test.
+	float t = cloudDeckRayHit(pos, dir);
+	if (t < 0) { return sampleCloudSky(up); }
 
-	float3 hit = pos + dir * (-b + sqrt(d));
-	return sampleCloudSky(normalize(hit));
+	return sampleCloudSky(normalize(pos + dir * t));
 }
 
 /// Blends a sky term toward the deck hiding it. Both are display space, so neither is tone mapped

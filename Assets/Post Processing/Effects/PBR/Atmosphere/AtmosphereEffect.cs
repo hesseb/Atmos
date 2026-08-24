@@ -740,13 +740,11 @@ public class AtmosphereEffect : PostProcessingEffect
 	public class ShaderValues
 	{
 		public List<(string name, float value)> floats;
-		public List<(string name, int value)> ints;
 		public List<(string name, Vector4 value)> vectors;
 
 		public ShaderValues()
 		{
 			floats = new List<(string name, float value)>();
-			ints = new List<(string name, int value)>();
 			vectors = new List<(string name, Vector4 value)>();
 		}
 
@@ -755,11 +753,6 @@ public class AtmosphereEffect : PostProcessingEffect
 			foreach (var data in floats)
 			{
 				material.SetFloat(data.name, data.value);
-			}
-
-			foreach (var data in ints)
-			{
-				material.SetInt(data.name, data.value);
 			}
 
 			foreach (var data in vectors)
@@ -773,11 +766,6 @@ public class AtmosphereEffect : PostProcessingEffect
 			foreach (var data in floats)
 			{
 				compute.SetFloat(data.name, data.value);
-			}
-
-			foreach (var data in ints)
-			{
-				compute.SetInt(data.name, data.value);
 			}
 
 			foreach (var data in vectors)
@@ -799,11 +787,6 @@ public class AtmosphereEffect : PostProcessingEffect
 			foreach (var data in floats)
 			{
 				Shader.SetGlobalFloat(data.name, data.value);
-			}
-
-			foreach (var data in ints)
-			{
-				Shader.SetGlobalInt(data.name, data.value);
 			}
 
 			foreach (var data in vectors)

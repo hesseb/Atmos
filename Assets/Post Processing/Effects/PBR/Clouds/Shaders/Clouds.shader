@@ -115,7 +115,7 @@ Shader "Hidden/Clouds"
 			/// transmittance carries across both spans.
 			void cloudMarchSpan(
 				float3 rayOrigin, float3 rayDir, float2 span, float phase, float cosViewSun, float2 uv,
-				AerialRay aerialRay, float3 aerialSky, float3 skyAmbient,
+				AerialRay aerialRay, float3 aerialSky, float3 skyAmbient, bool moonActive,
 				inout float transmittance, inout float3 luminance, inout float rawDensity)
 			{
 				float start = span.x;
@@ -171,9 +171,11 @@ Shader "Hidden/Clouds"
 					float3 inScatter = sunColour * energy * phase * cloudSunIntensity + ambient;
 
 					// Moonlight, on the same machinery as the sun, gated on the moon's own published
-					// colour (already phase-scaled, so a new or set moon costs nothing). Direction is
-					// computed per sample since it swings several degrees across the view.
-					if (dot(moonLightColour.rgb, 1) > 1e-4)
+					// colour (already phase-scaled, so a new or set moon costs nothing) - hoisted to
+					// moonActive by the caller, since the colour is a frame constant and re-testing it
+					// every step of every span priced this branch's condition per sample for nothing.
+					// Direction is still computed per sample since it swings several degrees across the view.
+					if (moonActive)
 					{
 						float3 moonDir = normalize(moonPosition.xyz - pos);
 						float cosViewMoon = dot(rayDir, moonDir);
@@ -246,14 +248,14 @@ Shader "Hidden/Clouds"
 				nearSpan.y = min(nearSpan.y, sceneDepth);
 				farSpan.y = min(farSpan.y, sceneDepth);
 
-				if (cloudDebugMode == 3) { return float4(((nearSpan.y - nearSpan.x + max(0, farSpan.y - farSpan.x)) / 100.0).xxx, 0); }
+				if (cloudDebugMode == 3) { return float4(((max(0, nearSpan.y - nearSpan.x) + max(0, farSpan.y - farSpan.x)) / 100.0).xxx, 0); }
 				if (cloudDebugMode == 5) { return float4((nearSpan.x / 50.0).xxx, 0); }
 
 				// The weather fields, painted onto the globe by sampling where the ray first meets the shell.
 				if (cloudDebugMode >= 7)
 				{
 					float3 shellPoint = rayOrigin + rayDir * nearSpan.x;
-					float4 weather = sampleCloudWeather(shellPoint);
+					float4 weather = sampleCloudWeather(pointToUV(normalize(shellPoint)));
 					if (cloudDebugMode == 7) { return float4(weather.rrr, 0); }   // coverage
 					if (cloudDebugMode == 8) { return float4(weather.bbb, 0); }   // cloud type
 					if (cloudDebugMode == 9) { return float4(weather.ggg, 0); }   // precipitation
@@ -269,14 +271,18 @@ Shader "Hidden/Clouds"
 				float3 aerialSky = sampleSkyViewSafe(normalize(rayOrigin), rayDir, cloudSunDir);
 				float3 skyAmbient = cloudSkyAmbient(normalize(rayOrigin));
 
+				// Also a per-pixel constant, hoisted for the same reason: moonLightColour does not vary
+				// across the march, so testing it inside the loop priced the branch condition per step.
+				bool moonActive = dot(moonLightColour.rgb, 1) > 1e-4;
+
 				float transmittance = 1;
 				float3 luminance = 0;
 				float rawDensity = 0;
 
 				cloudMarchSpan(rayOrigin, rayDir, nearSpan, phase, cosViewSun, i.uv,
-					aerialRay, aerialSky, skyAmbient, transmittance, luminance, rawDensity);
+					aerialRay, aerialSky, skyAmbient, moonActive, transmittance, luminance, rawDensity);
 				cloudMarchSpan(rayOrigin, rayDir, farSpan, phase, cosViewSun, i.uv,
-					aerialRay, aerialSky, skyAmbient, transmittance, luminance, rawDensity);
+					aerialRay, aerialSky, skyAmbient, moonActive, transmittance, luminance, rawDensity);
 
 				if (cloudDebugMode == 4) { return float4((rawDensity * 0.2).xxx, 0); }
 

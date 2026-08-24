@@ -162,19 +162,18 @@ float2 cloudHighWeatherOverride;  // coverage, form
 /// in its stated altitude band regardless of base variation tuning. Precipitation still lowers it.
 float cloudGenusBaseOffset;
 
-/// R coverage, G precipitation, B form, A base height.
-float4 sampleCloudWeather(float3 pos)
+/// R coverage, G precipitation, B form, A base height. `uv` is the caller's own
+/// pointToUV(normalize(pos)) - see sampleCloudDensity, which computes it once for both layers.
+float4 sampleCloudWeather(float2 uv)
 {
 	if (cloudWeatherOverrideOn > 0) { return cloudWeatherOverride; }
-	float2 uv = pointToUV(normalize(pos));
 	return CloudWeatherMapTex.SampleLevel(samplerCloudWeatherMapTex, uv, 0);
 }
 
-/// R coverage, G form, for the ice layer.
-float4 sampleCloudWeatherHigh(float3 pos)
+/// R coverage, G form, for the ice layer. `uv` as above.
+float4 sampleCloudWeatherHigh(float2 uv)
 {
 	if (cloudWeatherOverrideOn > 0) { return float4(cloudHighWeatherOverride, 0, 0); }
-	float2 uv = pointToUV(normalize(pos));
 	return CloudWeatherMapHighTex.SampleLevel(samplerCloudWeatherMapHighTex, uv, 0);
 }
 
@@ -220,14 +219,14 @@ float3 cloudHighWind;
 /// sample is stretched along the wind into fibres, there is no detail erosion (which would carve
 /// cauliflower edges cirrus doesn't have), and density is far lower since cirrus is optically thin.
 /// Returns 0 outside its own altitude range before touching a volume.
-float sampleCloudHigh(float3 pos, float shellHeight, float stepSize)
+float sampleCloudHigh(float3 pos, float2 weatherUV, float shellHeight, float stepSize)
 {
 	if (cloudHighStrength <= 0) { return 0; }
 
 	float h = (shellHeight - cloudHighBase) / max(1e-4, cloudHighThickness);
 	if (h <= 0 || h >= 1) { return 0; }
 
-	float4 weather = sampleCloudWeatherHigh(pos);
+	float4 weather = sampleCloudWeatherHigh(weatherUV);
 
 	float coverage = saturate(weather.r * cloudHighCoverageMultiplier);
 	if (coverage <= 0) { return 0; }
@@ -275,7 +274,7 @@ float sampleCloudHigh(float3 pos, float shellHeight, float stepSize)
 /// Density of the low/mid layer - the droplet clouds, seven of the ten genera. Takes `shellHeight`
 /// rather than deriving it, so sampleCloudDensity can compute it once for both layers. `cheap` skips
 /// detail erosion (the expensive half), used by the light march where the extra fidelity is invisible.
-float sampleCloudLow(float3 pos, float shellHeight, bool cheap, float stepSize)
+float sampleCloudLow(float3 pos, float2 weatherUV, float shellHeight, bool cheap, float stepSize)
 {
 	// Out of the layer's reach, bounded from uniforms alone (a conservative bound on the true,
 	// weather-dependent floor) so this can reject before paying for the weather tap - worthwhile
@@ -284,7 +283,7 @@ float sampleCloudLow(float3 pos, float shellHeight, bool cheap, float stepSize)
 		+ max(0.05, cloudBandThickness);
 	if (shellHeight >= bandCeiling) { return 0; }
 
-	float4 weather = sampleCloudWeather(pos);
+	float4 weather = sampleCloudWeather(weatherUV);
 	float coverage = saturate(weather.r * cloudCoverageMultiplier);
 	if (coverage <= 0) { return 0; }
 
@@ -352,8 +351,12 @@ float sampleCloudDensity(float3 pos, bool cheap, float stepSize)
 	float shellHeight = cloudHeightFraction(pos);
 	if (shellHeight <= 0 || shellHeight >= 1) { return 0; }
 
-	float low = sampleCloudLow(pos, shellHeight, cheap, stepSize);
-	float high = sampleCloudHigh(pos, shellHeight, stepSize);
+	// Computed once and handed to both layers - they used to each recompute this independently for
+	// the same pos, in the hottest per-sample path in the system.
+	float2 weatherUV = pointToUV(normalize(pos));
+
+	float low = sampleCloudLow(pos, weatherUV, shellHeight, cheap, stepSize);
+	float high = sampleCloudHigh(pos, weatherUV, shellHeight, stepSize);
 
 	return max(low, high);
 }

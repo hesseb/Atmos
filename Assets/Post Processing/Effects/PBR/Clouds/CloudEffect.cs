@@ -560,6 +560,10 @@ namespace Clouds
 				// Bound like the atmosphere's three computes, so the first edit that makes a shared
 				// function touch the map does not start failing from inside a pre-cull callback.
 				CloudShadowGlobals.BindTo(skyCompute, kernel);
+				// Unlike CloudShadowMap above, this kernel DOES sample these two today - sampleSkyViewSafe
+				// and sampleLightColourAt, through SurfaceLighting.hlsl - so unlike that one, an unbound
+				// texture here is live, not latent.
+				BindAtmosphereLUTs(skyCompute, kernel);
 				skyCompute.SetTexture(kernel, "Result", skyMap);
 				skyCompute.SetVector("cloudSkyMapSize", new Vector2(width, height));
 				skyCompute.SetVector("cloudSkySunDir", sunDir);
@@ -581,6 +585,25 @@ namespace Clouds
 			// least wrong one for a grazing ray.
 			CloudShadowGlobals.PublishDeckRadius((InnerRadius + OuterRadius) * 0.5f);
 			publishedSky = true;
+		}
+
+		/// <summary>
+		/// TransmittanceLUT and SkyViewLUT, for a compute kernel that reaches SurfaceLighting.hlsl.
+		///
+		/// AtmosphereEffect publishes both as shader globals (Shader.SetGlobalTexture), which a
+		/// fragment shader like Clouds.shader's own march picks up automatically. A compute kernel does
+		/// not - see CloudShadowGlobals' own doc comment - so this kernel needs the same explicit
+		/// re-bind CloudShadowGlobals.BindTo already does for the shadow map. Reads the globals back
+		/// with Shader.GetGlobalTexture rather than holding an AtmosphereEffect reference, which would
+		/// couple the cloud effect to a specific atmosphere renderer existing at all.
+		/// </summary>
+		void BindAtmosphereLUTs(ComputeShader compute, int kernel)
+		{
+			Texture transmittanceLUT = Shader.GetGlobalTexture("TransmittanceLUT");
+			if (transmittanceLUT != null) { compute.SetTexture(kernel, "TransmittanceLUT", transmittanceLUT); }
+
+			Texture skyViewLUT = Shader.GetGlobalTexture("SkyViewLUT");
+			if (skyViewLUT != null) { compute.SetTexture(kernel, "SkyViewLUT", skyViewLUT); }
 		}
 
 		/// <summary>
@@ -632,7 +655,7 @@ namespace Clouds
 		/// <summary>Weather and shadow maps, before anything opaque draws.</summary>
 		void RenderMaps(Camera renderingCamera)
 		{
-			if (cam != null && renderingCamera != cam) { return; }
+			if (renderingCamera != cam) { return; }
 
 			if (!enabled || shapeNoise == null || detailNoise == null || weatherCompute == null)
 			{
@@ -678,6 +701,7 @@ namespace Clouds
 				DestroyImmediate(weatherMapHigh);
 				weatherMapHigh = null;
 			}
+			weatherMapValid = false;
 		}
 
 		/// <summary>One weather field's target. Both layers are the same size and format.</summary>
@@ -850,10 +874,15 @@ namespace Clouds
 		{
 			var h = new System.HashCode();
 			h.Add(lastWeatherSignature);
+			// imageContentsHash, not just instance ID and width: CloudNoiseBaker overwrites a rebaked
+			// volume in place with EditorUtility.CopySerialized to keep its GUID, so a rebake changes
+			// neither of those and would otherwise read as "nothing changed" to this signature.
 			h.Add(shapeNoise != null ? shapeNoise.GetInstanceID() : 0);
 			h.Add(shapeNoise != null ? shapeNoise.width : 0);
+			h.Add(shapeNoise != null ? shapeNoise.imageContentsHash.GetHashCode() : 0);
 			h.Add(detailNoise != null ? detailNoise.GetInstanceID() : 0);
 			h.Add(detailNoise != null ? detailNoise.width : 0);
+			h.Add(detailNoise != null ? detailNoise.imageContentsHash.GetHashCode() : 0);
 			h.Add(InnerRadius); h.Add(OuterRadius);
 			h.Add(shapeScale); h.Add(detailScale); h.Add(detailWeight);
 			h.Add(densityMultiplier); h.Add(coverageMultiplier); h.Add(typeOffset);
