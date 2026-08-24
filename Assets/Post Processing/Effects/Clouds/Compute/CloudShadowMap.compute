@@ -5,15 +5,10 @@
 
 // How much sunlight reaches each point on the globe after passing through the cloud shell.
 //
-// Equirectangular and indexed by pointToUV, like the weather map and the city light field. That
-// choice does a lot of work: it is view-independent, so it needs no shadow frustum and no cascade
-// and does not change when the camera moves; it is scale-invariant under F7; and both surface
-// shaders already compute pointToUV(pointOnUnitSphere), so consuming it costs them one tap and no
-// new plumbing.
+// Equirectangular and indexed by pointToUV, like the weather map and city light field: view-
+// independent (no frustum or cascade), scale-invariant, and costs consumers one tap.
 //
-// Uses the same CloudCommon density model as the march, so the shadow can never disagree with the
-// cloud casting it - which is exactly the failure a second copy of the density function would
-// produce, and it would look like a plausible offset rather than an obvious fault.
+// Uses the same CloudCommon density model as the march, so the shadow can never disagree with the cloud casting it.
 
 RWTexture2D<float4> Result;
 
@@ -43,19 +38,10 @@ void CSCloudShadow(uint3 id : SV_DispatchThreadID)
 		return;
 	}
 
-	// Start at the cloud base rather than at sea level: there is no cloud below it by construction,
-	// so the segment between would only be empty steps.
-	//
-	// Lifted clear of the inner sphere rather than placed exactly on it. Exactly on it,
-	// dot(origin, origin) - radius^2 rounds to either sign depending on the texel, and the two
-	// signs give completely different answers: negative counts as inside the inner sphere, which
-	// makes the near span collapse to nothing and the texel report no shadow at all, while positive
-	// misses it and marches the whole shell. Roughly half the map came out unshadowed, in a fixed
-	// speckle that the shadow map's 190-fold magnification on screen turns into blotches.
-	//
-	// The old three-branch cloudShellSegment took an explicit "below the shell" case here and was
-	// not exposed to this; the subtraction form is cleaner but has no such case, so the origin has
-	// to be unambiguous.
+	// Starts at the cloud base rather than sea level (no cloud below it, so that segment is wasted
+	// steps), lifted clear of the inner sphere rather than placed exactly on it - exactly on the
+	// boundary, dot(origin, origin) - radius^2 rounds to either sign per-texel, which either misses
+	// the near span entirely or marches the whole shell, producing a fixed speckle of unshadowed texels.
 	float3 origin = sphereNormal * (cloudInnerRadius + 1e-2);
 
 	float2 nearSpan, farSpan;
@@ -65,9 +51,8 @@ void CSCloudShadow(uint3 id : SV_DispatchThreadID)
 		return;
 	}
 
-	// Both spans, not just the near one. Marching outward toward a high sun the far span is empty,
-	// but with the sun low the ray can graze back out through the base and the cloud beyond it is
-	// real - the same two-crossing geometry the view ray has.
+	// Both spans, not just the near one: with the sun low the ray can graze back out through the
+	// base and the cloud beyond it is real, the same two-crossing geometry the view ray has.
 	float start = nearSpan.x;
 	float end = max(nearSpan.y, farSpan.y);
 	if (end <= start)
@@ -78,15 +63,8 @@ void CSCloudShadow(uint3 id : SV_DispatchThreadID)
 
 	float stepSize = (end - start) / max(1, shadowSteps);
 
-	// The density is read at the footprint of a SHADOW MAP TEXEL, not at the march step.
-	//
-	// This map is a fixed grid over the whole globe, so it cannot represent anything finer than two
-	// texels however finely the march samples. Choosing the mip from the step read detail about
-	// seven times finer than that - which does not add detail, it aliases, and because the wind
-	// drifts the field every frame the aliasing moves. That is flicker rather than static noise.
-	//
-	// Reading at the texel footprint is the same principle as the light march's own detail length:
-	// pre-filter to what the consumer can actually carry.
+	// Density is read at the footprint of a shadow map texel, not the march step: this fixed global
+	// grid can't represent anything finer, so reading at step resolution just aliases into flicker as wind drifts it.
 	float texelWorldSize = 6.28318530718 * cloudInnerRadius / max(1, shadowMapSize.x);
 	float sampleFootprint = max(stepSize, texelWorldSize * shadowDetailScale);
 
@@ -95,8 +73,7 @@ void CSCloudShadow(uint3 id : SV_DispatchThreadID)
 	for (int i = 0; i < shadowSteps; i++)
 	{
 		float3 pos = origin + shadowSunDir * (start + (i + 0.5) * stepSize);
-		// `cheap`: no detail erosion. A shadow cast onto terrain from a kilometre up carries none
-		// of that frequency anyway, and it is the more expensive half of the density function.
+		// `cheap`: no detail erosion, invisible at this distance and the more expensive half of the density function.
 		opticalDepth += max(0, sampleCloudDensity(pos, true, sampleFootprint)) * stepSize;
 	}
 

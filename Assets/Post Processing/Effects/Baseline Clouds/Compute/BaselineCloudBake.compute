@@ -4,12 +4,8 @@
 
 #include "Assets/Scripts/Shader Common/GeoMath.hlsl"
 #include "Assets/Post Processing/Effects/Clouds/Shader Common/CloudNoiseCommon.hlsl"
-// The volumetric density model itself, for the capture kernel.
-//
-// Included rather than reimplemented, for the reason BakeSkyGradient.compute states about the
-// sky: any difference between the captured baseline and the volumetric renderer could otherwise
-// be a difference in the bake, and that is the one thing this comparison cannot tolerate. The
-// captured layer exists so the two show the SAME clouds.
+// The volumetric density model, for the capture kernel - included rather than reimplemented, so any
+// difference between the captured baseline and the volumetric renderer is never just a bake mismatch.
 #include "Assets/Post Processing/Effects/Clouds/Shader Common/CloudCommon.hlsl"
 
 // Bakes a baseline cloud layer: an equirectangular texture describing a sheet of cloud wrapped
@@ -19,12 +15,11 @@
 //   B     cloud top height within the layer, 0 at its floor and 1 at its ceiling
 //   A     density
 //
-// Packing the normal means the runtime needs one tap per layer rather than several taps of finite
-// differences, which matters because being cheap to sample is the entire point of the baseline.
+// Packing the normal costs the runtime one tap per layer rather than several taps of finite
+// differences, since being cheap to sample is the whole point of the baseline.
 //
-// This kernel is the AUTHORED producer - a procedural field, what a studio would actually make. The
-// second producer, which captures the volumetric renderer into the same format, lives alongside it
-// so the two are drop-in replacements for one another.
+// This kernel is the authored producer - a procedural field, what a studio would actually make. The
+// second producer below captures the volumetric renderer into the same format, as a drop-in swap.
 
 RWTexture2D<float4> Result;
 
@@ -42,23 +37,15 @@ float fieldContrast;
 float seedOffset;
 float reliefStrength;
 
-/// Advances the field so the layer drifts between bakes if wanted. Applied in the sphere's own
-/// space rather than as a UV scroll, which would tear at the poles.
+/// Advances the field so the layer drifts between bakes, in the sphere's own space rather than as a
+/// UV scroll (which would tear at the poles).
 float3 driftOffset;
 
-/// The cloud field at a point on the sphere: how much cloud is here, in 0 to 1.
-///
-/// Two scales, not one. A large-scale coverage field decides where there is cloud at all, and a
-/// smaller-scale shape field is carved by it. A single field gives a layer with the same character
-/// everywhere - no clear regions, no weather systems - which is precisely the uniformity the
-/// volumetric's weather map exists to avoid, and giving the baseline that flaw would make the
-/// comparison unfair rather than simple.
-///
-/// Both are range-corrected before folding: an FBM normalised by the sum of its amplitudes never
-/// reaches that sum, which is the defect the volumetric's weather map and its Perlin both had.
-///
-/// Coverage CARVES the shape rather than scaling it - the same remap the volumetric uses - so cloud
-/// grows outward from where it already is instead of the whole layer fading up together.
+/// The cloud field at a point on the sphere: how much cloud is here, in 0 to 1. Two scales: a
+/// large-scale coverage field decides where there is cloud at all, and a smaller-scale shape field is
+/// carved by it - a single field would give uniform character everywhere, which the volumetric's
+/// weather map exists to avoid. Both are range-corrected before folding, since an FBM normalised by
+/// the sum of its amplitudes never reaches that sum. Coverage carves the shape rather than scaling it.
 float cloudField(float3 p)
 {
 	float coverageNoise = cloudFbm(p * coverageScale + driftOffset * 0.4 + seedOffset,
@@ -86,26 +73,19 @@ void BakeAuthored(uint3 id : SV_DispatchThreadID)
 
 	float density = cloudField(p);
 
-	// Height follows density: a thicker cloud is a taller one. One field rather than two, so the
-	// relief always agrees with where the cloud actually is - two independent fields would put
-	// lit slopes where there is no cloud to catch the light.
+	// Height follows density: one field rather than two, so relief always agrees with where cloud is.
 	float height = density;
 
-	// Surface normal from central differences of the height field, taken in ANGULAR space so the
-	// spacing is a true distance on the globe at every latitude. A finite difference in UV would
-	// shrink toward the poles and the relief would sharpen into a pinch there.
-	// "east" is nominal - under this project's pointToUV, cross(poleAxis, p) actually points toward
-	// decreasing longitude. That does not matter here, because this frame is used to bake the
-	// normal and the runtime rebuilds the identical expression to unpack it, so the naming is the
-	// only thing that is wrong. It matters a great deal to ComputeNormals below, which reaches the
-	// same frame by differencing texels and therefore has to negate. Do not "correct" this without
-	// negating that.
+	// Surface normal from central differences of the height field, in angular space so spacing is a
+	// true distance at every latitude (a UV-space difference would pinch toward the poles).
+	// "east" is nominal - only the naming is wrong, since both this bake and ComputeNormals'
+	// unpacking share the same frame. ComputeNormals differences texels instead and must negate to
+	// match; do not "correct" the naming here without negating that too.
 	float3 poleAxis = float3(0, 1, 0);
 	float3 east = abs(p.y) > 0.9999 ? float3(1, 0, 0) : normalize(cross(poleAxis, p));
 	float3 north = cross(p, east);
 
-	// One output texel, as an angle. Differencing across exactly that keeps the normal at the
-	// finest scale the texture can actually carry.
+	// One output texel, as an angle, so differencing stays at the finest scale the texture can carry.
 	float epsilon = 6.28318530718 / max(1, outputSize.x);
 
 	float3 pE = normalize(p + east * epsilon);
@@ -113,32 +93,16 @@ void BakeAuthored(uint3 id : SV_DispatchThreadID)
 	float3 pN = normalize(p + north * epsilon);
 	float3 pS = normalize(p - north * epsilon);
 
-	// A SLOPE, not a raw difference. h(+e) - h(-e) is proportional to e, so leaving it undivided
-	// makes the relief depend on the output resolution: the same field baked at 2048 came out with
-	// less than half the relief it had at 768, and at 4096 it would halve again. Dividing by 2e
-	// gives the actual gradient, which is a property of the field rather than of how finely it was
-	// sampled.
-	//
-	// Dividing again by fieldScale makes it dimensionless. One shape feature spans roughly
-	// 1/fieldScale radians and the height changes by about half across it, so the ratio lands near
-	// 0.5 whatever the scale or the resolution - which is what lets reliefStrength mean the same
-	// thing from one layer to the next.
+	// A slope, not a raw difference: dividing by 2e makes the gradient a property of the field rather
+	// than of output resolution. Dividing again by fieldScale makes it dimensionless, so
+	// reliefStrength means the same thing whatever the scale or resolution.
 	float gradientScale = 1.0 / (2.0 * epsilon * max(0.01, fieldScale));
 	float dEast = (cloudField(pE) - cloudField(pW)) * gradientScale;
 	float dNorth = (cloudField(pN) - cloudField(pS)) * gradientScale;
 
-	// For a height field h, the surface normal is proportional to (-dh/du, -dh/dv, 1). Normalising
-	// that and storing the tangent components bounds them to [-1, 1] by construction, and the
-	// runtime recovers the third as sqrt(1 - x^2 - y^2).
-	//
-	// Normalised rather than clamped. A clamp bounds the value but not the information: at this
-	// resolution nearly a third of the surface hit the limit and every one of those slopes encoded
-	// identically, so a gentle swell and a sheer edge became the same normal - which is most of
-	// what relief shading is supposed to distinguish. Normalising compresses smoothly instead, and
-	// steep slopes approach the limit without ever reaching it.
-	//
-	// reliefStrength now sets how steep the surface is taken to be before normalising, so it
-	// remains a single dial with no cliff at the top of its range.
+	// Normal proportional to (-dh/du, -dh/dv, 1), normalised and stored as its tangent xy (runtime
+	// recovers z as sqrt(1 - x^2 - y^2)). Normalised rather than clamped, so a clamp doesn't encode a
+	// gentle swell and a sheer edge identically - steep slopes approach the limit smoothly instead.
 	float3 normal = normalize(float3(-dEast * reliefStrength, -dNorth * reliefStrength, 1.0));
 
 	Result[id.xy] = float4(normal.xy * 0.5 + 0.5, height, density);
@@ -146,26 +110,18 @@ void BakeAuthored(uint3 id : SV_DispatchThreadID)
 
 
 // ---------------------------------------------------------------------------------------------
-// Capture: the volumetric cloud field flattened into the same layer format.
-//
-// Not a shippable baseline - it needs the volumetric renderer to exist in order to be produced -
-// but a control condition. Because the content is identical, any remaining visual difference
-// against the volumetric is the TECHNIQUE rather than the art, which is exactly what RQ1 asks and
-// what the baseline sky's GradientBaked variant exists to provide for the sky.
+// Capture: the volumetric cloud field flattened into the same layer format. Not a shippable
+// baseline - it needs the volumetric renderer to exist - but a control condition: since the content
+// is identical, any remaining visual difference against the volumetric is the technique, not the art.
 // ---------------------------------------------------------------------------------------------
 
 int captureSteps;
 float captureAbsorption;
 float captureThreshold;
 
-/// The span this capture marches, which is HALF the shell - the lower layer takes the bottom
-/// half and the upper the top, so the two parallax against one another rather than being the
-/// same sheet drawn twice.
-///
-/// Separate uniforms rather than overriding cloudInnerRadius and cloudOuterRadius, which would
-/// have been the obvious way to do it and is a trap: the density model reads those itself, in
-/// cloudHeightFraction, to decide where in the shell a sample sits. Narrowing them would move
-/// every height gradient along with the march and capture a cloud that does not exist.
+/// The span this capture marches: half the shell each, so the lower and upper layers parallax
+/// against one another. Separate uniforms rather than overriding cloudInnerRadius/cloudOuterRadius,
+/// which cloudHeightFraction itself reads - narrowing those would move every height gradient too.
 float captureFloor;
 float captureCeiling;
 
@@ -178,8 +134,7 @@ void CaptureVolumetric(uint3 id : SV_DispatchThreadID)
 	float2 uv = (id.xy + 0.5) / outputSize;
 	float3 sphereNormal = uvToPointOnSphere(uv);
 
-	// Straight down from the top of the shell to its floor. A vertical column rather than a view
-	// ray, because this is a map of where cloud is, not a picture of it from anywhere.
+	// Straight down from the top of the shell to its floor - a map of where cloud is, not a view of it.
 	float3 top = sphereNormal * captureCeiling;
 	float3 down = -sphereNormal;
 	float span = captureCeiling - captureFloor;
@@ -193,16 +148,14 @@ void CaptureVolumetric(uint3 id : SV_DispatchThreadID)
 	{
 		float3 pos = top + down * ((i + 0.5) * stepSize);
 
-		// `cheap`: no detail erosion. The layer is a sheet with a height field, so detail at a scale
-		// finer than one texel of it has nowhere to go.
+		// `cheap`: no detail erosion, since the layer is a sheet with a height field and has nowhere
+		// to put detail finer than one texel.
 		float density = max(0, sampleCloudDensity(pos, true, stepSize));
 
-		// The first sample with real density, marching downward, is the cloud top - which is the
-		// surface the baseline will shade.
+		// The first sample with real density, marching downward, is the cloud top the baseline shades.
 		if (!foundTop && density > captureThreshold)
 		{
-			// Height within THIS layer, not within the whole shell, so each layer's height field
-			// spans its own 0 to 1 and the relief reads the same on both.
+			// Height within this layer, not the whole shell, so both layers' height fields span 0 to 1.
 			topHeight = saturate((length(pos) - captureFloor) / max(1e-4, span));
 			foundTop = true;
 		}
@@ -210,12 +163,10 @@ void CaptureVolumetric(uint3 id : SV_DispatchThreadID)
 		opticalDepth += density * stepSize;
 	}
 
-	// Opacity rather than raw optical depth: the layer's alpha is how much it hides, and Beer is
-	// what the volumetric would have arrived at along the same column.
+	// Opacity rather than raw optical depth: Beer is what the volumetric would arrive at on this column.
 	float density = 1 - exp(-opticalDepth * captureAbsorption);
 
-	// Normals are left to ComputeNormals below. Deriving them here would mean four more full
-	// columns per texel; reading them back off the height field afterwards costs four taps.
+	// Normals left to ComputeNormals below - deriving them here would cost four more columns per texel.
 	Result[id.xy] = float4(0.5, 0.5, topHeight, density);
 }
 
@@ -224,54 +175,36 @@ void CaptureVolumetric(uint3 id : SV_DispatchThreadID)
 Texture2D<float4> Source;
 float normalStrength;
 
-/// Fills in RG from the DENSITY already in A.
-///
-/// From density rather than from the height in B, which is the obvious choice and the wrong one.
-/// Height is zero in clear sky and around 0.76 inside cloud, so it steps at every cloud edge:
-/// measured on a real capture, 7.2% of its slopes were cliffs against density's 0.27%. Those
-/// cliffs then dominate the gradient, and raising the strength only pins them to horizontal while
-/// leaving the interior flat - the mean stalled at 0.27 however hard it was pushed.
-///
-/// Density fades continuously at an edge, so it describes the cloud's own lumpiness, and it is
-/// also what the authored path derives its normal from. B stays free to carry the true cloud top
-/// for parallax.
-///
-/// A separate pass because a kernel cannot read its neighbours out of the texture it is writing -
-/// they may already have been overwritten.
+/// Fills in RG from the density already in A - not from the height in B, which steps sharply at
+/// every cloud edge and would dominate the gradient with cliffs. Density fades continuously at an
+/// edge, matching what the authored path derives its normal from; B stays free for the true cloud
+/// top. A separate pass since a kernel can't read neighbours it may have already overwritten.
 [numthreads(8, 8, 1)]
 void ComputeNormals(uint3 id : SV_DispatchThreadID)
 {
 	uint2 size = (uint2)outputSize;
 	if (id.x >= size.x || id.y >= size.y) { return; }
 
-	// Longitude wraps, latitude clamps - the same split the textures themselves are imported with.
+	// Longitude wraps, latitude clamps, matching how the textures are imported.
 	uint2 e = uint2((id.x + 1) % size.x, id.y);
 	uint2 w = uint2((id.x + size.x - 1) % size.x, id.y);
 	uint2 n = uint2(id.x, min(id.y + 1, size.y - 1));
 	uint2 s = uint2(id.x, max((int)id.y - 1, 0));
 
-	// NEGATED, and it has to be. This kernel differences TEXELS, so its idea of east is "increasing
-	// u" - but the frame the authored path bakes into, and the one the runtime unpacks with, is
-	// geometric: cross(poleAxis, p). Under this project's pointToUV that cross product points
-	// toward DECREASING longitude, so the two conventions are mirror images.
-	//
-	// Measured on the previous capture, before this line was flipped: the authored layer's R
-	// channel correlated +0.91 with the density slope in u and the captured layer's correlated
-	// -0.89. Same field, relief lit from the opposite side - a plausible image rather than an
-	// obvious fault, and invisible without comparing the two. The north axis needs no such flip:
-	// increasing v is increasing latitude, which is the geometric north already (+0.96 / +0.89).
+	// Negated, and it has to be: this kernel differences texels, so its "east" is increasing u, but
+	// the geometric frame the authored path bakes into (cross(poleAxis, p)) points toward decreasing
+	// longitude under this project's pointToUV - mirror images otherwise. North needs no such flip,
+	// since increasing v already is geometric north.
 	float dEast = Source[w].a - Source[e].a;
 	float dNorth = Source[n].a - Source[s].a;
 
-	// A per-texel difference shrinks as resolution rises, so the relief would otherwise depend on
-	// the output size - the same fault the authored path had. Calibrated at 2048 and scaled from
-	// there, so changing the resolution does not change how the layer looks.
+	// A per-texel difference shrinks as resolution rises, so scale is calibrated at 2048 to keep the
+	// layer's look independent of output size.
 	float resolutionScale = outputSize.x / 2048.0;
 	dEast *= resolutionScale;
 	dNorth *= resolutionScale;
 
-	// Normalised, not clamped, for the reason the authored path documents: a clamp encodes every
-	// steep slope identically and loses the difference between a swell and an edge.
+	// Normalised, not clamped - see the authored path for why.
 	float3 normal = normalize(float3(-dEast * normalStrength, -dNorth * normalStrength, 1.0));
 
 	float4 source = Source[id.xy];

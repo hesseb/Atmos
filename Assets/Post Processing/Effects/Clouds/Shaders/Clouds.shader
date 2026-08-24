@@ -16,13 +16,10 @@ Shader "Hidden/Clouds"
 
 			#include "UnityCG.cginc"
 			#include "Assets/Post Processing/Effects/Clouds/Shader Common/CloudLightingCommon.hlsl"
-			// Sun colour after atmospheric extinction, sky radiance for a direction, the tone-map
-			// constants and getBlueNoise. Deliberately NOT AtmosphereCommon, which owns the global
-			// `dirToSun` and would shadow this shader's own sun direction.
+			// Sun transmittance, sky radiance and tone-map constants. Not AtmosphereCommon, which
+			// owns the global `dirToSun` and would shadow this shader's own sun direction.
 			#include "Assets/Scripts/Shader Common/SurfaceLighting.hlsl"
-			// For getBlueNoise, used to jitter the march start. Was reaching this through
-			// SurfaceLighting.hlsl, which no longer includes it.
-			#include "Assets/Scripts/Shader Common/DrawAtmosphereCommon.hlsl"
+			#include "Assets/Scripts/Shader Common/DrawAtmosphereCommon.hlsl"  // getBlueNoise
 
 			struct appdata
 			{
@@ -42,8 +39,7 @@ Shader "Hidden/Clouds"
 				v2f output;
 				output.pos = UnityObjectToClipPos(v.vertex);
 				output.uv = v.uv;
-				// Left unnormalised on purpose: its length converts eye depth into distance along
-				// the ray, which is what the shell segment has to be clipped against.
+				// Left unnormalised: its length converts eye depth into distance along the ray.
 				float3 viewVector = mul(unity_CameraInvProjection, float4(v.uv.xy * 2 - 1, 0, -1));
 				output.viewVector = mul(unity_CameraToWorld, float4(viewVector, 0));
 				return output;
@@ -52,22 +48,15 @@ Shader "Hidden/Clouds"
 			sampler2D _CameraDepthTexture;
 
 			// ---- march ----------------------------------------------------------------------
-			// Target length of a march step, in world units. The step COUNT is then derived from
-			// the segment rather than fixed, so a vertical ray through a 1.65-unit shell and a
-			// grazing ray through a 45-unit chord are both sampled properly. The reference project
-			// instead hardcodes a step of 11 world units, which at this planet's scale would step
-			// over the entire cloud layer six times in one step.
+			// Target length of a march step, in world units; step COUNT is derived from the segment
+			// rather than fixed, so both a near-vertical ray and a grazing one are sampled properly.
 			float cloudStepSize;
 			int cloudMaxSteps;
 			/// 0 off, 3 shell length, 4 raw density, 5 start distance, 7-10 the weather channels.
-			/// Camera region is handled by the composite pass instead, so the clouds stay visible
-			/// beside it.
 			int cloudDebugMode;
 
-			/// Temporal reprojection. Period 1 marches every pixel; 4 marches one in four, in a 2x2
-			/// pattern that cycles so every pixel is refreshed within four frames. The skip happens
-			/// before the march, which is where the saving comes from - a fragment shader cannot
-			/// decline to run, but it can decline to do the expensive part.
+			/// Temporal reprojection: period 1 marches every pixel, 4 marches one in four in a cycling
+			/// 2x2 pattern. The skip happens before the march, which is where the saving comes from.
 			int cloudTemporalPeriod;
 			int cloudTemporalIndex;
 			float4 _CloudMarchSize;
@@ -84,63 +73,33 @@ Shader "Hidden/Clouds"
 			float3 cloudAmbientFallback;
 			float3 cloudNightAmbient;
 
-			/// How much aerial perspective the clouds pick up, 0 to 1.
-			///
-			/// Named and shaped after the atmosphere's own aerialPerspectiveStrength. At 0 the term
-			/// is exactly identity rather than merely small, so the feature's cost and its visual
-			/// contribution can both be priced against the same build.
+			/// How much aerial perspective the clouds pick up, 0 to 1. At 0 the term is exactly
+			/// identity, so cost and visual contribution can both be priced against the same build.
 			float cloudAerialStrength;
 
-			// The optical model - phase, Beer-Powder and the cone light march - now lives in
-			// CloudLightingCommon.hlsl, shared with the downward-radiance bake that lights the sea and
-			// the land beneath the deck. Two consumers of the same physics have to call one definition;
-			// what stays here is the ASSEMBLY, which is genuinely different between them.
+			// The optical model (phase, Beer-Powder, cone light march) lives in CloudLightingCommon.hlsl,
+			// shared with the downward-radiance bake; what stays here is the assembly, which differs between them.
 
-			/// How many times the isotropic value the phase reaches looking straight at the sun. A call
-			/// site parameter rather than part of the model, because the sun and the moon want different
-			/// ones.
+			/// Silver-lining intensity at the sun; passed per call site since the sun and moon want different ones.
 			float cloudSilverIntensity;
 
-			// Published by SolarSystem.Moon, the same globals the ocean reads. A position rather
-			// than a direction: at 811 world units against a 150-unit planet the moon is not far
-			// enough away to be directional across the visible shell.
+			// Published by SolarSystem.Moon, the same globals the ocean reads. A position rather than
+			// a direction, since the moon isn't far enough away to be directional across the shell.
 			float4 moonPosition;
 			float4 moonLightColour;   // already scaled by phase, so a new moon contributes nothing
 			float cloudMoonIntensity;
 			float cloudMoonSilverIntensity;
 
-			/// The skylight reaching a cloud sample: the zenith and the sunlit horizon, blended.
-			///
-			/// Sampled toward the sunlit HORIZON as well as the zenith because at sunset the zenith is
-			/// deep blue while the horizon is orange, so a zenith-only lookup throws away exactly the
-			/// colour the clouds are meant to be picking up. The horizon tap is what carries the sunset.
-			///
-			/// Evaluated ONCE PER PIXEL, and it took a while to see that it could be. Both taps are
-			/// invariant along the ray - not approximately, exactly - and neither depends on `up`:
-			///
-			///   the zenith tap  dot(up, up) is 1, and the direction's tangent against up is the zero
-			///                   vector, so sampleSkyView takes its degenerate-azimuth branch and
-			///                   returns cosAzimuth = 1. That is texel (0, 0), whatever `up` was.
-			///   the horizon tap horizonDir is built perpendicular to up, so the zenith cosine is 0;
-			///                   and it is built FROM the sun's tangent, so the azimuth cosine is 1
-			///                   against itself. With skyViewLutAltitude at 0 the horizon zenith angle
-			///                   is exactly pi/2, which lands on the horizon row.
-			///
-			/// So the whole block - a normalize, a tangent projection, an acos, two LUT taps and two
-			/// tone maps - was recomputing two per-frame constants at every step of every pixel, in
-			/// both spans. CloudSkyMap.compute already hoists the identical block out of its own loop;
-			/// this is the same hoist, arrived at from the other direction.
-			///
-			/// What this is NOT is a new approximation. The lookup has no positional dependence to
-			/// lose: sampleSkyView reads skyViewLutRadius, a uniform baked at sea level. That is the
-			/// same limitation the aerial-perspective term documents, and it is why the in-scatter
-			/// there collapses to L_sky * (1 - T).
+			/// Skylight reaching a cloud sample: zenith and sunlit horizon, blended, so a sunset's
+			/// orange horizon isn't lost to a zenith-only lookup. Evaluated once per pixel rather than
+			/// per sample - both taps are exactly invariant along the ray, independent of `up` - which
+			/// is the same hoist CloudSkyMap.compute applies inside its own loop. Not an approximation:
+			/// sampleSkyView already has no positional dependence, reading skyViewLutRadius at sea level.
 			float3 cloudSkyAmbient(float3 up)
 			{
 				float3 sunTangent = cloudSunDir - up * dot(cloudSunDir, up);
 				float tangentLength = length(sunTangent);
-				// Degenerate with the sun overhead, and there the sky is near enough azimuthally
-				// symmetric that the zenith tap alone is right anyway.
+				// Degenerate with the sun overhead, where the zenith tap alone is right anyway.
 				float3 horizonDir = tangentLength > 1e-3 ? sunTangent / tangentLength : up;
 
 				float3 skyZenith = sampleSkyViewSafe(up, up, cloudSunDir);
@@ -151,11 +110,9 @@ Shader "Hidden/Clouds"
 				return ambient + cloudAmbientFallback * (hasPhysicalAtmosphere() ? 0.0 : 1.0);
 			}
 
-			/// Marches one span of the shell, accumulating into the caller's running totals.
-			///
-			/// A span rather than the whole ray, because a ray can cross the shell twice - see
-			/// cloudShellSegments. Transmittance carries across both, so the far span is correctly
-			/// dimmed by whatever the near one already absorbed.
+			/// Marches one span of the shell, accumulating into the caller's running totals. A span
+			/// rather than the whole ray since a ray can cross the shell twice (cloudShellSegments);
+			/// transmittance carries across both spans.
 			void cloudMarchSpan(
 				float3 rayOrigin, float3 rayDir, float2 span, float phase, float cosViewSun, float2 uv,
 				AerialRay aerialRay, float3 aerialSky, float3 skyAmbient,
@@ -166,35 +123,16 @@ Shader "Hidden/Clouds"
 				float segment = end - start;
 				if (segment <= 0 || transmittance < 0.01) { return; }
 
-				// Step count from the segment, so the march ALWAYS covers the whole of it.
-				//
-				// A distance-keyed step was tried here and reverted: keying to distance decouples
-				// the sampling rate from view direction, which is right, but it also means the
-				// march can exhaust its step budget before crossing the shell, and far cloud is
-				// then cut off at a hard edge - trading one discontinuity for a worse one. Covering
-				// the segment is the property worth keeping; the mip selected from the step length
-				// is what makes the varying rate tolerable.
+				// Step count from the segment, so the march always covers the whole of it. A
+				// distance-keyed step was tried and reverted: it can exhaust its budget before
+				// crossing the shell, cutting far cloud off at a hard edge.
 				int steps = min(cloudMaxSteps, max(8, (int)(segment / max(1e-4, cloudStepSize))));
 				float stepSize = segment / steps;
 
-				// Blue-noise start offset, so undersampling breaks up into noise rather than into
-				// the concentric banding a fixed phase produces on a spherical shell.
-				//
-				// A fraction of ONE step, and a MEAN-PRESERVING one. This read getBlueNoise, which is
-				// the DITHER transform: a triangular distribution rescaled to [-0.5, 1.5], mean 0.5.
-				// Added on top of the (s + 0.5) midpoint it shifted every sample forward by half a step
-				// on average, and let the tail reach 1.5 steps past where it belonged - at which point
-				// the `t >= end` break fired early and the march stopped short of the very span it had
-				// just sized itself to cover, against the claim made twenty lines above.
-				//
-				// That is the same quadrature bias found and fixed twice in the atmosphere:
-				// getSunTransmittance sampling right-Riemann, raymarchSegment left-Riemann. A biased
-				// sample position is not noise; it is a systematic error that noise happens to hide.
-				//
-				// lerp from 0.5 rather than scaling the offset, so the mean stays on the midpoint at
-				// every strength: 0 is exactly the midpoint rule, 1 is uniform across the step. Past 1
-				// the offset can leave the step's own interval, which costs a sample rather than
-				// correctness - a position outside the span reads zero density anyway.
+				// Blue-noise start offset so undersampling breaks into noise rather than concentric
+				// banding. Uses getBlueNoiseRaw (not the dither transform, which is mean-shifted off
+				// 0.5 and would make the march fall short of its own span). lerp from 0.5 rather than
+				// scaling, so the mean stays on the midpoint rule at every strength.
 				float jitter = lerp(0.5, getBlueNoiseRaw(uv).r, cloudJitterStrength);
 
 				[loop]
@@ -208,64 +146,39 @@ Shader "Hidden/Clouds"
 					rawDensity += max(0, density) * stepSize;
 					if (density <= 0) { continue; }
 
-					// The sun's colour at THIS point's altitude, not at sea level below it - which
-					// is what keeps a cloud top bright and gold while the land beneath has gone red.
-					// Falls back to white when there is no physically based atmosphere bound, so the
-					// clouds keep working in the baseline and ablation profiles.
-					//
-					// Desaturated toward its OWN luminance, not toward white.
-					//
-					// This atmosphere is optically much thicker than Earth's - zenith transmittance
-					// 0.45 against 0.77, a deliberate compensation for a 136 km planet - so a midday
-					// sun arrives already reddened, which read as drab. Pulling the colour toward
-					// grey fixes that.
-					//
-					// Toward white it also floored the term at 1 - weight, which is 0.3 of a full
-					// sun, and transmittance is exactly zero once the sun is below the horizon. So
-					// the sun never actually set on the clouds: at midnight they kept 30% of a sun
-					// whose gradient colour had by then gone deep orange, and they were lit as
-					// though at sunset. Toward the transmittance's own luminance the term dies with
-					// it, because zero has no hue to preserve.
+					// The sun's colour at this point's altitude, not at sea level - keeps a cloud top
+					// gold while the land below has gone red. Falls back to white without a physical
+					// atmosphere. Desaturated toward its own luminance rather than toward white, so
+					// the term genuinely dies with the transmittance instead of flooring at a fixed
+					// fraction of a full sun (which kept clouds lit after the sun had set).
 					float3 sunTransmittance = sampleLightColourAt(pos, cloudSunDir);
 					float sunLuminance = dot(sunTransmittance, float3(0.2126, 0.7152, 0.0722));
 					float3 sunColour = lerp(sunLuminance.xxx, sunTransmittance, cloudSunTransmittanceWeight) * cloudSunColour;
 
 					float energy = cloudBeerPowder(cloudLightMarch(pos, cloudSunDir), cosViewSun);
 
-					// Skylight, hoisted to the pixel - see cloudSkyAmbient, which explains why the two
-					// taps it is built from do not vary along the ray at all.
+					// Skylight, hoisted to the pixel - see cloudSkyAmbient.
 					float3 ambient = skyAmbient;
 
-					// The one part of it that genuinely does vary, because it is a function of
-					// position rather than of the LUT: how far past the terminator this sample sits.
+					// The one part that genuinely varies per-sample: how far past the terminator this sample sits.
 					float3 up = normalize(pos);
 
-					// Starlight and airglow. Every source the clouds have goes to zero together once
-					// the sun is down - the sky LUT is genuinely dark and the transmittance is
-					// exactly zero - so without a floor they turn pure black rather than dark.
-					// Declared non-physical, exactly like the ocean's and the land's night terms:
-					// what it stands for is outside a single-sun scattering model rather than
-					// something this renderer gets wrong.
+					// Starlight and airglow: a non-physical floor (like the ocean's and land's night
+					// terms) so clouds go dark rather than pure black once every real source is zero.
 					float nightT = saturate(dot(up, -cloudSunDir));
 					ambient += cloudNightAmbient * smoothstep(0.0, 0.15, nightT);
 
 					float3 inScatter = sunColour * energy * phase * cloudSunIntensity + ambient;
 
-					// Moonlight, on the same machinery as the sun. Behind a branch on the moon's own
-					// published colour, which is already scaled by phase - so a new moon costs
-					// nothing, and neither does a moon that has set, and the branch is uniform
-					// across the frame rather than varying per pixel.
-					//
-					// The direction is computed per sample rather than taken as a constant: at 811
-					// units against a shell spanning tens of units it swings several degrees across
-					// the view, which is the scale a silver lining is drawn at.
+					// Moonlight, on the same machinery as the sun, gated on the moon's own published
+					// colour (already phase-scaled, so a new or set moon costs nothing). Direction is
+					// computed per sample since it swings several degrees across the view.
 					if (dot(moonLightColour.rgb, 1) > 1e-4)
 					{
 						float3 moonDir = normalize(moonPosition.xyz - pos);
 						float cosViewMoon = dot(rayDir, moonDir);
 
-						// Same desaturation as the sun, and zero once the moon is below the horizon
-						// for the same reason: transmittance has no hue left to preserve there.
+						// Same desaturation as the sun.
 						float3 moonT = sampleLightColourAt(pos, moonDir);
 						float moonLuminance = dot(moonT, float3(0.2126, 0.7152, 0.0722));
 						float3 moonColour = lerp(moonLuminance.xxx, moonT, cloudSunTransmittanceWeight) * moonLightColour.rgb;
@@ -276,34 +189,19 @@ Shader "Hidden/Clouds"
 						inScatter += moonColour * moonEnergy * moonPhase * cloudMoonIntensity;
 					}
 
-					// Aerial perspective, per sample rather than once on the composited result.
-					//
-					// Per sample because a single representative depth cannot describe this pixel: a
-					// horizon ray's cloud spans roughly 6 to 105 world units, so one depth would be
-					// wrong by a factor of seventeen across the same pixel. It is also the cheaper
-					// route - the march records no depth and has no spare channel to put one in,
-					// which is why the temporal pass reprojects against a mid-shell sphere proxy
-					// instead of a real one.
-					//
-					// Applied to the whole of inScatter, after the sun, ambient and moon terms: all
-					// of them leave this point together and cross the same air to reach the camera.
-					//
-					// The in-scatter added back is the sky radiance in the view direction, weighted
-					// by how much air is in the way. The exact form is L_sky(cam) - T * L_sky(pos),
-					// which would cost one more tap - but sampleSkyView reads skyViewLutRadius, a
-					// uniform baked at sea level, so L_sky(pos) and L_sky(cam) return the same value
-					// and the difference collapses to this. Exact at both ends - no haze on a near
-					// cloud, a distant one fading entirely into the sky it is seen against - and
-					// approximate in between.
+					// Aerial perspective, per sample rather than on the composited result - a single
+					// representative depth can't describe a horizon ray's cloud span. Applied to the
+					// whole of inScatter, since sun/ambient/moon all cross the same air to the camera.
+					// The in-scatter term is sky radiance weighted by air in the way; the exact form
+					// L_sky(cam) - T*L_sky(pos) collapses to this because sampleSkyView has no
+					// positional dependence (skyViewLutRadius is baked at sea level).
 					float3 aerialT = aerialTransmittanceAt(aerialRay, pos);
 					inScatter = lerp(inScatter,
 						inScatter * aerialT + aerialSky * (1 - aerialT),
 						cloudAerialStrength);
 
-					// Analytic integration over the step rather than a rectangle rule: for a purely
-					// scattering medium the scattering and extinction coefficients cancel, leaving
-					// exactly (1 - stepTransmittance). Converges at far lower step counts, which is
-					// the same reason the atmosphere's raymarch uses this form.
+					// Analytic per-step integration: for a purely scattering medium this is exactly
+					// (1 - stepTransmittance), the same form the atmosphere's raymarch uses.
 					float stepTransmittance = exp(-density * stepSize * cloudExtinction);
 					luminance += inScatter * (1 - stepTransmittance) * transmittance;
 					transmittance *= stepTransmittance;
@@ -312,10 +210,9 @@ Shader "Hidden/Clouds"
 				}
 			}
 
-			/// Returns the cloud on its own: rgb is what it adds, a is how much of the scene behind
-			/// it survives. Kept separate from the background so this pass can run at a lower
-			/// resolution than the frame and be upsampled by the composite pass below - which is
-			/// the whole of the Half cost mode.
+			/// Returns the cloud on its own: rgb is what it adds, a is how much of the scene behind it
+			/// survives. Kept separate from the background so this pass can run at a lower resolution
+			/// and be upsampled by the composite pass - the whole of the Half cost mode.
 			float4 frag(v2f i) : SV_Target
 			{
 				// Alpha below zero marks a pixel this frame did not march, which the resolve pass
@@ -324,18 +221,11 @@ Shader "Hidden/Clouds"
 				{
 					int2 pixel = (int2)(i.uv * _CloudMarchSize.xy);
 
-					// The slot comes from bit 1 of each axis, not bit 0, so the pattern is 2x2
-					// BLOCKS rather than individual pixels. That distinction is the whole saving.
-					//
-					// A GPU shades in 2x2 quads and a wave costs what its slowest lane costs. Keying
-					// the slot on bit 0 puts exactly one marching pixel in every aligned quad, so
-					// every quad still contained a lane doing the full march and the early-out
-					// bought only the memory writes. Measured over seventeen segments on a 4090 at
-					// 1440p, Temporal came out at 87-102% of Full - against Half's 28-43% - which is
-					// to say it saved nothing while still carrying the ghosting.
-					//
-					// On bit 1 each aligned quad has a uniform slot, so three quads in four skip
-					// entirely and the wave genuinely retires early.
+					// Slot comes from bit 1 of each axis, not bit 0, so the pattern is 2x2 blocks
+					// rather than individual pixels. A GPU shades in 2x2 quads and a wave costs what
+					// its slowest lane costs; keying on bit 0 puts a marching pixel in every quad and
+					// the early-out saves nothing. Keying on bit 1 gives each quad a uniform slot, so
+					// three quads in four skip entirely and the wave genuinely retires early.
 					int slot = ((pixel.x >> 1) & 1) + (((pixel.y >> 1) & 1) << 1);
 					if (slot != cloudTemporalIndex) { return float4(0, 0, 0, -1); }
 				}
@@ -350,10 +240,8 @@ Shader "Hidden/Clouds"
 					return float4(0, 0, 0, 1);
 				}
 
-				// Scene geometry ends the march. Terrain rises above the sphere the shell is built
-				// on, so depth - not a ground intersection - is what actually occludes cloud. This
-				// is also what removes the far span when the ray runs into the planet rather than
-				// skimming under the cloud base and back out.
+				// Scene geometry ends the march: terrain rises above the sphere the shell is built on,
+				// so depth (not a sphere intersection) is what actually occludes cloud.
 				float sceneDepth = LinearEyeDepth(SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, i.uv)) * viewLength;
 				nearSpan.y = min(nearSpan.y, sceneDepth);
 				farSpan.y = min(farSpan.y, sceneDepth);
@@ -361,10 +249,7 @@ Shader "Hidden/Clouds"
 				if (cloudDebugMode == 3) { return float4(((nearSpan.y - nearSpan.x + max(0, farSpan.y - farSpan.x)) / 100.0).xxx, 0); }
 				if (cloudDebugMode == 5) { return float4((nearSpan.x / 50.0).xxx, 0); }
 
-				// The weather fields, painted onto the globe by sampling where the ray first meets
-				// the shell. Tuning four interacting fields without being able to look at them is
-				// guesswork, and it is how a field sitting in the middle third of its range went
-				// unnoticed.
+				// The weather fields, painted onto the globe by sampling where the ray first meets the shell.
 				if (cloudDebugMode >= 7)
 				{
 					float3 shellPoint = rayOrigin + rayDir * nearSpan.x;
@@ -378,13 +263,10 @@ Shader "Hidden/Clouds"
 				float cosViewSun = dot(rayDir, cloudSunDir);
 				float phase = cloudPhase(cosViewSun, cloudSilverIntensity);
 
-				// Both aerial perspective terms are per PIXEL rather than per sample, and both are
-				// hoisted here rather than derived inside the span - which matters, because
+				// Per-pixel terms, hoisted here rather than derived inside the span since
 				// cloudMarchSpan is called twice for the same ray.
 				AerialRay aerialRay = aerialRayBegin(rayOrigin, rayDir);
 				float3 aerialSky = sampleSkyViewSafe(normalize(rayOrigin), rayDir, cloudSunDir);
-				// Third of the per-pixel terms, and the newest. See cloudSkyAmbient for why a value
-				// that reads as though it depends on the sample position does not.
 				float3 skyAmbient = cloudSkyAmbient(normalize(rayOrigin));
 
 				float transmittance = 1;
@@ -434,21 +316,17 @@ Shader "Hidden/Clouds"
 			sampler2D _CloudTex;
 			sampler2D _CloudHistory;
 			float4 _CloudMarchSize;
-			// The slot marched this frame. Set on the material, so it reaches this pass as well as
-			// the march - which is what lets the fallback below compute where the marched block is
-			// instead of hunting for it.
+			// The slot marched this frame, set on the material so the fallback below can compute
+			// where the marched block is rather than searching for it.
 			int cloudTemporalIndex;
 			float4x4 _CloudPrevViewProj;
 			float _CloudHistoryBlend;
 			float _CloudReprojectRadius;
 			float _CloudHistoryValid;
 
-			/// Where along this ray the clouds are, near enough for reprojection.
-			///
-			/// The march does not record a depth, and there is no spare channel to put one in. But
-			/// the clouds are confined to a shell of known radius, so intersecting a sphere at its
-			/// middle gives a good proxy - far better than the scene depth, which for a sky pixel is
-			/// the far plane and would reproject the cloud as though it were infinitely distant.
+			/// Where along this ray the clouds are, near enough for reprojection. The march records no
+			/// depth, so a sphere at the shell's middle radius stands in - better than scene depth,
+			/// which for a sky pixel is the far plane.
 			float cloudReprojectDistance(float3 rayOrigin, float3 rayDir)
 			{
 				float b = dot(rayOrigin, rayDir);
@@ -467,9 +345,8 @@ Shader "Hidden/Clouds"
 
 				if (_CloudHistoryValid < 0.5)
 				{
-					// First frame after a resize or a mode change: nothing to reproject onto, so
-					// take whatever was marched and let the pattern fill the rest in over the next
-					// few frames rather than showing a hole.
+					// First frame after a resize or mode change: nothing to reproject, so take
+					// whatever was marched and let the pattern fill in over the next few frames.
 					return float4(current.rgb, abs(current.a));
 				}
 
@@ -489,18 +366,9 @@ Shader "Hidden/Clouds"
 					// to a marched neighbour, since a hole would read as a hard dot pattern.
 					if (onScreen) { return history; }
 
-					// The marched block sits at a KNOWN offset, so this is one tap and not a search.
-					//
-					// Stepping two texels along a single axis flips exactly one bit of the slot, so a
-					// four-tap cross over +-x and +-y reaches slot^1 and slot^2 and never slot^3. For
-					// the block diagonally adjacent to the marched one, none of the four taps had been
-					// marched, the accumulator kept its "no cloud" initialiser, and the fallback
-					// punched a hole in exactly the case it exists to fill. One block in four, on
-					// every frame the history cannot be used.
-					//
-					// Widening the cross to eight taps would fix it, but there is nothing to search
-					// for: the slot IS the block's parity, so xoring this block's slot against the
-					// marched one names the axes to step along outright.
+					// The marched block sits at a known offset (one tap, not a search): xoring this
+					// block's slot against the marched one names the axes to step along directly,
+					// rather than a fixed cross-pattern that misses the diagonal block.
 					int2 pixel = (int2)(i.uv * _CloudMarchSize.xy);
 					int slot = ((pixel.x >> 1) & 1) + (((pixel.y >> 1) & 1) << 1);
 					int diff = slot ^ cloudTemporalIndex;
@@ -513,22 +381,16 @@ Shader "Hidden/Clouds"
 					return tex2D(_CloudTex, i.uv + offset);
 				}
 
-				// Marched this frame. Blend toward it so the sequence converges rather than
-				// flickering between the pattern's four phases; drop the history entirely when it
-				// reprojected off screen, because there is nothing valid to converge toward.
+				// Marched this frame: blend toward it so the sequence converges rather than
+				// flickering between phases; drop the history if it reprojected off screen.
 				if (!onScreen) { return current; }
 				return lerp(history, current, _CloudHistoryBlend);
 			}
 			ENDCG
 		}
 
-		// Composite. Blends the cloud pass over the frame, upsampling it when it was rendered at a
-		// lower resolution than the frame.
-		//
-		// The whole pass lives in CloudComposite.hlsl, which the BASELINE renderer includes too.
-		// Shared rather than copied so the two cannot drift apart: everything that is not the
-		// shading model has to be held constant, or the drift gets measured as a difference between
-		// techniques.
+		// Composite: blends the cloud pass over the frame, upsampling if rendered at lower resolution.
+		// Lives in CloudComposite.hlsl, shared with the baseline renderer so the two can't drift apart.
 		Pass
 		{
 			CGPROGRAM
