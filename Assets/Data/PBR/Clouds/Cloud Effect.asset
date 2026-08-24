@@ -101,7 +101,7 @@ MonoBehaviour:
   historyBlend: 0.2
   shadowCompute: {fileID: 7200000, guid: 7e32ea3e1f7e5774a905538e6cd29a45, type: 3}
   shadowMapSize: {x: 512, y: 256}
-  shadowSteps: 32
+  shadowSteps: 10
   shadowAbsorption: 1.52
   shadowDetailScale: 0.5
   shadowStrength: 0.8
