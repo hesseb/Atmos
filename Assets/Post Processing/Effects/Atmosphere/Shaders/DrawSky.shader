@@ -16,7 +16,7 @@ Shader "Hidden/DrawSky"
 			#pragma fragment frag
 
 			#include "UnityCG.cginc"
-			#include "../Shader Common/DrawAtmosphereCommon.hlsl"
+			#include "Assets/Scripts/Shader Common/DrawAtmosphereCommon.hlsl"
 			// Brings planetRadius / atmosphereThickness / atmosphereRadius and the one
 			// definition of the transmittance LUT's parameterisation.
 			#include "../Shader Common/TransmittanceCommon.hlsl"

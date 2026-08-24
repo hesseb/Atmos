@@ -1,5 +1,5 @@
 #pragma kernel RenderSkyViewLUT
-#include "../Shader Common/AtmosphereCommon.hlsl"
+#include "Assets/Scripts/Shader Common/AtmosphereCommon.hlsl"
 #include "../Shader Common/SkyViewCommon.hlsl"
 
 // Header revision this file was last rebuilt against: sky view LUT, initial.

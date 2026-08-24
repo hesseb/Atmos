@@ -59,7 +59,7 @@ Shader "Custom/Terrain"
 			// arbitrary direction, from the atmosphere's transmittance and sky-view LUTs. Shared
 			// with Ocean.shader so that land and water warm together at sunset - they meet at every
 			// coastline, and a term applied to only one of them shows up as a seam.
-			#include "Assets/Post Processing/Effects/Atmosphere/Shader Common/SurfaceLighting.hlsl"
+			#include "Assets/Scripts/Shader Common/SurfaceLighting.hlsl"
 
 			#if defined(COUNTRY_HIGHLIGHT_ON)
 				// Set as globals by CountryHighlight, so deliberately NOT declared in

@@ -7,7 +7,7 @@
 // include this file - getBlueNoise below reads _ScreenParams and samples with implicit derivatives,
 // neither of which exists outside a fragment stage. Consumers of this header are unaffected: they
 // get toneMap transitively, exactly as before.
-#include "Assets/Post Processing/Effects/Atmosphere/Shader Common/ToneMapCommon.hlsl"
+#include "Assets/Scripts/Shader Common/ToneMapCommon.hlsl"
 
 // Dithering
 float ditherStrength;

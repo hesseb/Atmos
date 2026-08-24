@@ -16,8 +16,8 @@
 			#pragma fragment frag
 
 			#include "UnityCG.cginc"
-			#include "../Shader Common/AtmosphereCommon.hlsl"
-			#include "../Shader Common/DrawAtmosphereCommon.hlsl"
+			#include "Assets/Scripts/Shader Common/AtmosphereCommon.hlsl"
+			#include "Assets/Scripts/Shader Common/DrawAtmosphereCommon.hlsl"
 
 			struct appdata {
 					float4 vertex : POSITION;

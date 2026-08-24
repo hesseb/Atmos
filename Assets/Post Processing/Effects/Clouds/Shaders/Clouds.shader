@@ -19,10 +19,10 @@ Shader "Hidden/Clouds"
 			// Sun colour after atmospheric extinction, sky radiance for a direction, the tone-map
 			// constants and getBlueNoise. Deliberately NOT AtmosphereCommon, which owns the global
 			// `dirToSun` and would shadow this shader's own sun direction.
-			#include "Assets/Post Processing/Effects/Atmosphere/Shader Common/SurfaceLighting.hlsl"
+			#include "Assets/Scripts/Shader Common/SurfaceLighting.hlsl"
 			// For getBlueNoise, used to jitter the march start. Was reaching this through
 			// SurfaceLighting.hlsl, which no longer includes it.
-			#include "Assets/Post Processing/Effects/Atmosphere/Shader Common/DrawAtmosphereCommon.hlsl"
+			#include "Assets/Scripts/Shader Common/DrawAtmosphereCommon.hlsl"
 
 			struct appdata
 			{

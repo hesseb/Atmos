@@ -32,7 +32,7 @@
 //
 // A shader that wants blueNoiseDither must include DrawAtmosphereCommon itself. Ocean.shader and
 // Clouds.shader both used to get it through here by accident, and both now say so.
-#include "Assets/Post Processing/Effects/Atmosphere/Shader Common/ToneMapCommon.hlsl"
+#include "Assets/Scripts/Shader Common/ToneMapCommon.hlsl"
 // For pointToUV. Both consumers already include it, but relying on their include order to satisfy
 // this header would be a trap for the next one.
 #include "Assets/Scripts/Shader Common/GeoMath.hlsl"
