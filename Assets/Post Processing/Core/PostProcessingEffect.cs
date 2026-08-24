@@ -1,7 +1,5 @@
 using UnityEngine;
 
-// Base class for various post processing effects.
-// Functions are called by the PostProcessingManager
 [CreateAssetMenu(menuName = "PostProcessing/Effect")]
 public class PostProcessingEffect : ScriptableObject
 {

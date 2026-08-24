@@ -151,7 +151,6 @@ Shader "Custom/Terrain"
 
 				float3 meshWorldNormal = normalize(i.worldNormal);
 				detailNormal = normalize(detailNormal * 2 - 1);
-				// Blend detail normal with mesh normal
 				float3 worldNormal = normalize(meshWorldNormal * 2 + detailNormal * 1.25);
 
 				// Renamed from `dirToSun` to match Ocean.shader. AtmosphereCommon.hlsl declares a
