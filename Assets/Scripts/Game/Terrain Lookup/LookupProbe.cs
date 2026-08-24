@@ -1,10 +1,14 @@
 using UnityEngine;
 
 /// <summary>
-/// TEMPORARY diagnostic. Validates that the country index map decodes to the right
-/// countries before anything is built on top of it. Delete once green.
+/// Validates that the country index map decodes to the right countries. Originally
+/// scoped as a one-off "delete once green" diagnostic, but retained rather than
+/// retired, the same call NOTES.md made for FrameProbe and for the same reasons: it is
+/// inert (runOnStart is off by default, and it only runs from its context menu), and
+/// it is the tool you need again whenever the pipeline it validates changes - after
+/// regenerating the country index map, or re-baking label anchors.
 ///
-/// Two tests, both logged once on Start:
+/// Three tests, run from the context menu:
 ///
 ///   A. Texture reality check. The index map's importer has a default platform cap of
 ///      2048 with an 8192 Standalone override; if the editor resolves the default, a
