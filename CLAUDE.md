@@ -35,8 +35,10 @@ performance and image output logged identically, for thesis figures/tables.
   `SolarSystemManager.SetTimes` is a better time API for measurement anyway
 
 **Kept despite looking removable** — don't delete these without reading NOTES.md:
-- `Assets/Scripts/Editor Helper/` — not an `Editor` folder; `EditorShaderHelper`
-  compiles into the main assembly and `AtmosphereEffect.cs:394` uses it
+- `Assets/Scripts/Editor/EditorShaderHelper.cs` — shared by `AtmosphereEffect` and
+  `StarRenderer`, not owned by either; both the class and every call site are already
+  guarded with `#if UNITY_EDITOR`, so living in a real `Editor` folder is redundant
+  safety, not a risk
 - `WorldLookup` — idles, but is the only terrain-height-at-a-coordinate query, which
   the measurement harness needs
 - `PlaceholderWorld` — deactivates itself on play; the only thing showing where the
@@ -53,8 +55,8 @@ performance and image output logged identically, for thesis figures/tables.
    `TestbedCamera`, `TimeController`/`SolarTime`, and the F1–F10 overlay in
    `BenchmarkHud`; renderer arms switch through `PostProcessRendererProfile`
 3. ~~Measurement harness: fixed camera paths, frame timing / GPU timers, screenshot
-   capture, exportable data~~ **done** — `Assets/Scripts/Benchmark/`, CSV + run.json,
-   13 `ProfilerRecorder` counters, `plan_hash` and a bake-staleness stamp
+   capture, exportable data~~ **done** — `Assets/Scripts/Testbed/Benchmark/`, CSV +
+   run.json, 13 `ProfilerRecorder` counters, `plan_hash` and a bake-staleness stamp
 4. ~~Baseline skybox/simple atmosphere renderer~~ **done** — `BaselineSkyRenderer`,
    `AerialPerspectiveSimple`, plus a null arm for each so the pass structure can be
    priced separately from what it draws
@@ -63,7 +65,9 @@ performance and image output logged identically, for thesis figures/tables.
 6. ~~Volumetric cloud rendering~~ **done** — two bands, weather/shadow/sky maps,
    Full/Half/Temporal cost modes, plus a baseline cloud arm in two deliveries
 7. Comparison tooling / parameter sweeps for thesis evaluation — *profiles and the
-   subtraction algebra exist; no measurements taken yet, by design*
+   subtraction algebra exist; two authoritative measurement passes are recorded in
+   NOTES.md (dev vs release at 1440p, and a SelfCheck baseline pass), but the full
+   sweep matrix for the thesis report is not run yet*
 
 Effectively everything but the measurements and the report is assembled. What remains
 is the optimization phase NOTES.md scopes, the runs, and the writing.
