@@ -1,17 +1,11 @@
 using UnityEngine;
 
 /// <summary>
-/// Build provenance, baked at build time and loaded from Resources at run time.
+/// Build provenance, baked at build time and loaded from Resources at run time. A standalone
+/// player has no .git beside it, so <see cref="GitInfo"/> can't shell out like the editor does.
 ///
-/// A standalone player has no .git beside the executable and may be on a machine without
-/// git installed, so <see cref="GitInfo"/> cannot shell out the way it does in the editor.
-/// Without this, every build's run.json would record commit "unknown" - and a benchmark
-/// result that cannot be traced to a commit is not reproducible, which is the whole point
-/// of recording it.
-///
-/// Written by BenchmarkBuild before BuildPipeline runs. The asset must live at
-/// Assets/Resources/BuildStamp.asset; the class name must match this file's name or Unity
-/// will not bind the script to the asset.
+/// Written by BenchmarkBuild before BuildPipeline runs. Must live at
+/// Assets/Resources/BuildStamp.asset with a class name matching this file's name.
 /// </summary>
 public class BuildStamp : ScriptableObject
 {
@@ -19,8 +13,7 @@ public class BuildStamp : ScriptableObject
 
 	public string commit = "unknown";
 	public string branch = "unknown";
-	/// <summary>True if the working tree had uncommitted changes when the build was made.
-	/// A dirty build is not reproducible from its commit alone and must say so.</summary>
+	/// <summary>True if the working tree had uncommitted changes when the build was made.</summary>
 	public bool dirty;
 	public string builtUtc = "";
 	public string unityVersion = "";

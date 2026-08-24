@@ -1,20 +1,11 @@
-// The cheap, non-physically-based baseline sky.
+// The cheap, non-physically-based baseline sky. Structurally a copy of Hidden/DrawSky - same
+// pass shape, star/moon composite, tone map and dither - so only the radiance computation
+// (a texture lookup vs. a raymarch) differs between baseline and PBR.
 //
-// Deliberately a structural copy of Hidden/DrawSky: same pass shape, same _MainTex read-back,
-// same star/moon alpha composite, same tone map and dither. Only the radiance computation
-// differs - a texture lookup and a few ALU terms in place of a 256-step raymarch through a
-// precomputed scattering LUT. Everything that is not the shading model is held constant so
-// the measured difference is attributable to the shading model.
+// Two variants selected by keyword: SKY_GRADIENT, a 2D LUT by (view elevation, sun elevation);
+// SKY_CUBEMAP, a single static cubemap that cannot respond to the sun moving.
 //
-// Two texture variants, selected by keyword:
-//   SKY_GRADIENT - a 2D LUT indexed by (view elevation, sun elevation). One fetch, responds
-//                  to time of day, and hand-editable in any image editor.
-//   SKY_CUBEMAP  - a single static cubemap. Cheapest possible, but cannot respond to the sun
-//                  moving, which the day/night cycle makes obvious.
-//
-// The gradient LUT stores LINEAR radiance, not tone-mapped colour, so it goes through the
-// same toneMap() as the physically based sky. Storing tone-mapped colour would have made the
-// comparison confound the sky model with the tone-mapping stage.
+// The gradient LUT stores linear radiance, not tone-mapped colour, so both paths share toneMap().
 Shader "Hidden/DrawSkyBaseline"
 {
 	Properties
@@ -67,13 +58,12 @@ Shader "Hidden/DrawSkyBaseline"
 			float3 planetCentre;
 			// The planet's rotation axis, for building the observer's local frame.
 			float3 planetAxis;
-			// saturate(dot(dirToSun, up) * 0.5 + 0.5) at the camera, computed on the CPU once
-			// per frame rather than per pixel - it does not vary across the screen.
+			// saturate(dot(dirToSun, up) * 0.5 + 0.5), computed once per frame on the CPU
+			// since it does not vary across the screen.
 			float sunElevation01;
 			float skyIntensity;
 
-			// Forward-scatter glow. The one sun-relative term a (viewElev, sunElev) lookup
-			// cannot express, and the most visually obvious thing missing without it.
+			// Forward-scatter glow: the one sun-relative term a (viewElev, sunElev) lookup can't express.
 			float3 glowColour;
 			float glowPower;
 			float glowStrength;
@@ -86,9 +76,8 @@ Shader "Hidden/DrawSkyBaseline"
 			// How aggressively the sky washes out stars and the moon as it brightens.
 			float starFadeStrength;
 
-			// Same disc as the physically based sky - pure ALU, no LUT. Deliberately NOT
-			// multiplied by sun transmittance here: that would sample the PBR
-			// TransmittanceLUT and smuggle physically based data into the baseline.
+			// Same disc as the physically based sky, pure ALU. Not multiplied by sun
+			// transmittance, which would smuggle PBR data into the baseline.
 			// Thanks to https://www.shadertoy.com/view/slSXRW
 			float3 sunDiscWithBloom(float3 rayDir, float3 sunDir)
 			{
@@ -112,20 +101,10 @@ Shader "Hidden/DrawSkyBaseline"
 				float3 up = normalize(_WorldSpaceCameraPos - planetCentre);
 
 #if defined(SKY_CUBEMAP)
-				// Sampled in the OBSERVER'S frame, not world space. This is a globe: a cubemap
-				// sampled by raw world direction has its horizon pinned to world +Y, so it
-				// only lines up with the real horizon at one point on the planet. Everywhere
-				// else the baked horizon - a hard planet-occlusion edge - sits at an angle to
-				// the real one and reads as a seam when the camera turns.
-				//
-				// Only the vertical axis has to match the bake. The azimuth origin is
-				// arbitrary: a static cubemap cannot track the sun's azimuth either, so
-				// aligning to it would be a false precision. What the frame does need is to be
-				// continuous, or the sky would swing as the camera moves.
-				//
-				// Singular where the observer's up meets the planet's axis - i.e. at the
-				// poles, where the reference falls back and the azimuth jumps. None of the
-				// benchmarks go there; a pole flyover would need a better basis.
+				// Sampled in the observer's frame, not world space - a globe means a cubemap
+				// sampled by raw world direction only lines up with the real horizon at one
+				// point on the planet. Azimuth origin is arbitrary but must stay continuous as
+				// the camera moves. Singular at the poles (unhandled; no benchmark goes there).
 				float3 reference = abs(dot(up, planetAxis)) > 0.99 ? float3(0, 0, 1) : planetAxis;
 				float3 east = normalize(cross(reference, up));
 				float3 north = cross(up, east);
@@ -133,8 +112,8 @@ Shader "Hidden/DrawSkyBaseline"
 
 				float3 skyLum = texCUBE(SkyCubemap, localDir).rgb * skyIntensity;
 #else
-				// Full -1..1 range rather than horizon-to-zenith only: this is a globe scene,
-				// so the camera can be high enough to look down past the horizon.
+				// Full -1..1 range, not just horizon-to-zenith: on a globe the camera can look
+				// down past the horizon.
 				float viewElevation01 = saturate(dot(viewDir, up) * 0.5 + 0.5);
 				float3 skyLum = tex2D(SkyGradient, float2(viewElevation01, sunElevation01)).rgb * skyIntensity;
 #endif
@@ -145,10 +124,9 @@ Shader "Hidden/DrawSkyBaseline"
 
 				skyLum = toneMap(skyLum);
 
-				// Fade out whatever the stars and moon wrote as the sky brightens. Simplified
-				// from DrawSky's version, which additionally tints by sun transmittance - a
-				// PBR-only quantity. The alpha channel carries star brightness (Star.shader
-				// blends One One) and the moon writes alpha 3.
+				// Fades out whatever the stars/moon wrote as the sky brightens. Simplified from
+				// DrawSky's version, which also tints by sun transmittance (a PBR-only quantity).
+				// Alpha carries star brightness (Star.shader blends One One); the moon writes alpha 3.
 				float4 originalCol = tex2D(_MainTex, i.uv);
 				float backgroundBrightness = originalCol.a;
 				float luminance = saturate(dot(skyLum, float3(0.3, 0.5, 0.2)));
@@ -157,8 +135,7 @@ Shader "Hidden/DrawSkyBaseline"
 
 				skyLum = transmittedCol + skyLum;
 
-				// Same dither as the physically based path - the sky is a smooth gradient and
-				// bands badly without it, especially through the LDR temporary.
+				// Same dither as the physically based path; the smooth gradient bands without it.
 				skyLum = blueNoiseDither(skyLum, i.uv, ditherStrength);
 
 				return float4(skyLum, 1);
