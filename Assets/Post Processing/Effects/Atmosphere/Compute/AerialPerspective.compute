@@ -4,14 +4,8 @@
 
 // Header revision this file was last rebuilt against: continuous horizon span.
 
-// Unity does not reliably rebuild a .compute when an included .hlsl changes - the include is
-// not tracked as an import dependency. If the atmosphere's output looks uniformly scaled or
-// otherwise stale after editing anything under Shader Common, reimport this file.
-//
-// That is not hypothetical: editing AtmosphereCommon.hlsl to work in absolute altitude left
-// this compute running the previous code against the new uniforms, which divided every
-// optical depth by the atmosphere thickness - a transmittance of 0.994 where it should have
-// been 0.525, with the colour ratios still perfectly correct.
+// Unity does not reliably rebuild a .compute when an included .hlsl changes. If the atmosphere's
+// output looks stale after editing anything under Shader Common, reimport this file.
 
 RWTexture3D<float4> AerialPerspectiveLuminance;
 RWTexture3D<float4> AerialPerspectiveTransmittance;
@@ -20,81 +14,41 @@ sampler2D TransmittanceLUT;
 uint size;
 int stepsPerSlice;
 
-// One thread per (x, y), walking the depth slices in order, instead of one thread per voxel
-// re-marching from the camera.
-//
-// The old kernel dispatched size^3 threads and gave each a march of `numScatteringSteps` from
-// the atmosphere boundary out to its own slice - so the work was O(N^2) in slice count, and 20
-// steps had to cover up to the whole 150-unit clip distance. That is 7.5 units per step against
-// a Mie scale height of 1.32, which the harness measures as -47.3% error in Mie optical depth:
-// the haze layer was being resolved to within a factor of two.
-//
-// Marching once and writing the running totals as each slice goes by is both cheaper and far
-// more accurate: `size` slices x stepsPerSlice steps, one pass, instead of re-marching from the
-// camera for every slice. At the 32 slices and 20 re-marched steps this was written against, that
-// was 192 steps in place of 640, and 0.78 units per step in place of 7.5 - roughly a third of the
-// work for a far smaller error.
-//
-// The asset now runs 64 slices, so the figures above describe the change rather than the current
-// build: 384 steps, and about 0.39 units per step over a 150-unit clip distance.
-//
-// The second gain is structural rather than numerical. Slices were previously independent
-// discretisations of *different* integrals, so consecutive slices disagreed by more than their
-// own quadrature error and the accumulated fog was not guaranteed monotonic in depth. Now every
-// slice is a prefix of a single march, so luminance is non-decreasing and transmittance
-// non-increasing by construction - an exact property, and one the harness can assert.
+// One thread per (x, y), marching the depth slices in order as a single continued march, rather
+// than one thread per voxel re-marching from the camera for every slice. This is both cheaper and
+// makes luminance non-decreasing and transmittance non-increasing by construction across slices -
+// an exact property the harness can assert, which independent per-slice marches could not guarantee.
 [numthreads(8, 8, 1)]
 void CSMain (uint3 id : SV_DispatchThreadID)
 {
 	if (id.x >= size || id.y >= size) { return; }
 
-	// (id.xy + 0.5) / size, not id.xy / (size - 1), and for exactly the reason the depth axis
-	// below already gives: Atmosphere.shader reads this volume with tex3Dlod at a raw screen uv,
-	// which lands at texel coordinate uv * size - 0.5. The corner form wrote texel i as though it
-	// held the value for i / (size - 1) while the composite read it as (i + 0.5) / size - the two
-	// agreeing only at the centre of the screen and differing by half a texel at the edges.
-	//
-	// Half a texel here is 0.78% of the screen, about 11 pixels at 1440p, so the aerial perspective
-	// was sheared outwards from the centre of the frame. Invisible as a shift, because there is no
-	// edge to see it against; it shows up as haze that does not sit on the terrain it belongs to.
-	//
-	// The z fix landed with its own note and this one was missed, which is the usual shape of it:
-	// one axis of a mapping gets corrected and the others keep the old convention.
+	// Texel centres, (id.xy + 0.5) / size, not id.xy / (size - 1) - matches how Atmosphere.shader
+	// samples this volume with tex3Dlod at a raw screen uv, avoiding a half-texel misregistration
+	// between the aerial haze and the terrain it belongs to.
 	float2 uv = (id.xy + 0.5) / size;
 
 	float3 rayDir = calculateViewDir(uv);
 
-	// camPos, not the camera's near plane. The composite shader does its ray-sphere test from
-	// _WorldSpaceCameraPos, and the depth axis is now defined relative to that intersection, so
-	// the two origins have to be identical or every slice lands at a slightly wrong distance.
+	// camPos, not the camera's near plane - must match the origin the composite shader uses for its
+	// own ray-sphere test, since the depth axis is defined relative to that intersection.
 	float2 atmosphereHitInfo = raySphere(0, atmosphereRadius, camPos, rayDir);
 	float dstToAtmosphere = atmosphereHitInfo.x;
 	float dstThroughAtmosphere = atmosphereHitInfo.y;
 
 	float3 inPoint = camPos + rayDir * dstToAtmosphere;
 
-	// Clip at the ground once, up front, rather than inside each slice's march. raymarch() does
-	// this internally, but raymarchSegment() deliberately does not: a later segment starting
-	// beyond the surface would otherwise re-derive a ground distance relative to its own origin.
+	// Clip at the ground once, up front, rather than inside each slice's march: raymarchSegment()
+	// (unlike raymarch()) doesn't reclip internally, since a later segment would otherwise re-derive
+	// ground distance relative to its own origin.
 	float maxLength = dstThroughAtmosphere;
 	float dstToGround = rayIntersectSphere(inPoint, rayDir, planetRadius);
 	if (dstToGround > 0) { maxLength = min(maxLength, dstToGround); }
 
-	// Cap the span at the distance to the planet's tangent point, so the depth axis is CONTINUOUS
-	// across the horizon.
-	//
-	// Without this, a ray just below the horizon has span = its ground distance (55.7 units from
-	// 10 up) while a ray just above has span = the whole atmosphere chord (268) - a 4.8x jump
-	// between adjacent texels. This LUT is only 64x64 in screen space, so that jump is bilinearly
-	// smeared across ~80 pixels at 1440p, and ground pixels beside the horizon end up reading
-	// texels whose ray missed the planet entirely and therefore carry a far longer, brighter
-	// march. It shows as a serrated bright band hugging the horizon, worst at sunset when the
-	// in-scattered luminance is strongest and most coloured.
-	//
-	// The clamp costs nothing on the ground side: a ray that hits the planet always reaches it at
-	// or before the tangent distance, so min() leaves every ground ray untouched. It only
-	// truncates rays that MISS the planet - and those are sky, where the composite takes its sky
-	// branch and never reads this LUT.
+	// Cap the span at the tangent-point distance so the depth axis stays CONTINUOUS across the
+	// horizon - without it, adjacent screen texels straddling the horizon jump between wildly
+	// different ray lengths, smearing into a bright serrated band. Free on the ground side: it only
+	// truncates rays that miss the planet, which take the sky branch and never read this LUT.
 	float horizonDst = sqrt(max(0, dot(inPoint, inPoint) - planetRadius * planetRadius));
 	maxLength = min(maxLength, horizonDst);
 
@@ -105,29 +59,14 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 	float marched = 0;
 
 	for (uint z = 0; z < size; z++) {
-		// (z + 0.5) / size, not z / (size - 1).
-		//
-		// The composite shader samples this texture with tex3Dlod at a raw depthT, which lands
-		// at voxel coordinate depthT * size - 0.5. Writing voxel z as though it held the value
-		// for z / (size - 1) made the two agree only at depthT = 0.5, and differ by half a voxel
-		// at the ends - roughly 2.4 world units, applied as a systematic depth offset in the fog.
-		//
-		// Writing at texel centres makes the mapping exact at every voxel.
+		// (z + 0.5) / size, not z / (size - 1) - same texel-centre reasoning as the xy mapping
+		// above, matching how the composite shader samples this texture with tex3Dlod.
 		float depthT = (z + 0.5) / size;
 
-		// The depth axis spans the air in front of THIS ray - `maxLength`, the atmosphere
-		// chord already clipped at the ground - rather than a fixed distance from the camera.
-		//
-		// Two fixed-range versions failed for opposite reasons. A far distance of bodyRadius put
-		// the entire visible scene inside five slices at low altitude - of the thirty-two the LUT
-		// had when this was measured; a quadratic, camera-dependent range fixed that end and still
-		// left four, because it concentrates samples near the camera and from out there the air is
-		// all far away. Depth varies radially when looking at a sphere, so either way the shortage
-		// read as concentric banding across the planet.
-		//
-		// Normalising per ray removes the failure mode instead of moving it: every ray gets every
-		// slice across exactly the air it passes through, at any altitude - which is why the count
-		// stopped mattering here and is left as `size` rather than restated.
+		// The depth axis spans the air in front of THIS ray (`maxLength`, the atmosphere chord
+		// already clipped at the ground) rather than a fixed distance from the camera. A fixed
+		// range concentrates or wastes samples depending on altitude, which reads as banding on a
+		// sphere; normalising per ray gives every ray full coverage regardless of altitude.
 		float target = depthT * maxLength;
 
 		if (dstThroughAtmosphere > 0 && target > marched) {

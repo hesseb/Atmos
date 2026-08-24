@@ -3,14 +3,8 @@
 
 // Header revision this file was last rebuilt against: 750 km planet + densityMultiplier.
 
-// Unity does not reliably rebuild a .compute when an included .hlsl changes - the include is
-// not tracked as an import dependency. If the atmosphere's output looks uniformly scaled or
-// otherwise stale after editing anything under Shader Common, reimport this file.
-//
-// That is not hypothetical: editing AtmosphereCommon.hlsl to work in absolute altitude left
-// this compute running the previous code against the new uniforms, which divided every
-// optical depth by the atmosphere thickness - a transmittance of 0.994 where it should have
-// been 0.525, with the colour ratios still perfectly correct.
+// Unity does not reliably rebuild a .compute when an included .hlsl changes. If the atmosphere's
+// output looks stale after editing anything under Shader Common, reimport this file.
 
 RWTexture2D<float3> TransmittanceLUT;
 
@@ -20,17 +14,12 @@ uint height;
 [numthreads(8,8,1)]
 void CreateTransmittanceLUT (uint2 id : SV_DispatchThreadID)
 {
-	// The bounds check every other kernel in this folder has, and this one did not.
-	//
-	// Free today, because 256x64 divides exactly by the 8x8 group size. It stops being free the
-	// moment transmittanceLutSize is set to anything that does not - the tail threads would run
-	// transmittanceLutParams on uv > 1 and write outside the texture, which most hardware discards
-	// silently rather than complaining about.
+	// The bounds check every other kernel in this folder has. Free today since 256x64 divides the
+	// 8x8 group evenly, but not if transmittanceLutSize is ever set to something that doesn't.
 	if (id.x >= width || id.y >= height) { return; }
 
-	// Texel centres, not id/(size-1). The sampler reads texel centre u*N - 0.5, so writing at
-	// id/(N-1) made write and read agree only at u = 0.5. lutUnitToSubUv is the other half of
-	// this pair; transmittanceLutParams undoes it.
+	// Texel centres, not id/(size-1), matching how the sampler reads. lutUnitToSubUv and
+	// transmittanceLutParams are the write/read pair for this mapping.
 	float2 uv = (id + 0.5) / float2(width, height);
 
 	// Through the shared inverse mapping, so what is written here and what
