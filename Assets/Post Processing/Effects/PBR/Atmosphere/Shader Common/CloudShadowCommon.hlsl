@@ -30,6 +30,21 @@ float cloudShadow(float3 sphereNormal) {
 	return lerp(1, shadow, cloudShadowStrength);
 }
 
+/// Where a ray from `pos` along `dir` meets the cloud deck's sphere, or a negative sentinel on a
+/// miss. `c`'s sign distinguishes entering the deck from exiting it, so one formula covers both a
+/// ray starting outside the deck (light shafts, below) and one starting inside it (a surface
+/// reflecting the deck above it, in SurfaceLighting.hlsl's sampleCloudSkyAlong - the only other
+/// place this sphere is tested), with no separate altitude test either way.
+float cloudDeckRayHit(float3 pos, float3 dir) {
+	float b = dot(pos, dir);
+	float c = dot(pos, pos) - cloudDeckRadius * cloudDeckRadius;
+	float d = b * b - c;
+	if (d < 0) { return -1; }
+
+	float s = sqrt(d);
+	return (c < 0) ? (-b + s) : (-b - s);
+}
+
 /// Sunlight reaching a point IN THE AIR, sampled where its actual sun ray crosses the deck rather
 /// than by projecting radially like cloudShadow - which is what gives light shafts their lean. No
 /// altitude cutoff: a ray above the deck can still cross it at a shallow angle when the sun is low,
@@ -37,15 +52,8 @@ float cloudShadow(float3 sphereNormal) {
 float cloudSunVisibility(float3 pos, float3 dirToSun) {
 	if (cloudShaftStrength <= 0 || cloudDeckRadius <= 0) { return 1; }
 
-	float b = dot(pos, dirToSun);
-	float c = dot(pos, pos) - cloudDeckRadius * cloudDeckRadius;
-	float d = b * b - c;
-	if (d < 0) { return 1; }   // the sun ray never meets the deck
-
-	float s = sqrt(d);
-	// c's sign distinguishes entering the deck from exiting it, needing no separate altitude test.
-	float t = (c < 0) ? (-b + s) : (-b - s);
-	if (t < 0) { return 1; }   // the deck is behind this point, not between it and the sun
+	float t = cloudDeckRayHit(pos, dirToSun);
+	if (t < 0) { return 1; }   // the sun ray never meets the deck, or the deck is behind this point
 
 	float3 crossing = normalize(pos + dirToSun * t);
 	float shadow = tex2Dlod(CloudShadowMap, float4(pointToUV(crossing), 0, 0)).r;

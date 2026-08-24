@@ -347,6 +347,11 @@ namespace Clouds
 			texture.SetPixelData(data, 0);
 			texture.Apply(updateMipmaps: true, makeNoLongerReadable: false);
 
+			// A fresh value every bake, not derived from the pixel data - CloudEffect.DensitySignature
+			// folds this in specifically to catch a rebake that CopySerialized below applies in place,
+			// which leaves the asset's GUID and instance ID (and usually its resolution) unchanged.
+			texture.imageContentsHash = Hash128.Compute(path + System.DateTime.UtcNow.Ticks);
+
 			System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path));
 
 			var existing = AssetDatabase.LoadAssetAtPath<Texture3D>(path);

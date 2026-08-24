@@ -63,7 +63,5 @@ public static class CloudShadowGlobals
 		compute.SetTexture(kernel, "CloudShadowMap", Map);
 		compute.SetFloat("cloudShaftStrength", ShaftStrength);
 		compute.SetFloat("cloudDeckRadius", DeckRadius);
-		// Not used by any compute today, but bound so a future cloudShadow() caller isn't left stale.
-		compute.SetFloat("cloudShadowStrength", Shader.GetGlobalFloat("cloudShadowStrength"));
 	}
 }
