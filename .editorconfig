@@ -1,0 +1,74 @@
+root = true
+
+# C# formatting for this project.
+
+[*.cs]
+
+indent_style = tab
+
+# --- house style: spaces inside parens and brackets ------------------------------------
+csharp_space_between_parentheses = control_flow_statements, expressions
+csharp_space_between_method_declaration_parameter_list_parentheses = true
+csharp_space_between_method_call_parameter_list_parentheses = true
+csharp_space_between_square_brackets = true
+csharp_space_between_method_declaration_empty_parameter_list_parentheses = false
+csharp_space_between_method_call_empty_parameter_list_parentheses = false
+
+# --- protective: the two that matter most ----------------------------------------------
+csharp_preserve_single_line_statements = true
+csharp_preserve_single_line_blocks = true
+
+dotnet_diagnostic.IDE0055.severity = suggestion
+
+csharp_prefer_braces = true
+
+# --- pinned defaults: braces and newlines ----------------------------------------------
+csharp_new_line_before_open_brace = all
+csharp_new_line_before_else = true
+csharp_new_line_before_catch = true
+csharp_new_line_before_finally = true
+csharp_new_line_before_members_in_object_initializers = true
+csharp_new_line_before_members_in_anonymous_types = true
+
+# --- pinned defaults: indentation ------------------------------------------------------
+csharp_indent_case_contents = true
+csharp_indent_case_contents_when_block = true
+csharp_indent_switch_labels = true
+csharp_indent_block_contents = true
+csharp_indent_braces = false
+
+# --- pinned defaults: remaining spacing ------------------------------------------------
+csharp_space_after_keywords_in_control_flow_statements = true
+csharp_space_around_binary_operators = before_and_after
+csharp_space_after_cast = false
+csharp_space_after_comma = true
+csharp_space_before_comma = false
+csharp_space_after_dot = false
+csharp_space_before_dot = false
+csharp_space_after_semicolon_in_for_statement = true
+csharp_space_before_semicolon_in_for_statement = false
+csharp_space_before_open_square_brackets = false
+csharp_space_between_empty_square_brackets = false
+csharp_space_after_colon_in_inheritance_clause = true
+csharp_space_before_colon_in_inheritance_clause = true
+csharp_space_around_declaration_statements = false
+
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+# Vendored third-party source keeps its upstream formatting.
+[Assets/Plugins/**/*.cs]
+indent_style = space
+indent_size = 4
+csharp_space_between_parentheses =
+csharp_space_between_method_declaration_parameter_list_parentheses = false
+csharp_space_between_method_call_parameter_list_parentheses = false
+csharp_space_between_square_brackets = false
+dotnet_diagnostic.IDE0055.severity = none
+
+# Shaders. No formatter reaches these, so this is for editors only.
+[*.{hlsl,shader,compute,cginc}]
+indent_style = tab
+tab_width = 4
+trim_trailing_whitespace = true
+insert_final_newline = true
