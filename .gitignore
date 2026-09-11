@@ -16,6 +16,8 @@
 # itself never produces and the root-anchored /[Oo]bj/ above doesn't reach.
 /[Aa]ssets/[Pp]lugins/**/bin/
 /[Aa]ssets/[Pp]lugins/**/obj/
+/[Aa]ssets/**/bin.meta
+/[Aa]ssets/**/obj.meta
 
 # MemoryCaptures can get excessive in size.
 # They also could contain extremely sensitive data

@@ -1,0 +1,8 @@
+<Project>
+
+  <PropertyGroup>
+    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)..\Temp\PluginBuild\$(MSBuildProjectName)\obj\</BaseIntermediateOutputPath>
+    <BaseOutputPath>$(MSBuildThisFileDirectory)..\Temp\PluginBuild\$(MSBuildProjectName)\bin\</BaseOutputPath>
+  </PropertyGroup>
+
+</Project>
