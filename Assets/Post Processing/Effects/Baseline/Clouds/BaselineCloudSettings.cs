@@ -10,7 +10,7 @@ namespace Clouds
 	/// expose, and how predictably does each map to a visible outcome" is answered by comparing this
 	/// file against CloudEffect's inspector. Keeping them on one asset is deliberate for that reason.
 	/// </summary>
-	[CreateAssetMenu(menuName = "Clouds/Baseline Cloud Settings", fileName = "Baseline Cloud Settings")]
+	[CreateAssetMenu( menuName = "Clouds/Baseline Cloud Settings", fileName = "Baseline Cloud Settings" )]
 	public class BaselineCloudSettings : ScriptableObject
 	{
 		/// <summary>
@@ -20,34 +20,34 @@ namespace Clouds
 		[System.Serializable]
 		public struct Layer
 		{
-			[Tooltip("Feature size of the cloud shapes themselves. Larger means smaller, more " +
-				"numerous clouds.")]
-			[Range(0.5f, 40f)] public float scale;
+			[Tooltip( "Feature size of the cloud shapes themselves. Larger means smaller, more " +
+				"numerous clouds." )]
+			[Range( 0.5f, 40f )] public float scale;
 
-			[Tooltip("Feature size of the coverage field, which decides WHERE there is cloud at all. " +
+			[Tooltip( "Feature size of the coverage field, which decides WHERE there is cloud at all. " +
 				"Much lower than the shape scale: without a separate large-scale field the layer has " +
 				"the same character everywhere, which is the uniformity the volumetric's weather map " +
-				"exists to avoid - and handing the baseline that flaw would not be a fair comparison.")]
-			[Range(0.2f, 12f)] public float coverageScale;
+				"exists to avoid - and handing the baseline that flaw would not be a fair comparison." )]
+			[Range( 0.2f, 12f )] public float coverageScale;
 
-			[Tooltip("The main how-cloudy-is-it dial.")]
-			[Range(-0.5f, 0.5f)] public float bias;
+			[Tooltip( "The main how-cloudy-is-it dial." )]
+			[Range( -0.5f, 0.5f )] public float bias;
 
-			[Tooltip("Broken versus overcast.")]
-			[Range(0.2f, 4f)] public float contrast;
+			[Tooltip( "Broken versus overcast." )]
+			[Range( 0.2f, 4f )] public float contrast;
 
-			[Range(1, 8)] public int octaves;
-			[Range(1.2f, 4f)] public float lacunarity;
-			[Range(0.1f, 0.9f)] public float gain;
+			[Range( 1, 8 )] public int octaves;
+			[Range( 1.2f, 4f )] public float lacunarity;
+			[Range( 0.1f, 0.9f )] public float gain;
 
-			[Tooltip("Offsets the field so the two layers are not the same clouds twice.")]
+			[Tooltip( "Offsets the field so the two layers are not the same clouds twice." )]
 			public float seedOffset;
 
-			[Tooltip("How pronounced the relief shading is. This is the height field's amplitude, so " +
-				"it drives the surface normal rather than the density.")]
-			[Range(0f, 4f)] public float reliefStrength;
+			[Tooltip( "How pronounced the relief shading is. This is the height field's amplitude, so " +
+				"it drives the surface normal rather than the density." )]
+			[Range( 0f, 4f )] public float reliefStrength;
 
-			public static Layer Create(float scale, float bias, float seedOffset)
+			public static Layer Create( float scale, float bias, float seedOffset )
 			{
 				return new Layer
 				{
@@ -64,55 +64,55 @@ namespace Clouds
 			}
 		}
 
-		[Header("Resolution")]
-		[Tooltip("Higher than the weather map because this IS the cloud rather than a field describing " +
-			"one - it is sampled directly at the shell and its detail is what the viewer sees.")]
+		[Header( "Resolution" )]
+		[Tooltip( "Higher than the weather map because this IS the cloud rather than a field describing " +
+			"one - it is sampled directly at the shell and its detail is what the viewer sees." )]
 		public int resolution = 2048;
 
-		[Header("Layers")]
-		[Tooltip("The lower, denser layer.")]
-		public Layer lower = Layer.Create(14f, 0.1f, 0f);
+		[Header( "Layers" )]
+		[Tooltip( "The lower, denser layer." )]
+		public Layer lower = Layer.Create( 14f, 0.1f, 0f );
 
-		[Tooltip("The upper, thinner layer. Coarser and sparser so it reads as higher cloud rather " +
-			"than as a second copy of the same weather.")]
-		public Layer upper = Layer.Create(7f, 0f, 91.3f);
+		[Tooltip( "The upper, thinner layer. Coarser and sparser so it reads as higher cloud rather " +
+			"than as a second copy of the same weather." )]
+		public Layer upper = Layer.Create( 7f, 0f, 91.3f );
 
-		[Header("Range correction")]
-		[Tooltip("Stretches the field to fill its range before folding to 0-1. An FBM normalised by " +
+		[Header( "Range correction" )]
+		[Tooltip( "Stretches the field to fill its range before folding to 0-1. An FBM normalised by " +
 			"the sum of its amplitudes never reaches that sum, so without this every layer sits in " +
 			"the middle third of its range. The same correction the volumetric's weather map and its " +
-			"Perlin both need, and the default is measured the same way.")]
-		[Range(1f, 4f)] public float rangeGain = 2.3f;
+			"Perlin both need, and the default is measured the same way." )]
+		[Range( 1f, 4f )] public float rangeGain = 2.3f;
 
-		[Header("Capture from the volumetric")]
-		[Tooltip("Steps down through the shell per texel. Offline, so there is little reason to be stingy.")]
-		[Range(8, 256)] public int captureSteps = 96;
+		[Header( "Capture from the volumetric" )]
+		[Tooltip( "Steps down through the shell per texel. Offline, so there is little reason to be stingy." )]
+		[Range( 8, 256 )] public int captureSteps = 96;
 
-		[Tooltip("Converts the column's optical depth into the layer's opacity. Higher makes the " +
-			"captured clouds read as more solid.")]
-		[Range(0.1f, 8f)] public float captureAbsorption = 1.5f;
+		[Tooltip( "Converts the column's optical depth into the layer's opacity. Higher makes the " +
+			"captured clouds read as more solid." )]
+		[Range( 0.1f, 8f )] public float captureAbsorption = 1.5f;
 
-		[Tooltip("Density above which a sample counts as the cloud top, which is the surface the " +
-			"baseline shades.")]
-		[Range(0.001f, 0.5f)] public float captureThreshold = 0.02f;
+		[Tooltip( "Density above which a sample counts as the cloud top, which is the surface the " +
+			"baseline shades." )]
+		[Range( 0.001f, 0.5f )] public float captureThreshold = 0.02f;
 
-		[Tooltip("Relief strength for the captured layers. Larger than the authored equivalent " +
+		[Tooltip( "Relief strength for the captured layers. Larger than the authored equivalent " +
 			"because that one divides by an analytic gradient while this differences a texture, so " +
-			"the two are not in the same units. Calibrated at 2048 and compensated for resolution.")]
-		[Range(0f, 32f)] public float captureNormalStrength = 14f;
+			"the two are not in the same units. Calibrated at 2048 and compensated for resolution." )]
+		[Range( 0f, 32f )] public float captureNormalStrength = 14f;
 
-		[Header("Output")]
+		[Header( "Output" )]
 		public string outputFolder = "Assets/Data/Baseline Clouds";
 
-		public string AuthoredPath(bool upperLayer) =>
-			$"{outputFolder}/Cloud Layer {(upperLayer ? "Upper" : "Lower")} Authored.png";
+		public string AuthoredPath( bool upperLayer ) =>
+			$"{outputFolder}/Cloud Layer {( upperLayer ? "Upper" : "Lower" )} Authored.png";
 
 		/// <summary>
 		/// Baked off the volumetric renderer rather than authored. Same format and same cost to
 		/// sample, so any visual difference against the authored pair is the art rather than the
 		/// technique - the separation the baseline sky's GradientBaked variant exists to provide.
 		/// </summary>
-		public string BakedPath(bool upperLayer) =>
-			$"{outputFolder}/Cloud Layer {(upperLayer ? "Upper" : "Lower")} Baked.png";
+		public string BakedPath( bool upperLayer ) =>
+			$"{outputFolder}/Cloud Layer {( upperLayer ? "Upper" : "Lower" )} Baked.png";
 	}
 }

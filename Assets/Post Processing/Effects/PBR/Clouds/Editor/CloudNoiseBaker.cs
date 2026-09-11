@@ -17,7 +17,7 @@ namespace Clouds
 	/// into a RenderTexture keyed by scene name and calls FindObjectOfType every frame from
 	/// OnRenderImage; neither is wanted here, least of all in the path the benchmark measures.
 	/// </summary>
-	[CustomEditor(typeof(CloudNoiseSettings))]
+	[CustomEditor( typeof( CloudNoiseSettings ) )]
 	public class CloudNoiseBaker : UnityEditor.Editor
 	{
 		const string ComputePath = "Assets/Post Processing/Effects/PBR/Clouds/Compute/CloudNoiseGen.compute";
@@ -39,104 +39,104 @@ namespace Clouds
 			var settings = (CloudNoiseSettings)target;
 
 			EditorGUILayout.Space();
-			EditorGUILayout.LabelField("Bake", EditorStyles.boldLabel);
+			EditorGUILayout.LabelField( "Bake", EditorStyles.boldLabel );
 			EditorGUILayout.LabelField(
 				"Cost",
-				$"shape {Cubed(settings.shapeResolution)}, detail {Cubed(settings.detailResolution)} texels");
+				$"shape {Cubed( settings.shapeResolution )}, detail {Cubed( settings.detailResolution )} texels" );
 
-			using (new EditorGUILayout.HorizontalScope())
+			using ( new EditorGUILayout.HorizontalScope() )
 			{
-				if (GUILayout.Button("Bake Both", GUILayout.Height(28))) { Bake(settings, true, true); }
-				if (GUILayout.Button("Shape Only", GUILayout.Height(28))) { Bake(settings, true, false); }
-				if (GUILayout.Button("Detail Only", GUILayout.Height(28))) { Bake(settings, false, true); }
+				if ( GUILayout.Button( "Bake Both", GUILayout.Height( 28 ) ) ) { Bake( settings, true, true ); }
+				if ( GUILayout.Button( "Shape Only", GUILayout.Height( 28 ) ) ) { Bake( settings, true, false ); }
+				if ( GUILayout.Button( "Detail Only", GUILayout.Height( 28 ) ) ) { Bake( settings, false, true ); }
 			}
 
-			DrawPreview(settings);
+			DrawPreview( settings );
 		}
 
-		static string Cubed(int n) => $"{(long)n * n * n / 1000L}k";
+		static string Cubed( int n ) => $"{(long)n * n * n / 1000L}k";
 
 		// ------------------------------------------------------------------ preview
 
-		void DrawPreview(CloudNoiseSettings settings)
+		void DrawPreview( CloudNoiseSettings settings )
 		{
 			EditorGUILayout.Space();
-			EditorGUILayout.LabelField("Slice Viewer", EditorStyles.boldLabel);
+			EditorGUILayout.LabelField( "Slice Viewer", EditorStyles.boldLabel );
 
-			var shape = AssetDatabase.LoadAssetAtPath<Texture3D>(settings.ShapePath);
-			var detail = AssetDatabase.LoadAssetAtPath<Texture3D>(settings.DetailPath);
+			var shape = AssetDatabase.LoadAssetAtPath<Texture3D>( settings.ShapePath );
+			var detail = AssetDatabase.LoadAssetAtPath<Texture3D>( settings.DetailPath );
 
-			if (shape == null && detail == null)
+			if ( shape == null && detail == null )
 			{
-				EditorGUILayout.HelpBox("Nothing baked yet.", MessageType.Info);
+				EditorGUILayout.HelpBox( "Nothing baked yet.", MessageType.Info );
 				return;
 			}
 
-			using (new EditorGUILayout.HorizontalScope())
+			using ( new EditorGUILayout.HorizontalScope() )
 			{
-				using (new EditorGUI.DisabledScope(shape == null))
+				using ( new EditorGUI.DisabledScope( shape == null ) )
 				{
-					if (GUILayout.Button("Shape")) { previewIsDetail = false; preview = null; }
+					if ( GUILayout.Button( "Shape" ) ) { previewIsDetail = false; preview = null; }
 				}
-				using (new EditorGUI.DisabledScope(detail == null))
+				using ( new EditorGUI.DisabledScope( detail == null ) )
 				{
-					if (GUILayout.Button("Detail")) { previewIsDetail = true; preview = null; }
+					if ( GUILayout.Button( "Detail" ) ) { previewIsDetail = true; preview = null; }
 				}
 			}
 
 			Texture3D source = previewIsDetail ? detail : shape;
-			if (source == null) { return; }
+			if ( source == null ) { return; }
 
 			EditorGUI.BeginChangeCheck();
-			previewSlice = EditorGUILayout.Slider("Depth", previewSlice, 0, 1);
+			previewSlice = EditorGUILayout.Slider( "Depth", previewSlice, 0, 1 );
 			previewChannel = EditorGUILayout.IntPopup(
 				"Channel", previewChannel,
 				new[] { "All (RGB)", "R", "G", "B", "A" },
-				new[] { -1, 0, 1, 2, 3 });
-			if (EditorGUI.EndChangeCheck()) { preview = null; }
+				new[] { -1, 0, 1, 2, 3 } );
+			if ( EditorGUI.EndChangeCheck() ) { preview = null; }
 
-			if (preview == null) { preview = BuildSlice(source, previewSlice, previewChannel, ref cachedSource, ref cachedPixels); }
+			if ( preview == null ) { preview = BuildSlice( source, previewSlice, previewChannel, ref cachedSource, ref cachedPixels ); }
 
-			if (preview != null)
+			if ( preview != null )
 			{
-				Rect rect = GUILayoutUtility.GetAspectRect(1f);
+				Rect rect = GUILayoutUtility.GetAspectRect( 1f );
 				// Tiled 2x2 so the wrap is visible. The volumes must tile seamlessly - a break here
 				// draws a straight line of cloud the height of the sky once it is marched.
-				GUI.DrawTextureWithTexCoords(rect, preview, new Rect(0, 0, 2, 2));
+				GUI.DrawTextureWithTexCoords( rect, preview, new Rect( 0, 0, 2, 2 ) );
 				EditorGUILayout.HelpBox(
 					"Drawn tiled 2x2. Any visible seam across the middle means the noise does not wrap.",
-					MessageType.None);
+					MessageType.None );
 			}
 		}
 
 		static Texture2D BuildSlice(
-			Texture3D source, float depth01, int channel, ref Texture3D cachedSource, ref Color[] cachedPixels)
+			Texture3D source, float depth01, int channel, ref Texture3D cachedSource, ref Color[] cachedPixels )
 		{
-			if (!source.isReadable) { return null; }
+			if ( !source.isReadable ) { return null; }
 
 			int size = source.width;
-			int z = Mathf.Clamp(Mathf.RoundToInt(depth01 * (size - 1)), 0, size - 1);
+			int z = Mathf.Clamp( Mathf.RoundToInt( depth01 * ( size - 1 ) ), 0, size - 1 );
 
-			if (cachedSource != source || cachedPixels == null)
+			if ( cachedSource != source || cachedPixels == null )
 			{
-				cachedPixels = source.GetPixels(0);
+				cachedPixels = source.GetPixels( 0 );
 				cachedSource = source;
 			}
 
 			Color[] all = cachedPixels;
-			var slice = new Color[size * size];
+			var slice = new Color[ size * size ];
 			int offset = z * size * size;
 
-			for (int i = 0; i < slice.Length; i++)
+			for ( int i = 0; i < slice.Length; i++ )
 			{
-				Color c = all[offset + i];
-				slice[i] = channel < 0
-					? new Color(c.r, c.g, c.b, 1f)
-					: new Color(c[channel], c[channel], c[channel], 1f);
+				Color c = all[ offset + i ];
+				slice[ i ] = channel < 0
+					? new Color( c.r, c.g, c.b, 1f )
+					: new Color( c[ channel ], c[ channel ], c[ channel ], 1f );
 			}
 
-			var tex = new Texture2D(size, size, TextureFormat.RGBA32, false) { hideFlags = HideFlags.HideAndDontSave };
-			tex.SetPixels(slice);
+			var tex = new Texture2D( size, size, TextureFormat.RGBA32, false ) { hideFlags = HideFlags.HideAndDontSave };
+			tex.SetPixels( slice );
 			tex.wrapMode = TextureWrapMode.Repeat;
 			tex.filterMode = FilterMode.Point;
 			tex.Apply();
@@ -145,26 +145,26 @@ namespace Clouds
 
 		// ------------------------------------------------------------------ bake
 
-		static void Bake(CloudNoiseSettings settings, bool doShape, bool doDetail)
+		static void Bake( CloudNoiseSettings settings, bool doShape, bool doDetail )
 		{
-			var compute = AssetDatabase.LoadAssetAtPath<ComputeShader>(ComputePath);
-			if (compute == null)
+			var compute = AssetDatabase.LoadAssetAtPath<ComputeShader>( ComputePath );
+			if ( compute == null )
 			{
-				Debug.LogError($"Could not load the cloud noise compute at {ComputePath}");
+				Debug.LogError( $"Could not load the cloud noise compute at {ComputePath}" );
 				return;
 			}
 
 			try
 			{
-				if (doShape)
+				if ( doShape )
 				{
-					BakeVolume(compute, settings, settings.shape, settings.shapeResolution,
-						settings.ShapePath, usePerlinOnFirstChannel: true);
+					BakeVolume( compute, settings, settings.shape, settings.shapeResolution,
+						settings.ShapePath, usePerlinOnFirstChannel: true );
 				}
-				if (doDetail)
+				if ( doDetail )
 				{
-					BakeVolume(compute, settings, settings.detail, settings.detailResolution,
-						settings.DetailPath, usePerlinOnFirstChannel: false);
+					BakeVolume( compute, settings, settings.detail, settings.detailResolution,
+						settings.DetailPath, usePerlinOnFirstChannel: false );
 				}
 			}
 			finally
@@ -179,9 +179,9 @@ namespace Clouds
 			CloudNoiseSettings.WorleyChannel[] channels,
 			int resolution,
 			string path,
-			bool usePerlinOnFirstChannel)
+			bool usePerlinOnFirstChannel )
 		{
-			var volume = new RenderTexture(resolution, resolution, 0, GraphicsFormat.R16G16B16A16_UNorm)
+			var volume = new RenderTexture( resolution, resolution, 0, GraphicsFormat.R16G16B16A16_UNorm )
 			{
 				volumeDepth = resolution,
 				dimension = TextureDimension.Tex3D,
@@ -191,74 +191,74 @@ namespace Clouds
 			};
 			volume.Create();
 
-			int noiseKernel = compute.FindKernel("CSNoise");
-			int normalizeKernel = compute.FindKernel("CSNormalize");
-			int groups = Mathf.CeilToInt(resolution / 8f);
+			int noiseKernel = compute.FindKernel( "CSNoise" );
+			int normalizeKernel = compute.FindKernel( "CSNormalize" );
+			int groups = Mathf.CeilToInt( resolution / 8f );
 
 			var buffers = new List<ComputeBuffer>();
 
 			try
 			{
-				for (int channel = 0; channel < channels.Length && channel < 4; channel++)
+				for ( int channel = 0; channel < channels.Length && channel < 4; channel++ )
 				{
 					EditorUtility.DisplayProgressBar(
-						$"Baking {System.IO.Path.GetFileNameWithoutExtension(path)}",
-						$"Channel {"RGBA"[channel]}", channel / (float)channels.Length);
+						$"Baking {System.IO.Path.GetFileNameWithoutExtension( path )}",
+						$"Channel {"RGBA"[ channel ]}", channel / (float)channels.Length );
 
-					CloudNoiseSettings.WorleyChannel c = channels[channel];
+					CloudNoiseSettings.WorleyChannel c = channels[ channel ];
 
-					compute.SetInt("resolution", resolution);
-					compute.SetVector("channelMask", ChannelMask(channel));
-					compute.SetFloat("persistence", c.persistence);
-					compute.SetInt("numCellsA", c.divisionsA);
-					compute.SetInt("numCellsB", c.divisionsB);
-					compute.SetInt("numCellsC", c.divisionsC);
-					compute.SetBool("invertNoise", c.invert);
-					compute.SetInt("tile", Mathf.Max(1, c.tile));
+					compute.SetInt( "resolution", resolution );
+					compute.SetVector( "channelMask", ChannelMask( channel ) );
+					compute.SetFloat( "persistence", c.persistence );
+					compute.SetInt( "numCellsA", c.divisionsA );
+					compute.SetInt( "numCellsB", c.divisionsB );
+					compute.SetInt( "numCellsC", c.divisionsC );
+					compute.SetBool( "invertNoise", c.invert );
+					compute.SetInt( "tile", Mathf.Max( 1, c.tile ) );
 
 					// Only the shape volume's R channel is Perlin-Worley; everything else is pure
 					// Worley FBM, exactly as Schneider packs them.
 					bool perlin = usePerlinOnFirstChannel && channel == 0;
-					compute.SetBool("usePerlinWorley", perlin);
-					compute.SetInt("perlinPeriod", Mathf.Max(1, settings.perlinPeriod));
-					compute.SetInt("perlinOctaves", Mathf.Max(1, settings.perlinOctaves));
-					compute.SetFloat("perlinPersistence", settings.perlinPersistence);
-					compute.SetFloat("perlinGain", settings.perlinGain);
+					compute.SetBool( "usePerlinWorley", perlin );
+					compute.SetInt( "perlinPeriod", Mathf.Max( 1, settings.perlinPeriod ) );
+					compute.SetInt( "perlinOctaves", Mathf.Max( 1, settings.perlinOctaves ) );
+					compute.SetFloat( "perlinPersistence", settings.perlinPersistence );
+					compute.SetFloat( "perlinGain", settings.perlinGain );
 
-					var prng = new System.Random(c.seed);
-					buffers.Add(SetPoints(compute, noiseKernel, prng, c.divisionsA, "pointsA"));
-					buffers.Add(SetPoints(compute, noiseKernel, prng, c.divisionsB, "pointsB"));
-					buffers.Add(SetPoints(compute, noiseKernel, prng, c.divisionsC, "pointsC"));
+					var prng = new System.Random( c.seed );
+					buffers.Add( SetPoints( compute, noiseKernel, prng, c.divisionsA, "pointsA" ) );
+					buffers.Add( SetPoints( compute, noiseKernel, prng, c.divisionsB, "pointsB" ) );
+					buffers.Add( SetPoints( compute, noiseKernel, prng, c.divisionsC, "pointsC" ) );
 
-					var minMax = new ComputeBuffer(2, sizeof(int), ComputeBufferType.Structured);
-					minMax.SetData(new[] { int.MaxValue, 0 });
-					buffers.Add(minMax);
+					var minMax = new ComputeBuffer( 2, sizeof( int ), ComputeBufferType.Structured );
+					minMax.SetData( new[] { int.MaxValue, 0 } );
+					buffers.Add( minMax );
 
-					compute.SetTexture(noiseKernel, "Result", volume);
-					compute.SetBuffer(noiseKernel, "minMax", minMax);
-					compute.Dispatch(noiseKernel, groups, groups, groups);
+					compute.SetTexture( noiseKernel, "Result", volume );
+					compute.SetBuffer( noiseKernel, "minMax", minMax );
+					compute.Dispatch( noiseKernel, groups, groups, groups );
 
 					// Rescales this channel to fill [0,1]. Worley never reaches either end on its
 					// own, and the density model's remaps assume a full range.
-					compute.SetTexture(normalizeKernel, "Result", volume);
-					compute.SetBuffer(normalizeKernel, "minMax", minMax);
-					compute.SetVector("channelMask", ChannelMask(channel));
-					compute.Dispatch(normalizeKernel, groups, groups, groups);
+					compute.SetTexture( normalizeKernel, "Result", volume );
+					compute.SetBuffer( normalizeKernel, "minMax", minMax );
+					compute.SetVector( "channelMask", ChannelMask( channel ) );
+					compute.Dispatch( normalizeKernel, groups, groups, groups );
 				}
 
-				Save(volume, resolution, path);
+				Save( volume, resolution, path );
 			}
 			finally
 			{
-				foreach (ComputeBuffer b in buffers) { b?.Release(); }
+				foreach ( ComputeBuffer b in buffers ) { b?.Release(); }
 				volume.Release();
-				Object.DestroyImmediate(volume);
+				Object.DestroyImmediate( volume );
 			}
 		}
 
-		static Vector4 ChannelMask(int channel)
+		static Vector4 ChannelMask( int channel )
 		{
-			return new Vector4(channel == 0 ? 1 : 0, channel == 1 ? 1 : 0, channel == 2 ? 1 : 0, channel == 3 ? 1 : 0);
+			return new Vector4( channel == 0 ? 1 : 0, channel == 1 ? 1 : 0, channel == 2 ? 1 : 0, channel == 3 ? 1 : 0 );
 		}
 
 		/// <summary>
@@ -266,28 +266,28 @@ namespace Clouds
 		/// x + n*(y + z*n). The prng is threaded through all three octaves so a seed reproduces the
 		/// whole channel, matching the reference.
 		/// </summary>
-		static ComputeBuffer SetPoints(ComputeShader compute, int kernel, System.Random prng, int cellsPerAxis, string name)
+		static ComputeBuffer SetPoints( ComputeShader compute, int kernel, System.Random prng, int cellsPerAxis, string name )
 		{
-			var points = new Vector3[cellsPerAxis * cellsPerAxis * cellsPerAxis];
+			var points = new Vector3[ cellsPerAxis * cellsPerAxis * cellsPerAxis ];
 			float cellSize = 1f / cellsPerAxis;
 
-			for (int x = 0; x < cellsPerAxis; x++)
+			for ( int x = 0; x < cellsPerAxis; x++ )
 			{
-				for (int y = 0; y < cellsPerAxis; y++)
+				for ( int y = 0; y < cellsPerAxis; y++ )
 				{
-					for (int z = 0; z < cellsPerAxis; z++)
+					for ( int z = 0; z < cellsPerAxis; z++ )
 					{
 						var jitter = new Vector3(
-							(float)prng.NextDouble(), (float)prng.NextDouble(), (float)prng.NextDouble()) * cellSize;
-						int index = x + cellsPerAxis * (y + z * cellsPerAxis);
-						points[index] = new Vector3(x, y, z) * cellSize + jitter;
+							(float)prng.NextDouble(), (float)prng.NextDouble(), (float)prng.NextDouble() ) * cellSize;
+						int index = x + cellsPerAxis * ( y + z * cellsPerAxis );
+						points[ index ] = new Vector3( x, y, z ) * cellSize + jitter;
 					}
 				}
 			}
 
-			var buffer = new ComputeBuffer(points.Length, sizeof(float) * 3, ComputeBufferType.Structured);
-			buffer.SetData(points);
-			compute.SetBuffer(kernel, name, buffer);
+			var buffer = new ComputeBuffer( points.Length, sizeof( float ) * 3, ComputeBufferType.Structured );
+			buffer.SetData( points );
+			compute.SetBuffer( kernel, name, buffer );
 			return buffer;
 		}
 
@@ -297,7 +297,7 @@ namespace Clouds
 		/// RGBA32 matches Schneider's own 8-bit volumes and keeps the shape volume at 8 MB rather
 		/// than 16.
 		/// </summary>
-		static void Save(RenderTexture volume, int resolution, string path)
+		static void Save( RenderTexture volume, int resolution, string path )
 		{
 			// One request per depth slice.
 			//
@@ -308,68 +308,68 @@ namespace Clouds
 			// actually reads the volume. The reference project sidesteps the same limitation with a
 			// dedicated slicing compute shader; this needs no extra shader, just the loop.
 			int sliceBytes = resolution * resolution * 4;
-			var data = new byte[sliceBytes * resolution];
+			var data = new byte[ sliceBytes * resolution ];
 
-			for (int z = 0; z < resolution; z++)
+			for ( int z = 0; z < resolution; z++ )
 			{
 				EditorUtility.DisplayProgressBar(
-					$"Saving {System.IO.Path.GetFileNameWithoutExtension(path)}",
-					$"Slice {z + 1} of {resolution}", z / (float)resolution);
+					$"Saving {System.IO.Path.GetFileNameWithoutExtension( path )}",
+					$"Slice {z + 1} of {resolution}", z / (float)resolution );
 
 				AsyncGPUReadbackRequest request = AsyncGPUReadback.Request(
-					volume, 0, 0, resolution, 0, resolution, z, 1, TextureFormat.RGBA32);
+					volume, 0, 0, resolution, 0, resolution, z, 1, TextureFormat.RGBA32 );
 				request.WaitForCompletion();
 
-				if (request.hasError)
+				if ( request.hasError )
 				{
-					Debug.LogError($"Cloud noise readback failed at slice {z} for {path}");
+					Debug.LogError( $"Cloud noise readback failed at slice {z} for {path}" );
 					return;
 				}
 
 				Unity.Collections.NativeArray<byte> slice = request.GetData<byte>();
-				if (slice.Length != sliceBytes)
+				if ( slice.Length != sliceBytes )
 				{
-					Debug.LogError($"Slice {z} returned {slice.Length} bytes, expected {sliceBytes}");
+					Debug.LogError( $"Slice {z} returned {slice.Length} bytes, expected {sliceBytes}" );
 					return;
 				}
 
-				Unity.Collections.NativeArray<byte>.Copy(slice, 0, data, z * sliceBytes, sliceBytes);
+				Unity.Collections.NativeArray<byte>.Copy( slice, 0, data, z * sliceBytes, sliceBytes );
 			}
 
 			// With mips. The march selects one from its step length, so that a step wider than a
 			// feature reads a pre-filtered volume instead of point-sampling past it - without a mip
 			// chain the density depends on the step size, and therefore on the view angle.
-			var texture = new Texture3D(resolution, resolution, resolution, TextureFormat.RGBA32, mipChain: true)
+			var texture = new Texture3D( resolution, resolution, resolution, TextureFormat.RGBA32, mipChain: true )
 			{
 				wrapMode = TextureWrapMode.Repeat,
 				filterMode = FilterMode.Bilinear
 			};
-			texture.SetPixelData(data, 0);
-			texture.Apply(updateMipmaps: true, makeNoLongerReadable: false);
+			texture.SetPixelData( data, 0 );
+			texture.Apply( updateMipmaps: true, makeNoLongerReadable: false );
 
 			// A fresh value every bake, not derived from the pixel data - CloudEffect.DensitySignature
 			// folds this in specifically to catch a rebake that CopySerialized below applies in place,
 			// which leaves the asset's GUID and instance ID (and usually its resolution) unchanged.
-			texture.imageContentsHash = Hash128.Compute(path + System.DateTime.UtcNow.Ticks);
+			texture.imageContentsHash = Hash128.Compute( path + System.DateTime.UtcNow.Ticks );
 
-			System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path));
+			System.IO.Directory.CreateDirectory( System.IO.Path.GetDirectoryName( path ) );
 
-			var existing = AssetDatabase.LoadAssetAtPath<Texture3D>(path);
-			if (existing != null)
+			var existing = AssetDatabase.LoadAssetAtPath<Texture3D>( path );
+			if ( existing != null )
 			{
 				// Overwrite in place so the GUID survives and anything referencing the volume keeps
 				// pointing at it - the same reason RendererProfiles.Save uses CopySerialized.
-				EditorUtility.CopySerialized(texture, existing);
-				Object.DestroyImmediate(texture);
+				EditorUtility.CopySerialized( texture, existing );
+				Object.DestroyImmediate( texture );
 				AssetDatabase.SaveAssets();
 			}
 			else
 			{
-				AssetDatabase.CreateAsset(texture, path);
+				AssetDatabase.CreateAsset( texture, path );
 			}
 
 			AssetDatabase.Refresh();
-			Debug.Log($"Baked {path} ({resolution}^3)");
+			Debug.Log( $"Baked {path} ({resolution}^3)" );
 		}
 	}
 }

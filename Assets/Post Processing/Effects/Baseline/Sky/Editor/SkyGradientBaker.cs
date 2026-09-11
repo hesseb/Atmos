@@ -50,80 +50,80 @@ static class SkyGradientBaker
 	/// </summary>
 	const float BakeAltitude = 12f;
 
-	[MenuItem("Testbed/Baseline Sky/Bake Sky Gradient From PBR")]
+	[MenuItem( "Testbed/Baseline Sky/Bake Sky Gradient From PBR" )]
 	static void Bake()
 	{
 		AtmosphereEffect atmosphere = FindAtmosphere();
-		if (atmosphere == null)
+		if ( atmosphere == null )
 		{
-			Debug.LogError("[BaselineSky] no AtmosphereEffect asset found - nothing to bake from.");
+			Debug.LogError( "[BaselineSky] no AtmosphereEffect asset found - nothing to bake from." );
 			return;
 		}
 
-		var compute = AssetDatabase.LoadAssetAtPath<ComputeShader>(ComputePath);
-		if (compute == null)
+		var compute = AssetDatabase.LoadAssetAtPath<ComputeShader>( ComputePath );
+		if ( compute == null )
 		{
-			Debug.LogError($"[BaselineSky] missing compute shader at {ComputePath}.");
+			Debug.LogError( $"[BaselineSky] missing compute shader at {ComputePath}." );
 			return;
 		}
 
 		// Applies the atmosphere's own parameters and guarantees its transmittance LUT has
 		// been rendered. The bake is only meaningful because it shares this state with the
 		// runtime renderer rather than restating it.
-		atmosphere.ApplyAtmosphereValuesTo(compute);
+		atmosphere.ApplyAtmosphereValuesTo( compute );
 
-		if (atmosphere.transmittanceLUT == null)
+		if ( atmosphere.transmittanceLUT == null )
 		{
-			Debug.LogError("[BaselineSky] the atmosphere's transmittance LUT is null after " +
-				"initialisation - open the scene containing the atmosphere and try again.");
+			Debug.LogError( "[BaselineSky] the atmosphere's transmittance LUT is null after " +
+				"initialisation - open the scene containing the atmosphere and try again." );
 			return;
 		}
 
-		var target = new RenderTexture(Width, Height, 0, RenderTextureFormat.ARGBFloat)
+		var target = new RenderTexture( Width, Height, 0, RenderTextureFormat.ARGBFloat )
 		{
 			enableRandomWrite = true,
 			name = "Sky Gradient Bake"
 		};
 		target.Create();
 
-		int kernel = compute.FindKernel("BakeSkyGradientRow");
-		compute.SetTexture(kernel, "Result", target);
-		compute.SetTexture(kernel, "TransmittanceLUT", atmosphere.transmittanceLUT);
-		compute.SetInt("width", Width);
-		compute.SetInt("numScatteringSteps", ScatteringSteps);
-		compute.SetFloat("bakeAzimuthDegrees", BakeAzimuthDegrees);
-		compute.SetFloat("bakeAltitude", BakeAltitude);
+		int kernel = compute.FindKernel( "BakeSkyGradientRow" );
+		compute.SetTexture( kernel, "Result", target );
+		compute.SetTexture( kernel, "TransmittanceLUT", atmosphere.transmittanceLUT );
+		compute.SetInt( "width", Width );
+		compute.SetInt( "numScatteringSteps", ScatteringSteps );
+		compute.SetFloat( "bakeAzimuthDegrees", BakeAzimuthDegrees );
+		compute.SetFloat( "bakeAltitude", BakeAltitude );
 
 		// An arbitrary but fixed observer frame. Only the angle between the view and the sun
 		// matters to the scattering, so the absolute orientation is irrelevant as long as it
 		// is consistent across rows.
 		Vector3 up = Vector3.up;
 		Vector3 east = Vector3.right;
-		compute.SetVector("observerUp", up);
-		compute.SetVector("observerEast", east);
+		compute.SetVector( "observerUp", up );
+		compute.SetVector( "observerEast", east );
 
-		int groups = Mathf.CeilToInt(Width / 64f);
+		int groups = Mathf.CeilToInt( Width / 64f );
 
 		try
 		{
-			for (int row = 0; row < Height; row++)
+			for ( int row = 0; row < Height; row++ )
 			{
-				if (EditorUtility.DisplayCancelableProgressBar("Baking sky gradient",
-					$"sun elevation row {row + 1} / {Height}", (row + 1) / (float)Height))
+				if ( EditorUtility.DisplayCancelableProgressBar( "Baking sky gradient",
+					$"sun elevation row {row + 1} / {Height}", ( row + 1 ) / (float)Height ) )
 				{
-					Debug.LogWarning("[BaselineSky] bake cancelled; no asset written.");
+					Debug.LogWarning( "[BaselineSky] bake cancelled; no asset written." );
 					return;
 				}
 
-				float sunElevation01 = Height <= 1 ? 0.5f : row / (float)(Height - 1);
-				float radians = (sunElevation01 * 2f - 1f) * Mathf.PI * 0.5f;
-				Vector3 dirToSun = up * Mathf.Sin(radians) + east * Mathf.Cos(radians);
+				float sunElevation01 = Height <= 1 ? 0.5f : row / (float)( Height - 1 );
+				float radians = ( sunElevation01 * 2f - 1f ) * Mathf.PI * 0.5f;
+				Vector3 dirToSun = up * Mathf.Sin( radians ) + east * Mathf.Cos( radians );
 
 				// Set per dispatch: dirToSun is a global inside AtmosphereCommon.hlsl, so one
 				// dispatch can only cover a single sun elevation.
-				compute.SetVector("dirToSun", dirToSun.normalized);
-				compute.SetInt("row", row);
-				compute.Dispatch(kernel, groups, 1, 1);
+				compute.SetVector( "dirToSun", dirToSun.normalized );
+				compute.SetInt( "row", row );
+				compute.Dispatch( kernel, groups, 1, 1 );
 			}
 		}
 		finally
@@ -131,20 +131,20 @@ static class SkyGradientBaker
 			EditorUtility.ClearProgressBar();
 		}
 
-		WriteAsset(target);
+		WriteAsset( target );
 
 		target.Release();
-		Object.DestroyImmediate(target);
+		Object.DestroyImmediate( target );
 	}
 
-	static void WriteAsset(RenderTexture source)
+	static void WriteAsset( RenderTexture source )
 	{
-		Directory.CreateDirectory(Folder);
+		Directory.CreateDirectory( Folder );
 
-		var texture = new Texture2D(Width, Height, TextureFormat.RGBAFloat, false, linear: true);
+		var texture = new Texture2D( Width, Height, TextureFormat.RGBAFloat, false, linear: true );
 		RenderTexture previous = RenderTexture.active;
 		RenderTexture.active = source;
-		texture.ReadPixels(new Rect(0, 0, Width, Height), 0, 0);
+		texture.ReadPixels( new Rect( 0, 0, Width, Height ), 0, 0 );
 		texture.Apply();
 		RenderTexture.active = previous;
 
@@ -152,51 +152,51 @@ static class SkyGradientBaker
 		// result will be flat black or clipped white, and the numbers say so immediately.
 		Color[] pixels = texture.GetPixels();
 		float min = float.MaxValue, max = float.MinValue;
-		foreach (Color c in pixels)
+		foreach ( Color c in pixels )
 		{
-			min = Mathf.Min(min, Mathf.Min(c.r, Mathf.Min(c.g, c.b)));
-			max = Mathf.Max(max, Mathf.Max(c.r, Mathf.Max(c.g, c.b)));
+			min = Mathf.Min( min, Mathf.Min( c.r, Mathf.Min( c.g, c.b ) ) );
+			max = Mathf.Max( max, Mathf.Max( c.r, Mathf.Max( c.g, c.b ) ) );
 		}
 
-		File.WriteAllBytes(BakedPath, texture.EncodeToEXR(Texture2D.EXRFlags.OutputAsFloat));
-		Object.DestroyImmediate(texture);
+		File.WriteAllBytes( BakedPath, texture.EncodeToEXR( Texture2D.EXRFlags.OutputAsFloat ) );
+		Object.DestroyImmediate( texture );
 
-		AssetDatabase.ImportAsset(BakedPath, ImportAssetOptions.ForceUpdate);
-		ConfigureImporter(BakedPath);
+		AssetDatabase.ImportAsset( BakedPath, ImportAssetOptions.ForceUpdate );
+		ConfigureImporter( BakedPath );
 
 		// Stores raw radiance, so it stales against the atmosphere's parameters - not the tone
 		// map, which is applied at runtime.
-		SkyBakeStampWriter.Record(BakedPath, SkyBakeStamp.Recipe.Atmosphere, FindAtmosphere(), null,
-			new SkyBakeStamp.Inputs().Add("bakeAltitude", BakeAltitude)
-				.Add("bakeAzimuthDegrees", BakeAzimuthDegrees)
-				.Add("bakeScatteringSteps", ScatteringSteps)
-				.Add("bakeWidth", Width).Add("bakeHeight", Height));
+		SkyBakeStampWriter.Record( BakedPath, SkyBakeStamp.Recipe.Atmosphere, FindAtmosphere(), null,
+			new SkyBakeStamp.Inputs().Add( "bakeAltitude", BakeAltitude )
+				.Add( "bakeAzimuthDegrees", BakeAzimuthDegrees )
+				.Add( "bakeScatteringSteps", ScatteringSteps )
+				.Add( "bakeWidth", Width ).Add( "bakeHeight", Height ) );
 
-		Debug.Log($"[BaselineSky] baked {Width}x{Height} sky gradient to {BakedPath}\n" +
+		Debug.Log( $"[BaselineSky] baked {Width}x{Height} sky gradient to {BakedPath}\n" +
 			$"  {ScatteringSteps} scattering steps, sampled {BakeAzimuthDegrees} deg from the sun, " +
 			$"observer {BakeAltitude} above the surface\n" +
 			$"  radiance range {min:F4} .. {max:F4}\n" +
 			"  Azimuth is averaged out, so the Mie forward lobe is missing by construction - " +
-			"the shader's glow term is what stands in for it.");
+			"the shader's glow term is what stands in for it." );
 
-		Selection.activeObject = AssetDatabase.LoadAssetAtPath<Texture2D>(BakedPath);
+		Selection.activeObject = AssetDatabase.LoadAssetAtPath<Texture2D>( BakedPath );
 	}
 
 	static AtmosphereEffect FindAtmosphere()
 	{
-		foreach (string guid in AssetDatabase.FindAssets("t:AtmosphereEffect"))
+		foreach ( string guid in AssetDatabase.FindAssets( "t:AtmosphereEffect" ) )
 		{
 			var effect = AssetDatabase.LoadAssetAtPath<AtmosphereEffect>(
-				AssetDatabase.GUIDToAssetPath(guid));
-			if (effect != null) { return effect; }
+				AssetDatabase.GUIDToAssetPath( guid ) );
+			if ( effect != null ) { return effect; }
 		}
 		return null;
 	}
 
-	static void ConfigureImporter(string path)
+	static void ConfigureImporter( string path )
 	{
-		var importer = AssetImporter.GetAtPath(path) as TextureImporter;
-		if (importer == null) { return; }
+		var importer = AssetImporter.GetAtPath( path ) as TextureImporter;
+		if ( importer == null ) { return; }
 
 		importer.sRGBTexture = false;
 		importer.mipmapEnabled = false;

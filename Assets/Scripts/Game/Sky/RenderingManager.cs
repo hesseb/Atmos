@@ -47,14 +47,14 @@ public class RenderingManager : MonoBehaviour
 		// Guarded like every other reference here. Under [ExecuteInEditMode] this runs during
 		// scene load and on domain reload, and there are frames in both where nothing is tagged
 		// MainCamera yet - at which point the whole method has nothing to attach buffers to.
-		if (cam == null) { return; }
+		if ( cam == null ) { return; }
 
 		cam.RemoveAllCommandBuffers();
 
 		outerSpaceRenderCommand = new CommandBuffer { name = "Outer Space Render" };
-		starRenderer?.SetUpStarRenderingCommand(outerSpaceRenderCommand);
-		moon?.Setup(outerSpaceRenderCommand);
-		cam.AddCommandBuffer(CameraEvent.BeforeForwardOpaque, outerSpaceRenderCommand);
+		starRenderer?.SetUpStarRenderingCommand( outerSpaceRenderCommand );
+		moon?.Setup( outerSpaceRenderCommand );
+		cam.AddCommandBuffer( CameraEvent.BeforeForwardOpaque, outerSpaceRenderCommand );
 
 		// All sky buffers are recorded up front. Recording is free while detached, and it
 		// keeps the attach/detach path down to a single Add/Remove pair - which is what lets
@@ -67,30 +67,30 @@ public class RenderingManager : MonoBehaviour
 		// Null-guarded like the baseline below. DesiredMode already tests atmosphereEffect for
 		// null, so an unassigned effect is a state the rest of this class expects to handle; only
 		// this line assumed otherwise.
-		if (atmosphereEffect != null)
+		if ( atmosphereEffect != null )
 		{
 			physicallyBasedSkyCommand = new CommandBuffer { name = "Sky Render (PBR)" };
-			atmosphereEffect.SetupSkyRenderingCommand(physicallyBasedSkyCommand);
+			atmosphereEffect.SetupSkyRenderingCommand( physicallyBasedSkyCommand );
 		}
 
 		// A buffer is kept only if it actually recorded something. The alternative - attaching
 		// a buffer whose material is null because a shader has not been assigned yet - blits
 		// with a null material every frame, which is a far less obvious failure than simply
 		// having no sky.
-		if (baselineSky != null)
+		if ( baselineSky != null )
 		{
-			baselineSkyCommand = Record("Sky Render (Baseline)", baselineSky.RecordBaselinePass);
-			nullSkyCommand = Record("Sky Render (Null)", baselineSky.RecordNullPass);
+			baselineSkyCommand = Record( "Sky Render (Baseline)", baselineSky.RecordBaselinePass );
+			nullSkyCommand = Record( "Sky Render (Null)", baselineSky.RecordNullPass );
 		}
 
 		activeMode = SkyMode.None;
-		ApplyMode(DesiredMode);
+		ApplyMode( DesiredMode );
 	}
 
-	static CommandBuffer Record(string name, System.Func<CommandBuffer, bool> record)
+	static CommandBuffer Record( string name, System.Func<CommandBuffer, bool> record )
 	{
 		var buffer = new CommandBuffer { name = name };
-		if (record(buffer)) { return buffer; }
+		if ( record( buffer ) ) { return buffer; }
 
 		buffer.Release();
 		return null;
@@ -106,15 +106,15 @@ public class RenderingManager : MonoBehaviour
 	{
 		get
 		{
-			if (atmosphereEffect != null && atmosphereEffect.enabled) { return SkyMode.PhysicallyBased; }
-			if (baselineSky != null && baselineSky.isActiveAndEnabled) { return baselineSky.Mode; }
+			if ( atmosphereEffect != null && atmosphereEffect.enabled ) { return SkyMode.PhysicallyBased; }
+			if ( baselineSky != null && baselineSky.isActiveAndEnabled ) { return baselineSky.Mode; }
 			return SkyMode.None;
 		}
 	}
 
-	CommandBuffer BufferFor(SkyMode mode)
+	CommandBuffer BufferFor( SkyMode mode )
 	{
-		switch (mode)
+		switch ( mode )
 		{
 			case SkyMode.PhysicallyBased: return physicallyBasedSkyCommand;
 			case SkyMode.Baseline: return baselineSkyCommand;
@@ -123,15 +123,15 @@ public class RenderingManager : MonoBehaviour
 		}
 	}
 
-	void ApplyMode(SkyMode desired)
+	void ApplyMode( SkyMode desired )
 	{
-		if (desired == activeMode || cam == null) { return; }
+		if ( desired == activeMode || cam == null ) { return; }
 
-		CommandBuffer previous = BufferFor(activeMode);
-		if (previous != null) { cam.RemoveCommandBuffer(CameraEvent.BeforeForwardOpaque, previous); }
+		CommandBuffer previous = BufferFor( activeMode );
+		if ( previous != null ) { cam.RemoveCommandBuffer( CameraEvent.BeforeForwardOpaque, previous ); }
 
-		CommandBuffer next = BufferFor(desired);
-		if (next != null) { cam.AddCommandBuffer(CameraEvent.BeforeForwardOpaque, next); }
+		CommandBuffer next = BufferFor( desired );
+		if ( next != null ) { cam.AddCommandBuffer( CameraEvent.BeforeForwardOpaque, next ); }
 
 		activeMode = desired;
 		PublishSkyReflectionStrength();
@@ -152,12 +152,12 @@ public class RenderingManager : MonoBehaviour
 	/// </summary>
 	void PublishSkyReflectionStrength()
 	{
-		Shader.SetGlobalFloat("skyReflectionStrength", activeMode == SkyMode.PhysicallyBased ? 1f : 0f);
+		Shader.SetGlobalFloat( "skyReflectionStrength", activeMode == SkyMode.PhysicallyBased ? 1f : 0f );
 	}
 
 	void Update()
 	{
-		ApplyMode(DesiredMode);
+		ApplyMode( DesiredMode );
 
 		// Republished every frame rather than only on a mode change: ApplyMode early-returns
 		// when the mode is unchanged, which would leave the global unset for the first frames
@@ -184,17 +184,17 @@ public class RenderingManager : MonoBehaviour
 	/// </summary>
 	void OnDisable()
 	{
-		if (cam != null)
+		if ( cam != null )
 		{
-			if (outerSpaceRenderCommand != null)
+			if ( outerSpaceRenderCommand != null )
 			{
-				cam.RemoveCommandBuffer(CameraEvent.BeforeForwardOpaque, outerSpaceRenderCommand);
+				cam.RemoveCommandBuffer( CameraEvent.BeforeForwardOpaque, outerSpaceRenderCommand );
 			}
 
-			CommandBuffer attachedSky = BufferFor(activeMode);
-			if (attachedSky != null)
+			CommandBuffer attachedSky = BufferFor( activeMode );
+			if ( attachedSky != null )
 			{
-				cam.RemoveCommandBuffer(CameraEvent.BeforeForwardOpaque, attachedSky);
+				cam.RemoveCommandBuffer( CameraEvent.BeforeForwardOpaque, attachedSky );
 			}
 		}
 

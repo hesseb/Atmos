@@ -37,48 +37,48 @@ public class BaselineSkyRenderer : MonoBehaviour
 
 	public Variant variant = Variant.Gradient;
 
-	[Header("Shaders")]
+	[Header( "Shaders" )]
 	public Shader baselineShader;
 	public Shader nullShader;
 
-	[Header("Sky")]
-	[Tooltip("Hand-authored. Generate a starting point with Testbed > Baseline Sky.")]
+	[Header( "Sky" )]
+	[Tooltip( "Hand-authored. Generate a starting point with Testbed > Baseline Sky." )]
 	public Texture2D skyGradient;
-	[Tooltip("Baked from the physically based renderer. Same shader path as the hand-authored " +
-		"gradient, so the two differ only in how the texture was produced.")]
+	[Tooltip( "Baked from the physically based renderer. Same shader path as the hand-authored " +
+		"gradient, so the two differ only in how the texture was produced." )]
 	public Texture2D skyGradientBaked;
 	public float skyIntensity = 1f;
 
-	[Header("Sun")]
-	[ColorUsage(false, true)] public Color sunColour = Color.white;
+	[Header( "Sun" )]
+	[ColorUsage( false, true )] public Color sunColour = Color.white;
 	public float sunDiscSize = 1f;
 	public float sunDiscBlurA = 1f;
 	public float sunDiscBlurB = 1f;
 
-	[Header("Forward-scatter glow")]
-	[Tooltip("The bright halo around the sun. A (view elevation, sun elevation) lookup has no " +
-		"azimuth term, so without this the sky is identical in every horizontal direction.")]
-	[ColorUsage(false, true)] public Color glowColour = new Color(1f, 0.85f, 0.65f);
+	[Header( "Forward-scatter glow" )]
+	[Tooltip( "The bright halo around the sun. A (view elevation, sun elevation) lookup has no " +
+		"azimuth term, so without this the sky is identical in every horizontal direction." )]
+	[ColorUsage( false, true )] public Color glowColour = new Color( 1f, 0.85f, 0.65f );
 	public float glowPower = 8f;
 	public float glowStrength = 0.4f;
 
-	[Header("Background")]
-	[Tooltip("How aggressively the sky washes out stars and the moon as it brightens.")]
+	[Header( "Background" )]
+	[Tooltip( "How aggressively the sky washes out stars and the moon as it brightens." )]
 	public float starFadeStrength = 4f;
 
 	// Mirrors AtmosphereEffect's own values rather than reading them, so the two renderers are
 	// independent but their output pipelines are identical. Keep them in step by hand - a
 	// difference here would show up as a visual difference that is not about the sky model.
-	[Header("Tone mapping (match AtmosphereEffect)")]
+	[Header( "Tone mapping (match AtmosphereEffect)" )]
 	public float intensity = 1f;
 	public float contrast = 1.45f;
 	public float whitePoint = 1.1f;
 	public float ditherStrength = 0.8f;
 	public Texture2D blueNoise;
 
-	[Header("Scene")]
-	[Tooltip("The planet. Leave empty to resolve from SolarSystemManager - the earth orbits, " +
-		"so its centre is not the origin.")]
+	[Header( "Scene" )]
+	[Tooltip( "The planet. Leave empty to resolve from SolarSystemManager - the earth orbits, " +
+		"so its centre is not the origin." )]
 	public Transform planet;
 
 	public SkyMode Mode => variant == Variant.Null ? SkyMode.Null : SkyMode.Baseline;
@@ -105,16 +105,16 @@ public class BaselineSkyRenderer : MonoBehaviour
 
 	void OnDestroy()
 	{
-		DestroyMaterial(ref baselineMaterial);
-		DestroyMaterial(ref nullMaterial);
+		DestroyMaterial( ref baselineMaterial );
+		DestroyMaterial( ref nullMaterial );
 	}
 
-	static void DestroyMaterial(ref Material material)
+	static void DestroyMaterial( ref Material material )
 	{
-		if (material == null) { return; }
+		if ( material == null ) { return; }
 
-		if (Application.isPlaying) { Destroy(material); }
-		else { DestroyImmediate(material); }
+		if ( Application.isPlaying ) { Destroy( material ); }
+		else { DestroyImmediate( material ); }
 		material = null;
 	}
 
@@ -125,22 +125,22 @@ public class BaselineSkyRenderer : MonoBehaviour
 	/// Returns false if the shader is missing, so the caller can drop the buffer rather than
 	/// attach one that would blit with a null material every frame.
 	/// </summary>
-	public bool RecordBaselinePass(CommandBuffer cmd)
+	public bool RecordBaselinePass( CommandBuffer cmd )
 	{
-		Material material = EnsureMaterial(ref baselineMaterial, baselineShader);
-		if (material == null) { return false; }
+		Material material = EnsureMaterial( ref baselineMaterial, baselineShader );
+		if ( material == null ) { return false; }
 
-		SkyPass.Record(cmd, material);
+		SkyPass.Record( cmd, material );
 		return true;
 	}
 
 	/// <summary>Records the no-op control pass.</summary>
-	public bool RecordNullPass(CommandBuffer cmd)
+	public bool RecordNullPass( CommandBuffer cmd )
 	{
-		Material material = EnsureMaterial(ref nullMaterial, nullShader);
-		if (material == null) { return false; }
+		Material material = EnsureMaterial( ref nullMaterial, nullShader );
+		if ( material == null ) { return false; }
 
-		SkyPass.Record(cmd, material);
+		SkyPass.Record( cmd, material );
 		return true;
 	}
 
@@ -148,80 +148,80 @@ public class BaselineSkyRenderer : MonoBehaviour
 	// there before, so the sky renders as something plausible-looking and wrong - and the
 	// frame time is still *correct* for that variant, which makes it look like a valid
 	// measurement of a sky nobody authored.
-	Variant warnedFor = (Variant)(-1);
+	Variant warnedFor = (Variant)( -1 );
 
-	void WarnMissingTexture(string field)
+	void WarnMissingTexture( string field )
 	{
-		if (warnedFor == variant) { return; }
+		if ( warnedFor == variant ) { return; }
 		warnedFor = variant;
 
-		Debug.LogWarning($"[BaselineSky] variant '{variant}' has no {field} assigned. The sky " +
+		Debug.LogWarning( $"[BaselineSky] variant '{variant}' has no {field} assigned. The sky " +
 			"will be undefined, and any benchmark of this profile measures the pass but not " +
-			"a sky anyone authored.", this);
+			"a sky anyone authored.", this );
 	}
 
-	Material EnsureMaterial(ref Material material, Shader shader)
+	Material EnsureMaterial( ref Material material, Shader shader )
 	{
-		if (shader == null)
+		if ( shader == null )
 		{
-			Debug.LogError("[BaselineSky] shader not assigned.", this);
+			Debug.LogError( "[BaselineSky] shader not assigned.", this );
 			return null;
 		}
 
 		// HideAndDontSave, and rebuilt if the shader changes: this component runs in edit mode,
 		// so without it every domain reload leaks a material.
-		if (material == null || material.shader != shader)
+		if ( material == null || material.shader != shader )
 		{
-			DestroyMaterial(ref material);
-			material = new Material(shader) { hideFlags = HideFlags.HideAndDontSave };
+			DestroyMaterial( ref material );
+			material = new Material( shader ) { hideFlags = HideFlags.HideAndDontSave };
 		}
 		return material;
 	}
 
 	// ------------------------------------------------------------------ parameters
 
-	void ApplyParameters(Camera activeCamera)
+	void ApplyParameters( Camera activeCamera )
 	{
-		if (activeCamera != cam || variant == Variant.Null) { return; }
+		if ( activeCamera != cam || variant == Variant.Null ) { return; }
 
-		Material material = EnsureMaterial(ref baselineMaterial, baselineShader);
-		if (material == null) { return; }
+		Material material = EnsureMaterial( ref baselineMaterial, baselineShader );
+		if ( material == null ) { return; }
 
 		// Gradient and GradientBaked take the same path and cost the same. That is the
 		// point of the pair: the only difference between them is how the texture was
 		// authored, so any measured difference is noise and any visual difference is
 		// entirely attributable to the authoring method.
 		Texture2D gradient = variant == Variant.GradientBaked ? skyGradientBaked : skyGradient;
-		if (gradient != null) { material.SetTexture("SkyGradient", gradient); }
-		else { WarnMissingTexture(variant == Variant.GradientBaked ? "Sky Gradient Baked" : "Sky Gradient"); }
+		if ( gradient != null ) { material.SetTexture( "SkyGradient", gradient ); }
+		else { WarnMissingTexture( variant == Variant.GradientBaked ? "Sky Gradient Baked" : "Sky Gradient" ); }
 
-		if (blueNoise != null) { material.SetTexture("BlueNoise", blueNoise); }
+		if ( blueNoise != null ) { material.SetTexture( "BlueNoise", blueNoise ); }
 
-		Vector3 planetCentre = ObserverGeometry.PlanetCentre(ref planet);
-		Vector3 dirToSun = ObserverGeometry.DirectionToSun(ref sun);
+		Vector3 planetCentre = ObserverGeometry.PlanetCentre( ref planet );
+		Vector3 dirToSun = ObserverGeometry.DirectionToSun( ref sun );
 
-		material.SetVector("planetCentre", planetCentre);
+		material.SetVector( "planetCentre", planetCentre );
 		// Computed once per frame on the CPU rather than per pixel: it does not vary across
 		// the screen, and the whole point of the baseline is that it is cheap.
-		material.SetFloat("sunElevation01", ObserverGeometry.SunElevation01(
-			activeCamera.transform.position, planetCentre, dirToSun));
-		material.SetFloat("skyIntensity", skyIntensity);
+		material.SetFloat( "sunElevation01", ObserverGeometry.SunElevation01(
+			activeCamera.transform.position, planetCentre, dirToSun ) );
+		material.SetFloat( "skyIntensity", skyIntensity );
 
-		material.SetColor("sunColour", sunColour);
-		material.SetFloat("sunDiscSize", sunDiscSize);
-		material.SetFloat("sunDiscBlurA", sunDiscBlurA);
-		material.SetFloat("sunDiscBlurB", sunDiscBlurB);
+		material.SetColor( "sunColour", sunColour );
+		material.SetFloat( "sunDiscSize", sunDiscSize );
+		material.SetFloat( "sunDiscBlurA", sunDiscBlurA );
+		material.SetFloat( "sunDiscBlurB", sunDiscBlurB );
 
-		material.SetColor("glowColour", glowColour);
-		material.SetFloat("glowPower", glowPower);
-		material.SetFloat("glowStrength", glowStrength);
+		material.SetColor( "glowColour", glowColour );
+		material.SetFloat( "glowPower", glowPower );
+		material.SetFloat( "glowStrength", glowStrength );
 
-		material.SetFloat("starFadeStrength", starFadeStrength);
+		material.SetFloat( "starFadeStrength", starFadeStrength );
 
-		material.SetFloat("intensity", intensity);
-		material.SetFloat("contrast", contrast);
-		material.SetFloat("whitePoint", whitePoint);
-		material.SetFloat("ditherStrength", ditherStrength);
+		material.SetFloat( "intensity", intensity );
+		material.SetFloat( "contrast", contrast );
+		material.SetFloat( "whitePoint", whitePoint );
+		material.SetFloat( "ditherStrength", ditherStrength );
 	}
 
 }

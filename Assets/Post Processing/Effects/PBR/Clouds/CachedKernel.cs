@@ -13,12 +13,12 @@ namespace Clouds
 		ComputeShader source;
 		int index;
 
-		public int Of(ComputeShader compute, string name)
+		public int Of( ComputeShader compute, string name )
 		{
-			if (compute != source)
+			if ( compute != source )
 			{
 				source = compute;
-				index = compute.FindKernel(name);
+				index = compute.FindKernel( name );
 			}
 			return index;
 		}

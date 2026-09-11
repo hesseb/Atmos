@@ -15,7 +15,7 @@ using UnityEngine;
 /// Create via Assets > Create > Testbed > Camera Bookmarks, then assign it to
 /// TestbedCamera.
 /// </summary>
-[CreateAssetMenu(menuName = "Testbed/Camera Bookmarks", fileName = "Camera Bookmarks")]
+[CreateAssetMenu( menuName = "Testbed/Camera Bookmarks", fileName = "Camera Bookmarks" )]
 public class CameraBookmarks : ScriptableObject
 {
 	[System.Serializable]
@@ -33,14 +33,14 @@ public class CameraBookmarks : ScriptableObject
 
 	public int Count => bookmarks != null ? bookmarks.Length : 0;
 
-	public bool TryGetIndexForKey(KeyCode key, out int index)
+	public bool TryGetIndexForKey( KeyCode key, out int index )
 	{
 		index = -1;
-		if (bookmarks == null || key == KeyCode.None) { return false; }
+		if ( bookmarks == null || key == KeyCode.None ) { return false; }
 
-		for (int i = 0; i < bookmarks.Length; i++)
+		for ( int i = 0; i < bookmarks.Length; i++ )
 		{
-			if (bookmarks[i].key == key)
+			if ( bookmarks[ i ].key == key )
 			{
 				index = i;
 				return true;
@@ -49,57 +49,57 @@ public class CameraBookmarks : ScriptableObject
 		return false;
 	}
 
-	public bool TryGetView(int index, out TestbedCamera.CameraView view)
+	public bool TryGetView( int index, out TestbedCamera.CameraView view )
 	{
 		view = default;
-		if (bookmarks == null || index < 0 || index >= bookmarks.Length) { return false; }
-		if (!bookmarks[index].assigned) { return false; }
+		if ( bookmarks == null || index < 0 || index >= bookmarks.Length ) { return false; }
+		if ( !bookmarks[ index ].assigned ) { return false; }
 
-		view = bookmarks[index].view;
+		view = bookmarks[ index ].view;
 		return true;
 	}
 
-	public KeyCode KeyAt(int index)
+	public KeyCode KeyAt( int index )
 	{
-		if (bookmarks == null || index < 0 || index >= bookmarks.Length) { return KeyCode.None; }
-		return bookmarks[index].key;
+		if ( bookmarks == null || index < 0 || index >= bookmarks.Length ) { return KeyCode.None; }
+		return bookmarks[ index ].key;
 	}
 
-	public bool IsAssigned(int index)
+	public bool IsAssigned( int index )
 	{
-		if (bookmarks == null || index < 0 || index >= bookmarks.Length) { return false; }
-		return bookmarks[index].assigned;
+		if ( bookmarks == null || index < 0 || index >= bookmarks.Length ) { return false; }
+		return bookmarks[ index ].assigned;
 	}
 
-	public string LabelAt(int index)
+	public string LabelAt( int index )
 	{
-		if (bookmarks == null || index < 0 || index >= bookmarks.Length) { return "?"; }
+		if ( bookmarks == null || index < 0 || index >= bookmarks.Length ) { return "?"; }
 
-		string label = bookmarks[index].label;
-		return string.IsNullOrEmpty(label) ? $"slot {index + 1}" : label;
+		string label = bookmarks[ index ].label;
+		return string.IsNullOrEmpty( label ) ? $"slot {index + 1}" : label;
 	}
 
 	/// <summary>
 	/// Stores a view in a slot. Marks the asset dirty so an in-play-mode capture is
 	/// written to disk on the next project save rather than lingering only in memory.
 	/// </summary>
-	public void Capture(int index, TestbedCamera.CameraView view)
+	public void Capture( int index, TestbedCamera.CameraView view )
 	{
-		if (bookmarks == null || index < 0 || index >= bookmarks.Length) { return; }
+		if ( bookmarks == null || index < 0 || index >= bookmarks.Length ) { return; }
 
-		bookmarks[index].view = view;
-		bookmarks[index].assigned = true;
+		bookmarks[ index ].view = view;
+		bookmarks[ index ].assigned = true;
 
 #if UNITY_EDITOR
 		UnityEditor.EditorUtility.SetDirty(this);
 #endif
 	}
 
-	public void Clear(int index)
+	public void Clear( int index )
 	{
-		if (bookmarks == null || index < 0 || index >= bookmarks.Length) { return; }
+		if ( bookmarks == null || index < 0 || index >= bookmarks.Length ) { return; }
 
-		bookmarks[index].assigned = false;
+		bookmarks[ index ].assigned = false;
 #if UNITY_EDITOR
 		UnityEditor.EditorUtility.SetDirty(this);
 #endif
@@ -116,7 +116,7 @@ public class CameraBookmarks : ScriptableObject
 		};
 	}
 
-	static Bookmark Empty(string label, KeyCode key)
+	static Bookmark Empty( string label, KeyCode key )
 	{
 		return new Bookmark { label = label, key = key, assigned = false };
 	}

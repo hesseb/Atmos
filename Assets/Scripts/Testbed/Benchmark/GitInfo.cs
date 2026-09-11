@@ -8,7 +8,7 @@ using IOPath = System.IO.Path;
 /// </summary>
 public static class GitInfo
 {
-	public static bool TryGet(out string commit, out string branch, out bool dirty)
+	public static bool TryGet( out string commit, out string branch, out bool dirty )
 	{
 		commit = "unknown";
 		branch = "unknown";
@@ -31,7 +31,7 @@ public static class GitInfo
 		// No .git beside the executable, and git may not be installed at all - so a build
 		// reads the stamp baked in by BenchmarkBuild instead.
 		BuildStamp stamp = BuildStamp.Load();
-		if (stamp == null) { return false; }
+		if ( stamp == null ) { return false; }
 
 		commit = stamp.commit;
 		branch = stamp.branch;

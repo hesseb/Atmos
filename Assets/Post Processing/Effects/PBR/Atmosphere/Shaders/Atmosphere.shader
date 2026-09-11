@@ -91,7 +91,7 @@
 				float sceneDepth = eyeDepth * viewLength;
 
 				float farClipPlane = _ProjectionParams.z;
-			
+
 				float3 rayOrigin = _WorldSpaceCameraPos;
 				float3 rayDir = viewDir;
 
@@ -154,25 +154,25 @@
 
 					float3 transmittance = tex3Dlod(TransmittanceLUT3D, float4(uv, depthT, 0)).rgb;
 					float3 luminance = tex3Dlod(AerialPerspectiveLUT, float4(uv,depthT, 0)).rgb;
-					
+
 					luminance = toneMap(luminance);
 					luminance = originalCol.rgb * transmittance + luminance;
 
 					outputCol = blueNoiseDither(luminance, uv, ditherStrength);
 					outputCol = lerp(originalCol.rgb, outputCol, aerialPerspectiveStrength);
-					
+
 				}
 
 				return outputCol;
 			}
 
 			float4 frag (v2f i) : SV_Target
-			{	
+			{
 				float4 originalCol = tex2D(_MainTex, i.uv);
 
 				float viewLength = length(i.viewVector);
 				float3 viewDir = i.viewVector / viewLength;
-			
+
 				if (atmosphereDebugMode == 1) {
 					float nonlin = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, i.uv);
 					float sceneDepth = LinearEyeDepth(nonlin) * viewLength;

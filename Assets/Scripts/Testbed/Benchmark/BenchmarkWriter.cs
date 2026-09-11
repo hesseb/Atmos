@@ -121,7 +121,7 @@ public static partial class BenchmarkWriter
 	public static string DefaultOutputRoot()
 	{
 		string folder = Application.isEditor ? "Results" : "BenchmarkResults";
-		return IOPath.GetFullPath(IOPath.Combine(Application.dataPath, "..", folder));
+		return IOPath.GetFullPath( IOPath.Combine( Application.dataPath, "..", folder ) );
 	}
 
 	/// <summary>
@@ -153,23 +153,23 @@ public static partial class BenchmarkWriter
 	/// pass - the plan is common to every pass by construction, which is what makes the
 	/// passes comparable.
 	/// </summary>
-	public static string BeginRun(BenchmarkPlan plan, string outputRoot, BenchmarkRunMode mode)
+	public static string BeginRun( BenchmarkPlan plan, string outputRoot, BenchmarkRunMode mode )
 	{
-		GitInfo.TryGet(out string commit, out _, out _);
+		GitInfo.TryGet( out string commit, out _, out _ );
 
-		string stamp = System.DateTime.Now.ToString("yyyyMMdd-HHmmss", Ci);
-		string shortCommit = string.IsNullOrEmpty(commit) ? "nogit" : commit;
+		string stamp = System.DateTime.Now.ToString( "yyyyMMdd-HHmmss", Ci );
+		string shortCommit = string.IsNullOrEmpty( commit ) ? "nogit" : commit;
 		// Non-timing runs are tagged in the folder name: they sit next to timing runs of the
 		// same benchmark and contain a frames.csv that looks identical - a capture run's
 		// carries readback stalls, a self-check's is deliberately redundant. Nobody should
 		// have to open run.json to tell them apart.
 		string suffix = mode == BenchmarkRunMode.Capture ? "_capture"
 			: mode == BenchmarkRunMode.SelfCheck ? "_selfcheck" : "";
-		string runFolder = IOPath.Combine(outputRoot,
-			$"{stamp}_{Sanitise(plan.definition.id)}_{shortCommit}{suffix}");
+		string runFolder = IOPath.Combine( outputRoot,
+			$"{stamp}_{Sanitise( plan.definition.id )}_{shortCommit}{suffix}" );
 
-		Directory.CreateDirectory(runFolder);
-		File.WriteAllText(IOPath.Combine(runFolder, "plan.csv"), plan.ToCsv());
+		Directory.CreateDirectory( runFolder );
+		File.WriteAllText( IOPath.Combine( runFolder, "plan.csv" ), plan.ToCsv() );
 		return runFolder;
 	}
 

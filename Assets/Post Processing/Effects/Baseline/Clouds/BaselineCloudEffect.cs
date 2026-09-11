@@ -24,7 +24,7 @@ namespace Clouds
 	///             so any remaining visual difference is the technique rather than the art. The
 	///             baseline sky's GradientBaked variant exists to provide exactly this separation.
 	/// </summary>
-	[CreateAssetMenu(menuName = "PostProcessing/Baseline Clouds")]
+	[CreateAssetMenu( menuName = "PostProcessing/Baseline Clouds" )]
 	public class BaselineCloudEffect : PostProcessingEffect
 	{
 		public enum TextureSource
@@ -91,35 +91,35 @@ namespace Clouds
 			public Texture2D authored;
 			public Texture2D baked;
 
-			[Tooltip("Height above sea level, world units. Keep both inside the volumetric's shell " +
+			[Tooltip( "Height above sea level, world units. Keep both inside the volumetric's shell " +
 				"so the two renderers put their cloud in the same band - the A/B comparison needs " +
-				"that even more than it needs either to be correct on its own.")]
+				"that even more than it needs either to be correct on its own." )]
 			public float altitude;
 
-			[Tooltip("How far the height channel lifts the sheet. This is what produces parallax " +
+			[Tooltip( "How far the height channel lifts the sheet. This is what produces parallax " +
 				"WITHIN a deck - the sheet is not flat, so its own features slide against one " +
-				"another as the camera moves. 0 makes it a decal.")]
-			[Range(0f, 8f)] public float thickness;
+				"another as the camera moves. 0 makes it a decal." )]
+			[Range( 0f, 8f )] public float thickness;
 
-			[Range(0f, 4f)] public float opacity;
+			[Range( 0f, 4f )] public float opacity;
 
-			[Tooltip("Broken versus overcast. A power on the stored coverage, so higher clears the " +
-				"thin edges and leaves the solid cores.")]
-			[Range(0.2f, 4f)] public float contrast;
+			[Tooltip( "Broken versus overcast. A power on the stored coverage, so higher clears the " +
+				"thin edges and leaves the solid cores." )]
+			[Range( 0.2f, 4f )] public float contrast;
 
-			[Tooltip("How pronounced the relief shading is. The stored normal is already unit " +
+			[Tooltip( "How pronounced the relief shading is. The stored normal is already unit " +
 				"length, so this re-steepens its tangent components and renormalises rather than " +
-				"scaling it, which would only change its length.")]
-			[Range(0f, 4f)] public float reliefStrength;
+				"scaling it, which would only change its length." )]
+			[Range( 0f, 4f )] public float reliefStrength;
 
-			[Tooltip("Multiplies the wind speed for this deck. The two must differ, or they drift " +
+			[Tooltip( "Multiplies the wind speed for this deck. The two must differ, or they drift " +
 				"rigidly together and never separate - and the separation IS the parallax. Real " +
 				"decks at different altitudes sit in different winds, so this is wind shear rather " +
-				"than a cheat.")]
+				"than a cheat." )]
 			public float windScale;
 
-			public static LayerSettings Create(float altitude, float thickness, float opacity,
-				float contrast, float relief, float windScale)
+			public static LayerSettings Create( float altitude, float thickness, float opacity,
+				float contrast, float relief, float windScale )
 			{
 				return new LayerSettings
 				{
@@ -133,104 +133,104 @@ namespace Clouds
 			}
 		}
 
-		[Header("Texture source")]
-		[Tooltip("Authored is the honest baseline. Baked is the volumetric flattened into the same " +
+		[Header( "Texture source" )]
+		[Tooltip( "Authored is the honest baseline. Baked is the volumetric flattened into the same " +
 			"format - a control condition where the content is identical, so what is left is the " +
-			"technique.")]
+			"technique." )]
 		public TextureSource textureSource = TextureSource.Authored;
 
-		[Header("Shell")]
-		[Tooltip("Sea level, in world units. Its own field rather than the atmosphere's planetRadius " +
+		[Header( "Shell" )]
+		[Tooltip( "Sea level, in world units. Its own field rather than the atmosphere's planetRadius " +
 			"global, which is zero whenever the atmosphere is off - and the baseline has to keep " +
-			"working in exactly the profiles where it is.")]
+			"working in exactly the profiles where it is." )]
 		public float bodyRadius = 150f;
 
-		[Tooltip("The lower, denser deck.")]
-		public LayerSettings lower = LayerSettings.Create(4f, 2.5f, 1.3f, 1.1f, 1f, 1f);
+		[Tooltip( "The lower, denser deck." )]
+		public LayerSettings lower = LayerSettings.Create( 4f, 2.5f, 1.3f, 1.1f, 1f, 1f );
 
-		[Tooltip("The upper, thinner deck. Higher, sparser and flatter so it reads as high cloud " +
-			"rather than as a second copy of the same weather.")]
-		public LayerSettings upper = LayerSettings.Create(8f, 1.2f, 0.75f, 1.4f, 0.7f, 1.7f);
+		[Tooltip( "The upper, thinner deck. Higher, sparser and flatter so it reads as high cloud " +
+			"rather than as a second copy of the same weather." )]
+		public LayerSettings upper = LayerSettings.Create( 8f, 1.2f, 0.75f, 1.4f, 0.7f, 1.7f );
 
-		[Tooltip("Off drops to a single deck. A uniform branch in the shader, so the second deck " +
+		[Tooltip( "Off drops to a single deck. A uniform branch in the shader, so the second deck " +
 			"then costs exactly nothing - which is what makes one layer against two a clean " +
-			"measurement of what the depth cue is worth.")]
+			"measurement of what the depth cue is worth." )]
 		public bool upperLayerEnabled = true;
 
-		[Header("Lighting")]
-		[Tooltip("Sun colour across sun elevation: t=0 is 90 degrees below the horizon, t=0.5 " +
+		[Header( "Lighting" )]
+		[Tooltip( "Sun colour across sun elevation: t=0 is 90 degrees below the horizon, t=0.5 " +
 			"exactly on it, t=1 at the zenith. Author these against the sky gradient's horizon " +
 			"colours - a Gradient is the most artist-facing surface Unity has, which is itself a " +
-			"data point for the authoring comparison.")]
+			"data point for the authoring comparison." )]
 		public Gradient sunColour;
 
-		[Tooltip("Skylight on the clouds, on the same elevation axis. This is what carries the " +
-			"sunset onto the undersides, and what stops them going black at night.")]
+		[Tooltip( "Skylight on the clouds, on the same elevation axis. This is what carries the " +
+			"sunset onto the undersides, and what stops them going black at night." )]
 		public Gradient ambientColour;
 
-		[Range(0f, 4f)] public float sunIntensity = 1.4f;
-		[Range(0f, 4f)] public float ambientIntensity = 1f;
+		[Range( 0f, 4f )] public float sunIntensity = 1.4f;
+		[Range( 0f, 4f )] public float ambientIntensity = 1f;
 
-		[Tooltip("Wraps the terminator around the back of the relief. Real cloud scatters light well " +
-			"past the geometric terminator, and a bare N.L on a sheet reads as embossed metal.")]
-		[Range(0f, 1f)] public float wrap = 0.45f;
+		[Tooltip( "Wraps the terminator around the back of the relief. Real cloud scatters light well " +
+			"past the geometric terminator, and a bare N.L on a sheet reads as embossed metal." )]
+		[Range( 0f, 1f )] public float wrap = 0.45f;
 
-		[Tooltip("How much sunlight reaches the underside. A sheet shaded only by its outward normal " +
-			"looks identical from below, which is the one view a low camera always has.")]
-		[Range(0f, 1f)] public float baseLight = 0.25f;
+		[Tooltip( "How much sunlight reaches the underside. A sheet shaded only by its outward normal " +
+			"looks identical from below, which is the one view a low camera always has." )]
+		[Range( 0f, 1f )] public float baseLight = 0.25f;
 
-		[Header("Wind")]
-		[Tooltip("Axis the layer rotates about. Tilted off the pole so clouds cross latitudes rather " +
-			"than sliding along them forever.")]
-		public Vector3 windAxis = new Vector3(0.15f, 1f, 0.1f);
+		[Header( "Wind" )]
+		[Tooltip( "Axis the layer rotates about. Tilted off the pole so clouds cross latitudes rather " +
+			"than sliding along them forever." )]
+		public Vector3 windAxis = new Vector3( 0.15f, 1f, 0.1f );
 
-		[Tooltip("Degrees per unit of scene time. Rotating the sample point rather than scrolling " +
-			"UVs, which would tear at the poles.")]
+		[Tooltip( "Degrees per unit of scene time. Rotating the sample point rather than scrolling " +
+			"UVs, which would tear at the poles." )]
 		public float windSpeed = 0.15f;
 
-		[Header("Shadows on the ground")]
-		[Tooltip("Publishes the SAME globals the volumetric's shadow pass does, so Terrain.shader " +
+		[Header( "Shadows on the ground" )]
+		[Tooltip( "Publishes the SAME globals the volumetric's shadow pass does, so Terrain.shader " +
 			"and Ocean.shader need no change - cloudShadow() in SurfaceLighting.hlsl already samples " +
-			"them and neither surface can tell which renderer wrote the map.")]
+			"them and neither surface can tell which renderer wrote the map." )]
 		public ComputeShader shadowCompute;
 
-		[Tooltip("Equirectangular, so it needs no shadow frustum and does not change with the " +
+		[Tooltip( "Equirectangular, so it needs no shadow frustum and does not change with the " +
 			"camera. Matches the volumetric's default, because the two shadow maps have to be the " +
-			"same size for their cost to be comparable.")]
-		public Vector2Int shadowMapSize = new Vector2Int(512, 256);
+			"same size for their cost to be comparable." )]
+		public Vector2Int shadowMapSize = new Vector2Int( 512, 256 );
 
-		[Tooltip("Widens the footprint each deck is read at, relative to what the map can actually " +
+		[Tooltip( "Widens the footprint each deck is read at, relative to what the map can actually " +
 			"represent. 1 matches the map exactly and is what stops the shadows flickering; lower " +
 			"reads finer detail than the map can carry, which aliases, and the aliasing moves with " +
-			"the wind.")]
-		[Range(0.5f, 4f)] public float shadowDetailScale = 1f;
+			"the wind." )]
+		[Range( 0.5f, 4f )] public float shadowDetailScale = 1f;
 
-		[Tooltip("0 disables ground shadows entirely, which is also what happens when this effect " +
+		[Tooltip( "0 disables ground shadows entirely, which is also what happens when this effect " +
 			"is disabled. Without them the baseline would be missing a FEATURE rather than rendering " +
-			"the same one more cheaply, and part of the measured gap would be the absence.")]
-		[Range(0f, 1f)] public float shadowStrength = 0.85f;
+			"the same one more cheaply, and part of the measured gap would be the absence." )]
+		[Range( 0f, 1f )] public float shadowStrength = 0.85f;
 
-		[Tooltip("Light shafts, when this renderer's decks are the ones casting them. The shafts " +
+		[Tooltip( "Light shafts, when this renderer's decks are the ones casting them. The shafts " +
 			"themselves live in the physically based atmosphere's raymarch, so this does nothing in " +
 			"a baseline-sky profile - but a PBR-sky/baseline-cloud profile is a real combination and " +
-			"it would otherwise read whatever the volumetric last published.")]
-		[Range(0f, 1f)] public float shaftStrength = 1f;
+			"it would otherwise read whatever the volumetric last published." )]
+		[Range( 0f, 1f )] public float shaftStrength = 1f;
 
-		[Header("Cost")]
-		[Tooltip("Full shades every pixel; Half shades a quarter of them and upsamples with the same " +
+		[Header( "Cost" )]
+		[Tooltip( "Full shades every pixel; Half shades a quarter of them and upsamples with the same " +
 			"depth-aware filter the volumetric uses. The filter is shared code, so the gap between " +
-			"Full and Half means the same thing for both renderers.")]
+			"Full and Half means the same thing for both renderers." )]
 		public CostMode costMode = CostMode.Full;
 
-		[Range(0f, 64f)] public float depthRejection = 8f;
+		[Range( 0f, 64f )] public float depthRejection = 8f;
 
-		[Tooltip("Null draws nothing but pays the whole pass structure - target allocation, two " +
+		[Tooltip( "Null draws nothing but pays the whole pass structure - target allocation, two " +
 			"blits, the composite. Subtracting it is what separates 'what a cloud renderer costs to " +
-			"have at all' from 'what this shading model costs'.")]
+			"have at all' from 'what this shading model costs'." )]
 		public Variant variant = Variant.Shaded;
 
-		[Tooltip("Used by the Null variant. Structurally identical to the main shader, with a " +
-			"fragment that returns no cloud.")]
+		[Tooltip( "Used by the Null variant. Structurally identical to the main shader, with a " +
+			"fragment that returns no cloud." )]
 		public Shader nullShader;
 
 		public DebugMode debugMode = DebugMode.Off;
@@ -261,14 +261,14 @@ namespace Clouds
 		Light sun;
 
 		/// <summary>Whichever of the deck's two textures the current source selects.</summary>
-		public Texture2D TextureFor(LayerSettings layer)
+		public Texture2D TextureFor( LayerSettings layer )
 		{
-			if (layer == null) { return null; }
+			if ( layer == null ) { return null; }
 			return textureSource == TextureSource.Baked ? layer.baked : layer.authored;
 		}
 
 		/// <summary>True when the upper deck is both wanted and available.</summary>
-		public bool UpperActive => upperLayerEnabled && TextureFor(upper) != null;
+		public bool UpperActive => upperLayerEnabled && TextureFor( upper ) != null;
 
 		// Logged once rather than every frame, and reset whenever the effect is re-enabled.
 		bool warnedMissingLower;
@@ -285,8 +285,8 @@ namespace Clouds
 		/// </summary>
 		public override void OnEnable()
 		{
-			if (shader == null) { shader = Shader.Find("Hidden/BaselineClouds"); }
-			if (nullShader == null) { nullShader = Shader.Find("Hidden/BaselineCloudsNull"); }
+			if ( shader == null ) { shader = Shader.Find( "Hidden/BaselineClouds" ); }
+			if ( nullShader == null ) { nullShader = Shader.Find( "Hidden/BaselineCloudsNull" ); }
 			warnedMissingLower = false;
 			warnedMissingUpper = false;
 
@@ -309,16 +309,16 @@ namespace Clouds
 
 		void ReleaseNullMaterial()
 		{
-			if (nullMaterial == null) { return; }
-			DestroyImmediate(nullMaterial);
+			if ( nullMaterial == null ) { return; }
+			DestroyImmediate( nullMaterial );
 			nullMaterial = null;
 		}
 
 		void ReleaseShadowMap()
 		{
-			if (shadowMap == null) { return; }
+			if ( shadowMap == null ) { return; }
 			shadowMap.Release();
-			DestroyImmediate(shadowMap);
+			DestroyImmediate( shadowMap );
 			shadowMap = null;
 		}
 
@@ -330,16 +330,16 @@ namespace Clouds
 		/// evaluation. Same output, same consumers, same resolution - which makes the shadow pass
 		/// its own clean sub-comparison rather than a confound inside the main one.
 		/// </summary>
-		void RenderShadowMap(Camera renderingCamera)
+		void RenderShadowMap( Camera renderingCamera )
 		{
-			if (cam != null && renderingCamera != cam) { return; }
+			if ( cam != null && renderingCamera != cam ) { return; }
 
 			// The null variant casts no shadows either. It stands for a cloud renderer that draws
 			// nothing, and a control arm that left the ground shadowed by clouds it is not drawing
 			// would put the shadow pass's cost - and its visible effect - on the wrong side of the
 			// subtraction.
-			if (!enabled || variant == Variant.Null ||
-				shadowCompute == null || shadowStrength <= 0f || TextureFor(lower) == null)
+			if ( !enabled || variant == Variant.Null ||
+				shadowCompute == null || shadowStrength <= 0f || TextureFor( lower ) == null )
 			{
 				// Only retract what THIS effect published.
 				//
@@ -349,7 +349,7 @@ namespace Clouds
 				// one would then wipe the strength the enabled one had just set, and which of them
 				// won would come down to callback order. The symptom is ground shadows that flicker
 				// or never appear, with nothing wrong in either renderer.
-				if (publishedShadows)
+				if ( publishedShadows )
 				{
 					publishedShadows = false;
 					CloudShadowGlobals.Retract();
@@ -357,16 +357,16 @@ namespace Clouds
 				return;
 			}
 
-			int width = Mathf.Max(8, shadowMapSize.x);
-			int height = Mathf.Max(8, shadowMapSize.y);
+			int width = Mathf.Max( 8, shadowMapSize.x );
+			int height = Mathf.Max( 8, shadowMapSize.y );
 
-			if (shadowMap == null || !shadowMap.IsCreated() ||
-				shadowMap.width != width || shadowMap.height != height)
+			if ( shadowMap == null || !shadowMap.IsCreated() ||
+				shadowMap.width != width || shadowMap.height != height )
 			{
 				ReleaseShadowMap();
 				// RGBA8 rather than R8 for the reason the volumetric's map documents: random write
 				// to a single-channel 8-bit target is not universally supported.
-				shadowMap = new RenderTexture(width, height, 0, GraphicsFormat.R8G8B8A8_UNorm)
+				shadowMap = new RenderTexture( width, height, 0, GraphicsFormat.R8G8B8A8_UNorm )
 				{
 					enableRandomWrite = true,
 					wrapModeU = TextureWrapMode.Repeat,   // longitude wraps
@@ -383,35 +383,35 @@ namespace Clouds
 			// on - a coupling between two unrelated toggles.
 			Advance();
 
-			Vector3 dirToSun = ObserverGeometry.DirectionToSun(ref sun);
+			Vector3 dirToSun = ObserverGeometry.DirectionToSun( ref sun );
 
-			int kernel = shadowKernel.Of(shadowCompute, "CSBaselineCloudShadow");
-			BindLayer(shadowCompute, kernel, lowerIds, lower);
-			BindLayer(shadowCompute, kernel, upperIds, upper);
-			shadowCompute.SetInt("baselineLayerCount", UpperActive ? 2 : 1);
-			shadowCompute.SetFloat("baselineBodyRadius", bodyRadius);
+			int kernel = shadowKernel.Of( shadowCompute, "CSBaselineCloudShadow" );
+			BindLayer( shadowCompute, kernel, lowerIds, lower );
+			BindLayer( shadowCompute, kernel, upperIds, upper );
+			shadowCompute.SetInt( "baselineLayerCount", UpperActive ? 2 : 1 );
+			shadowCompute.SetFloat( "baselineBodyRadius", bodyRadius );
 
-			shadowCompute.SetTexture(kernel, "Result", shadowMap);
-			shadowCompute.SetVector("shadowMapSize", new Vector2(width, height));
-			shadowCompute.SetVector("shadowSunDir", dirToSun);
-			shadowCompute.SetFloat("shadowDetailScale", shadowDetailScale);
+			shadowCompute.SetTexture( kernel, "Result", shadowMap );
+			shadowCompute.SetVector( "shadowMapSize", new Vector2( width, height ) );
+			shadowCompute.SetVector( "shadowSunDir", dirToSun );
+			shadowCompute.SetFloat( "shadowDetailScale", shadowDetailScale );
 
-			shadowCompute.Dispatch(kernel, Mathf.CeilToInt(width / 8f), Mathf.CeilToInt(height / 8f), 1);
+			shadowCompute.Dispatch( kernel, Mathf.CeilToInt( width / 8f ), Mathf.CeilToInt( height / 8f ), 1 );
 
 			// Same publisher the volumetric uses, so neither arm can leave the other's field behind
 			// and the atmosphere's computes get their binding either way.
 			//
 			// The deck radius is what the raymarch intersects to find where a sun ray crosses cloud.
 			// Mid-deck between the two layers, which is the least wrong single radius for a pair.
-			CloudShadowGlobals.Publish(shadowMap, shadowStrength, shaftStrength,
-				bodyRadius + (UpperActive ? (lower.altitude + upper.altitude) * 0.5f : lower.altitude));
+			CloudShadowGlobals.Publish( shadowMap, shadowStrength, shaftStrength,
+				bodyRadius + ( UpperActive ? ( lower.altitude + upper.altitude ) * 0.5f : lower.altitude ) );
 			publishedShadows = true;
 		}
 
-		protected override void RenderEffectToTarget(RenderTexture source, RenderTexture target)
+		protected override void RenderEffectToTarget( RenderTexture source, RenderTexture target )
 		{
-			Texture2D lowerTex = TextureFor(lower);
-			if (lowerTex == null)
+			Texture2D lowerTex = TextureFor( lower );
+			if ( lowerTex == null )
 			{
 				// Nothing baked or nothing wired: pass the frame through untouched rather than
 				// drawing something misleading.
@@ -420,53 +420,53 @@ namespace Clouds
 				// not being in the chain at all - and an enabled renderer that draws nothing is the
 				// one failure that looks exactly like success in a comparison this project keeps
 				// making by eye.
-				Warn(ref warnedMissingLower, "lower");
-				Graphics.Blit(source, target);
+				Warn( ref warnedMissingLower, "lower" );
+				Graphics.Blit( source, target );
 				return;
 			}
 
 			// Wanted but unassigned is worth saying too: it silently halves the renderer, and a
 			// missing depth cue is exactly the sort of thing that gets written up as a property of
 			// the technique.
-			if (upperLayerEnabled && TextureFor(upper) == null) { Warn(ref warnedMissingUpper, "upper"); }
+			if ( upperLayerEnabled && TextureFor( upper ) == null ) { Warn( ref warnedMissingUpper, "upper" ); }
 
 			Advance();
 
 			int divisor = costMode == CostMode.Half ? 2 : 1;
-			int width = Mathf.Max(1, source.width / divisor);
-			int height = Mathf.Max(1, source.height / divisor);
+			int width = Mathf.Max( 1, source.width / divisor );
+			int height = Mathf.Max( 1, source.height / divisor );
 
 			// The null variant runs the identical sequence below - same temporary, same two blits,
 			// same composite - and differs only in that its first pass returns no cloud. Anything
 			// short-circuited here would be excluded from the structure it is meant to price.
 			Material active = material;
-			if (variant == Variant.Null)
+			if ( variant == Variant.Null )
 			{
-				CreateMaterial(ref nullMaterial, nullShader);
+				CreateMaterial( ref nullMaterial, nullShader );
 				active = nullMaterial;
 			}
 			else
 			{
-				ApplyShadingValuesTo(active, height);
+				ApplyShadingValuesTo( active, height );
 			}
 
 			// Half format for the same reason the volumetric uses one: a lit cloud top is not
 			// bounded by 1, and an 8-bit target would clip it flat.
 			RenderTexture cloudTex = RenderTexture.GetTemporary(
-				width, height, 0, RenderTextureFormat.ARGBHalf);
+				width, height, 0, RenderTextureFormat.ARGBHalf );
 			cloudTex.filterMode = FilterMode.Bilinear;
 
-			Graphics.Blit(source, cloudTex, active, 0);
+			Graphics.Blit( source, cloudTex, active, 0 );
 
-			active.SetTexture("_CloudTex", cloudTex);
-			active.SetVector("_CloudTexSize", new Vector4(width, height, 1f / width, 1f / height));
-			active.SetFloat("_CloudUpsample", divisor);
-			active.SetFloat("_CloudDepthRejection", depthRejection);
-			active.SetFloat("_CloudDebugRegion", -1f);
+			active.SetTexture( "_CloudTex", cloudTex );
+			active.SetVector( "_CloudTexSize", new Vector4( width, height, 1f / width, 1f / height ) );
+			active.SetFloat( "_CloudUpsample", divisor );
+			active.SetFloat( "_CloudDepthRejection", depthRejection );
+			active.SetFloat( "_CloudDebugRegion", -1f );
 
-			Graphics.Blit(source, target, active, 1);
+			Graphics.Blit( source, target, active, 1 );
 
-			RenderTexture.ReleaseTemporary(cloudTex);
+			RenderTexture.ReleaseTemporary( cloudTex );
 		}
 
 		/// <summary>
@@ -479,11 +479,11 @@ namespace Clouds
 			// Once per frame however many callers ask. The shadow pass and the render both need the
 			// decks at the same offset, and stepping twice would make them drift at double speed
 			// whenever shadows happen to be on - a coupling between two unrelated toggles.
-			if (Time.frameCount == lastAdvanceFrame) { return; }
+			if ( Time.frameCount == lastAdvanceFrame ) { return; }
 			lastAdvanceFrame = Time.frameCount;
 
-			if (solarSystem == null) { solarSystem = FindFirstObjectByType<SolarSystem.SolarSystemManager>(); }
-			float timeScale = solarSystem == null ? 1f : (solarSystem.animate ? solarSystem.timeMultiplier : 0f);
+			if ( solarSystem == null ) { solarSystem = FindFirstObjectByType<SolarSystem.SolarSystemManager>(); }
+			float timeScale = solarSystem == null ? 1f : ( solarSystem.animate ? solarSystem.timeMultiplier : 0f );
 			elapsed += Time.deltaTime * timeScale;
 		}
 
@@ -499,40 +499,40 @@ namespace Clouds
 		/// `passHeight` is the pixel height of whatever the shading writes into, since the mip
 		/// footprint follows the pass resolution rather than the frame's.
 		/// </summary>
-		public void ApplyShadingValuesTo(Material target, int passHeight)
+		public void ApplyShadingValuesTo( Material target, int passHeight )
 		{
 			EnsureGradients();
 
-			BindLayer(target, lowerIds, lower);
+			BindLayer( target, lowerIds, lower );
 			// The upper deck's uniforms are bound whether or not it is drawn - a stale texture bound
 			// to an unused sampler costs nothing, whereas leaving it unbound after a toggle would
 			// leave whatever was there last, which is the class of bug an omitted benchmark toggle
 			// produces.
-			BindLayer(target, upperIds, upper);
-			target.SetInt("baselineLayerCount", UpperActive ? 2 : 1);
-			target.SetFloat("baselineBodyRadius", bodyRadius);
+			BindLayer( target, upperIds, upper );
+			target.SetInt( "baselineLayerCount", UpperActive ? 2 : 1 );
+			target.SetFloat( "baselineBodyRadius", bodyRadius );
 
-			target.SetInt("baselineCloudDebugMode", (int)debugMode);
+			target.SetInt( "baselineCloudDebugMode", (int)debugMode );
 
-			Vector3 planetCentre = ObserverGeometry.PlanetCentre(ref planet);
-			Vector3 dirToSun = ObserverGeometry.DirectionToSun(ref sun);
+			Vector3 planetCentre = ObserverGeometry.PlanetCentre( ref planet );
+			Vector3 dirToSun = ObserverGeometry.DirectionToSun( ref sun );
 			Vector3 observer = cam != null ? cam.transform.position : Vector3.zero;
-			float sunElevation01 = ObserverGeometry.SunElevation01(observer, planetCentre, dirToSun);
+			float sunElevation01 = ObserverGeometry.SunElevation01( observer, planetCentre, dirToSun );
 
-			target.SetVector("baselineCloudSunDir", dirToSun);
-			target.SetColor("baselineCloudSunColour", sunColour.Evaluate(sunElevation01));
-			target.SetColor("baselineCloudAmbientColour", ambientColour.Evaluate(sunElevation01));
-			target.SetFloat("baselineCloudSunIntensity", sunIntensity);
-			target.SetFloat("baselineCloudAmbientIntensity", ambientIntensity);
-			target.SetFloat("baselineCloudWrap", wrap);
-			target.SetFloat("baselineCloudBaseLight", baseLight);
+			target.SetVector( "baselineCloudSunDir", dirToSun );
+			target.SetColor( "baselineCloudSunColour", sunColour.Evaluate( sunElevation01 ) );
+			target.SetColor( "baselineCloudAmbientColour", ambientColour.Evaluate( sunElevation01 ) );
+			target.SetFloat( "baselineCloudSunIntensity", sunIntensity );
+			target.SetFloat( "baselineCloudAmbientIntensity", ambientIntensity );
+			target.SetFloat( "baselineCloudWrap", wrap );
+			target.SetFloat( "baselineCloudBaseLight", baseLight );
 
 			// Radians one screen pixel of THIS pass subtends. The mip footprint is derived from it,
 			// so it has to follow the pass resolution rather than the frame's - at Half the pixels
 			// are twice as wide and the layer has to be read one mip coarser to match.
 			float fov = cam != null ? cam.fieldOfView : 60f;
-			float pixelAngle = 2f * Mathf.Tan(fov * 0.5f * Mathf.Deg2Rad) / Mathf.Max(1, passHeight);
-			target.SetFloat("baselineCloudPixelAngle", pixelAngle);
+			float pixelAngle = 2f * Mathf.Tan( fov * 0.5f * Mathf.Deg2Rad ) / Mathf.Max( 1, passHeight );
+			target.SetFloat( "baselineCloudPixelAngle", pixelAngle );
 		}
 
 		/// <summary>
@@ -553,36 +553,36 @@ namespace Clouds
 		{
 			public readonly int texture, radius, thickness, opacity, contrast, relief, texels, drift;
 
-			public LayerIds(string suffix)
+			public LayerIds( string suffix )
 			{
-				texture = Shader.PropertyToID("BaselineCloudLayer" + suffix);
-				radius = Shader.PropertyToID("baselineLayerRadius" + suffix);
-				thickness = Shader.PropertyToID("baselineLayerThickness" + suffix);
-				opacity = Shader.PropertyToID("baselineLayerOpacity" + suffix);
-				contrast = Shader.PropertyToID("baselineLayerContrast" + suffix);
-				relief = Shader.PropertyToID("baselineLayerRelief" + suffix);
-				texels = Shader.PropertyToID("baselineLayerTexels" + suffix);
-				drift = Shader.PropertyToID("baselineLayerDrift" + suffix);
+				texture = Shader.PropertyToID( "BaselineCloudLayer" + suffix );
+				radius = Shader.PropertyToID( "baselineLayerRadius" + suffix );
+				thickness = Shader.PropertyToID( "baselineLayerThickness" + suffix );
+				opacity = Shader.PropertyToID( "baselineLayerOpacity" + suffix );
+				contrast = Shader.PropertyToID( "baselineLayerContrast" + suffix );
+				relief = Shader.PropertyToID( "baselineLayerRelief" + suffix );
+				texels = Shader.PropertyToID( "baselineLayerTexels" + suffix );
+				drift = Shader.PropertyToID( "baselineLayerDrift" + suffix );
 			}
 		}
 
-		static readonly LayerIds lowerIds = new LayerIds("A");
-		static readonly LayerIds upperIds = new LayerIds("B");
+		static readonly LayerIds lowerIds = new LayerIds( "A" );
+		static readonly LayerIds upperIds = new LayerIds( "B" );
 
 		CachedKernel shadowKernel;
 
-		void BindLayer(Material target, in LayerIds ids, LayerSettings layer)
+		void BindLayer( Material target, in LayerIds ids, LayerSettings layer )
 		{
-			Texture2D tex = TextureFor(layer);
+			Texture2D tex = TextureFor( layer );
 
-			target.SetTexture(ids.texture, tex);
-			target.SetFloat(ids.radius, bodyRadius + layer.altitude);
-			target.SetFloat(ids.thickness, layer.thickness);
-			target.SetFloat(ids.opacity, layer.opacity);
-			target.SetFloat(ids.contrast, layer.contrast);
-			target.SetFloat(ids.relief, layer.reliefStrength);
-			target.SetFloat(ids.texels, tex != null ? tex.width : 2048);
-			target.SetMatrix(ids.drift, DriftMatrix(layer.windScale));
+			target.SetTexture( ids.texture, tex );
+			target.SetFloat( ids.radius, bodyRadius + layer.altitude );
+			target.SetFloat( ids.thickness, layer.thickness );
+			target.SetFloat( ids.opacity, layer.opacity );
+			target.SetFloat( ids.contrast, layer.contrast );
+			target.SetFloat( ids.relief, layer.reliefStrength );
+			target.SetFloat( ids.texels, tex != null ? tex.width : 2048 );
+			target.SetMatrix( ids.drift, DriftMatrix( layer.windScale ) );
 		}
 
 		/// <summary>
@@ -592,32 +592,32 @@ namespace Clouds
 		/// SetProperties do - a divergence here would read as shadows not matching the clouds
 		/// casting them, which looks like a plausible offset rather than an obvious fault.
 		/// </summary>
-		void BindLayer(ComputeShader compute, int kernel, in LayerIds ids, LayerSettings layer)
+		void BindLayer( ComputeShader compute, int kernel, in LayerIds ids, LayerSettings layer )
 		{
-			Texture2D tex = TextureFor(layer);
+			Texture2D tex = TextureFor( layer );
 
 			// A compute cannot take a null texture binding the way a material can, so an unassigned
 			// deck gets an opaque-black stand-in - alpha 0, which is no cloud and casts no shadow.
-			compute.SetTexture(kernel, ids.texture,
-				tex != null ? (Texture)tex : Texture2D.blackTexture);
-			compute.SetFloat(ids.radius, bodyRadius + layer.altitude);
-			compute.SetFloat(ids.thickness, layer.thickness);
-			compute.SetFloat(ids.opacity, layer.opacity);
-			compute.SetFloat(ids.contrast, layer.contrast);
-			compute.SetFloat(ids.relief, layer.reliefStrength);
-			compute.SetFloat(ids.texels, tex != null ? tex.width : 2048);
-			compute.SetMatrix(ids.drift, DriftMatrix(layer.windScale));
+			compute.SetTexture( kernel, ids.texture,
+				tex != null ? (Texture)tex : Texture2D.blackTexture );
+			compute.SetFloat( ids.radius, bodyRadius + layer.altitude );
+			compute.SetFloat( ids.thickness, layer.thickness );
+			compute.SetFloat( ids.opacity, layer.opacity );
+			compute.SetFloat( ids.contrast, layer.contrast );
+			compute.SetFloat( ids.relief, layer.reliefStrength );
+			compute.SetFloat( ids.texels, tex != null ? tex.width : 2048 );
+			compute.SetMatrix( ids.drift, DriftMatrix( layer.windScale ) );
 		}
 
 		/// <summary>Once per enable, not once per frame.</summary>
-		void Warn(ref bool alreadyWarned, string which)
+		void Warn( ref bool alreadyWarned, string which )
 		{
-			if (alreadyWarned) { return; }
+			if ( alreadyWarned ) { return; }
 			alreadyWarned = true;
 
-			Debug.LogWarning($"[Baseline clouds] '{name}' is enabled but its {which} deck's " +
+			Debug.LogWarning( $"[Baseline clouds] '{name}' is enabled but its {which} deck's " +
 				$"{textureSource} texture is unassigned, so that deck is drawing nothing. Assign " +
-				"it on the effect asset, or bake it from Baseline Cloud Settings.", this);
+				"it on the effect asset, or bake it from Baseline Cloud Settings.", this );
 		}
 
 		/// <summary>
@@ -628,10 +628,10 @@ namespace Clouds
 		/// The two decks must get DIFFERENT scales here. Drifting at the same rate they move
 		/// rigidly together and never separate, and the separation is the whole parallax.
 		/// </summary>
-		Matrix4x4 DriftMatrix(float speedScale)
+		Matrix4x4 DriftMatrix( float speedScale )
 		{
 			Vector3 axis = windAxis.sqrMagnitude > 1e-6f ? windAxis.normalized : Vector3.up;
-			return Matrix4x4.Rotate(Quaternion.AngleAxis(elapsed * windSpeed * speedScale, axis));
+			return Matrix4x4.Rotate( Quaternion.AngleAxis( elapsed * windSpeed * speedScale, axis ) );
 		}
 
 		/// <summary>
@@ -645,9 +645,9 @@ namespace Clouds
 		/// Two white keys is the signature of the default and of nothing anyone would deliberately
 		/// author, so it is safe to overwrite. Anything else is left alone.
 		/// </summary>
-		static bool NeedsAuthoring(Gradient gradient)
+		static bool NeedsAuthoring( Gradient gradient )
 		{
-			if (gradient == null) { return true; }
+			if ( gradient == null ) { return true; }
 
 			// Read ONCE. Gradient.colorKeys is a property that copies into a fresh array on every
 			// access, and this used to touch it three times - so a check that runs every frame from
@@ -655,13 +655,13 @@ namespace Clouds
 			// question about two.
 			GradientColorKey[] keys = gradient.colorKeys;
 
-			if (keys == null || keys.Length < 2) { return true; }
-			if (keys.Length > 2) { return false; }
+			if ( keys == null || keys.Length < 2 ) { return true; }
+			if ( keys.Length > 2 ) { return false; }
 
-			foreach (GradientColorKey key in keys)
+			foreach ( GradientColorKey key in keys )
 			{
 				Color c = key.color;
-				if (c.r < 0.999f || c.g < 0.999f || c.b < 0.999f) { return false; }
+				if ( c.r < 0.999f || c.g < 0.999f || c.b < 0.999f ) { return false; }
 			}
 			return true;
 		}
@@ -674,7 +674,7 @@ namespace Clouds
 		/// the decks at night, and the usual response is to wind sunIntensity down to hide it, which
 		/// then flattens the relief in daylight too.
 		/// </summary>
-		[ContextMenu("Reset lighting ramps")]
+		[ContextMenu( "Reset lighting ramps" )]
 		public void ResetLightingRamps()
 		{
 			sunColour = null;
@@ -693,7 +693,7 @@ namespace Clouds
 		/// </summary>
 		void EnsureGradients()
 		{
-			if (NeedsAuthoring(sunColour))
+			if ( NeedsAuthoring( sunColour ) )
 			{
 				sunColour = new Gradient();
 				sunColour.SetKeys(
@@ -706,10 +706,10 @@ namespace Clouds
 						new GradientColorKey(new Color(1.000f, 0.960f, 0.910f), 0.667f),   //  30
 						new GradientColorKey(new Color(1.000f, 1.000f, 1.000f), 1.000f)    //  90
 					},
-					new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(1f, 1f) });
+					new[] { new GradientAlphaKey( 1f, 0f ), new GradientAlphaKey( 1f, 1f ) } );
 			}
 
-			if (NeedsAuthoring(ambientColour))
+			if ( NeedsAuthoring( ambientColour ) )
 			{
 				ambientColour = new Gradient();
 				ambientColour.SetKeys(
@@ -725,7 +725,7 @@ namespace Clouds
 						new GradientColorKey(new Color(0.480f, 0.560f, 0.680f), 0.667f),   //  30
 						new GradientColorKey(new Color(0.500f, 0.580f, 0.700f), 1.000f)    //  90
 					},
-					new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(1f, 1f) });
+					new[] { new GradientAlphaKey( 1f, 0f ), new GradientAlphaKey( 1f, 1f ) } );
 			}
 		}
 	}

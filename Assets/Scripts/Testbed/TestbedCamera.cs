@@ -26,11 +26,11 @@ public class TestbedCamera : MonoBehaviour
 {
 	public enum Mode { Orbit, FreeFly }
 
-	[Header("References")]
+	[Header( "References" )]
 	public Camera cam;
 	public TerrainHeightSettings heightSettings;
 
-	[Header("Mode")]
+	[Header( "Mode" )]
 	// Free fly by default. Orbit is the better framing for a strategy-game screenshot, but fly is
 	// the mode you want when checking whether something looks right from an arbitrary angle, which
 	// is most of what this testbed is for.
@@ -39,28 +39,28 @@ public class TestbedCamera : MonoBehaviour
 	// Harness sets this false to take exclusive control of the pose.
 	public bool inputEnabled = true;
 
-	[Header("Orbit state")]
-	public CoordinateDegrees coordinate = new CoordinateDegrees(0, 20);
+	[Header( "Orbit state" )]
+	public CoordinateDegrees coordinate = new CoordinateDegrees( 0, 20 );
 	// Units above the terrain sphere (not above local ground height).
 	public float altitude = 10f;
 	// -90 = straight up at the sky, 0 = horizon, +90 = straight down.
-	[Range(-90f, 90f)] public float pitch = 55f;
+	[Range( -90f, 90f )] public float pitch = 55f;
 	// Degrees clockwise from north.
 	public float heading = 0f;
 	// Rotation about the view axis. Stays 0 under normal use, but free-fly with
 	// gravityAlignedRoll off can produce it, and bookmarks preserve it.
-	[Range(-180f, 180f)] public float roll = 0f;
+	[Range( -180f, 180f )] public float roll = 0f;
 
-	[Header("Orbit tuning")]
+	[Header( "Orbit tuning" )]
 	// Radians of surface arc per second, at referenceAltitude.
 	public float panSpeed = 0.35f;
 	public float referenceAltitude = 10f;
 
-	[Tooltip("Minimum altitude to come out of a camera mode switch at, as a fraction of the " +
+	[Tooltip( "Minimum altitude to come out of a camera mode switch at, as a fraction of the " +
 		"planet radius. Only ever raises, so a camera already further out keeps its height. A " +
 		"fraction rather than a distance so it follows any planet scale on its own: 0.5 puts the " +
-		"camera at 1.5 radii, where the globe subtends about 84 degrees and fills the view.")]
-	[Range(0.05f, 2f)] public float modeSwitchAltitudeFraction = 0.5f;
+		"camera at 1.5 radii, where the globe subtends about 84 degrees and fills the view." )]
+	[Range( 0.05f, 2f )] public float modeSwitchAltitudeFraction = 0.5f;
 	public float headingSpeed = 60f;
 	public float pitchSpeed = 40f;
 	public float zoomSensitivity = 1.5f;
@@ -69,7 +69,7 @@ public class TestbedCamera : MonoBehaviour
 	// atmosphere keeps rendering. See RenderSettingsController.layerOverrides.
 	public float maxAltitude = 250f;
 
-	[Header("Free-fly tuning")]
+	[Header( "Free-fly tuning" )]
 	public float flySpeed = 20f;
 	public float boostMultiplier = 5f;
 	public float slowMultiplier = 0.2f;
@@ -80,10 +80,10 @@ public class TestbedCamera : MonoBehaviour
 	// Keeps the horizon level, which makes atmospheric gradients much easier to judge.
 	public bool gravityAlignedRoll = true;
 
-	[Header("Optics")]
+	[Header( "Optics" )]
 	public float fieldOfView = 60f;
 
-	[Header("Home view")]
+	[Header( "Home view" )]
 	// The view Reset returns to. Fly somewhere you like, then use the component's
 	// "Set Home To Current View" context menu to capture it.
 	public CameraView homeView = DefaultHomeView;
@@ -92,7 +92,7 @@ public class TestbedCamera : MonoBehaviour
 	// saved, so the demo always opens on the same shot.
 	public bool startAtHomeView = true;
 
-	[Header("Bookmarks")]
+	[Header( "Bookmarks" )]
 	// Key-bound saved views (Z X C V by default). Lives in an asset rather than on this
 	// component so captures made during play mode survive exiting it.
 	public CameraBookmarks bookmarks;
@@ -108,12 +108,12 @@ public class TestbedCamera : MonoBehaviour
 	{
 		get
 		{
-			if (heightSettings != null) { return heightSettings.worldRadius; }
-			if (!warnedMissingHeightSettings)
+			if ( heightSettings != null ) { return heightSettings.worldRadius; }
+			if ( !warnedMissingHeightSettings )
 			{
 				warnedMissingHeightSettings = true;
-				Debug.LogWarning($"{nameof(TestbedCamera)}: heightSettings not assigned, " +
-					$"falling back to worldRadius = {defaultWorldRadius}.", this);
+				Debug.LogWarning( $"{nameof( TestbedCamera )}: heightSettings not assigned, " +
+					$"falling back to worldRadius = {defaultWorldRadius}.", this );
 			}
 			return defaultWorldRadius;
 		}
@@ -123,7 +123,7 @@ public class TestbedCamera : MonoBehaviour
 
 	void OnEnable()
 	{
-		if (cam == null) { cam = GetComponentInChildren<Camera>(); }
+		if ( cam == null ) { cam = GetComponentInChildren<Camera>(); }
 		ApplyOptics();
 		ApplyPose();
 	}
@@ -134,27 +134,27 @@ public class TestbedCamera : MonoBehaviour
 		// the Game root during the world bootstrap, so OnEnable can fire more than once,
 		// and a later re-enable should not yank the camera back to home. Start runs before
 		// the first frame is drawn, so there is no flash of the serialized position.
-		if (startAtHomeView) { ResetView(); }
+		if ( startAtHomeView ) { ResetView(); }
 	}
 
 	void Update()
 	{
-		if (!inputEnabled) { return; }
+		if ( !inputEnabled ) { return; }
 
-		if (Input.GetKeyDown(resetKey))
+		if ( Input.GetKeyDown( resetKey ) )
 		{
 			ResetView();
 			return;
 		}
 
-		if (Input.GetKeyDown(toggleModeKey))
+		if ( Input.GetKeyDown( toggleModeKey ) )
 		{
-			SetMode(mode == Mode.Orbit ? Mode.FreeFly : Mode.Orbit);
+			SetMode( mode == Mode.Orbit ? Mode.FreeFly : Mode.Orbit );
 		}
 
-		if (HandleBookmarkInput()) { return; }
+		if ( HandleBookmarkInput() ) { return; }
 
-		if (mode == Mode.Orbit) { ReadOrbitInput(); }
+		if ( mode == Mode.Orbit ) { ReadOrbitInput(); }
 		else { ReadFreeFlyInput(); }
 	}
 
@@ -164,7 +164,7 @@ public class TestbedCamera : MonoBehaviour
 	void LateUpdate()
 	{
 		ApplyOptics();
-		if (mode == Mode.Orbit) { ApplyPose(); }
+		if ( mode == Mode.Orbit ) { ApplyPose(); }
 	}
 
 	// ----------------------------------------------------------------- orbit mode
@@ -174,24 +174,24 @@ public class TestbedCamera : MonoBehaviour
 		float dt = Time.unscaledDeltaTime;
 
 		// Zoom first, so panning uses the altitude the user just selected.
-		float scroll = Input.GetAxisRaw("Mouse ScrollWheel");
-		if (!Mathf.Approximately(scroll, 0f))
+		float scroll = Input.GetAxisRaw( "Mouse ScrollWheel" );
+		if ( !Mathf.Approximately( scroll, 0f ) )
 		{
-			altitude = Mathf.Clamp(altitude * Mathf.Exp(-scroll * zoomSensitivity), minAltitude, maxAltitude);
+			altitude = Mathf.Clamp( altitude * Mathf.Exp( -scroll * zoomSensitivity ), minAltitude, maxAltitude );
 		}
 
-		float strafe = AxisFromKeys(KeyCode.D, KeyCode.A) + AxisFromKeys(KeyCode.RightArrow, KeyCode.LeftArrow);
-		float advance = AxisFromKeys(KeyCode.W, KeyCode.S) + AxisFromKeys(KeyCode.UpArrow, KeyCode.DownArrow);
-		if (strafe != 0f || advance != 0f)
+		float strafe = AxisFromKeys( KeyCode.D, KeyCode.A ) + AxisFromKeys( KeyCode.RightArrow, KeyCode.LeftArrow );
+		float advance = AxisFromKeys( KeyCode.W, KeyCode.S ) + AxisFromKeys( KeyCode.UpArrow, KeyCode.DownArrow );
+		if ( strafe != 0f || advance != 0f )
 		{
-			Pan(Mathf.Clamp(strafe, -1f, 1f), Mathf.Clamp(advance, -1f, 1f), dt);
+			Pan( Mathf.Clamp( strafe, -1f, 1f ), Mathf.Clamp( advance, -1f, 1f ), dt );
 		}
 
-		heading += AxisFromKeys(KeyCode.E, KeyCode.Q) * headingSpeed * dt;
-		heading = Mathf.Repeat(heading, 360f);
+		heading += AxisFromKeys( KeyCode.E, KeyCode.Q ) * headingSpeed * dt;
+		heading = Mathf.Repeat( heading, 360f );
 
 		// Full range: F tilts up past the horizon to the zenith, R down to nadir.
-		pitch = Mathf.Clamp(pitch + AxisFromKeys(KeyCode.R, KeyCode.F) * pitchSpeed * dt, -90f, 90f);
+		pitch = Mathf.Clamp( pitch + AxisFromKeys( KeyCode.R, KeyCode.F ) * pitchSpeed * dt, -90f, 90f );
 	}
 
 	/// <summary>
@@ -200,17 +200,17 @@ public class TestbedCamera : MonoBehaviour
 	/// surface speed uniform. Arc scales with altitude so screen-space pan rate is roughly
 	/// constant as you zoom.
 	/// </summary>
-	void Pan(float strafe, float advance, float dt)
+	void Pan( float strafe, float advance, float dt )
 	{
-		GetOrbitFrame(out Vector3 up, out Vector3 flatFwd, out Vector3 right);
+		GetOrbitFrame( out Vector3 up, out Vector3 flatFwd, out Vector3 right );
 
 		Vector3 dir = flatFwd * advance + right * strafe;
-		if (dir.sqrMagnitude < 1e-8f) { return; }
+		if ( dir.sqrMagnitude < 1e-8f ) { return; }
 		dir.Normalize();
 
-		float arc = panSpeed * (Mathf.Max(altitude, minAltitude) / Mathf.Max(referenceAltitude, 0.01f)) * dt;
-		Vector3 newUp = (up * Mathf.Cos(arc) + dir * Mathf.Sin(arc)).normalized;
-		coordinate = GeoMaths.PointToCoordinate(newUp).ConvertToDegrees();
+		float arc = panSpeed * ( Mathf.Max( altitude, minAltitude ) / Mathf.Max( referenceAltitude, 0.01f ) ) * dt;
+		Vector3 newUp = ( up * Mathf.Cos( arc ) + dir * Mathf.Sin( arc ) ).normalized;
+		coordinate = GeoMaths.PointToCoordinate( newUp ).ConvertToDegrees();
 	}
 
 	/// <summary>
@@ -218,35 +218,35 @@ public class TestbedCamera : MonoBehaviour
 	/// `flatFwd` is the heading direction projected onto the tangent plane, `right` is
 	/// perpendicular to both.
 	/// </summary>
-	void GetOrbitFrame(out Vector3 up, out Vector3 flatFwd, out Vector3 right)
+	void GetOrbitFrame( out Vector3 up, out Vector3 flatFwd, out Vector3 right )
 	{
-		up = GeoMaths.CoordinateToPoint(coordinate.ConvertToRadians(), 1f);
-		GetTangentFrame(up, heading, out flatFwd, out right);
+		up = GeoMaths.CoordinateToPoint( coordinate.ConvertToRadians(), 1f );
+		GetTangentFrame( up, heading, out flatFwd, out right );
 	}
 
 	/// <summary>
 	/// Vector3.up is the north pole in this projection (CoordinateToPoint puts latitude
 	/// on +Y), so projecting it onto the tangent plane gives local north.
 	/// </summary>
-	static Vector3 LocalNorth(Vector3 up)
+	static Vector3 LocalNorth( Vector3 up )
 	{
-		Vector3 north = Vector3.ProjectOnPlane(Vector3.up, up);
-		if (north.sqrMagnitude < 1e-8f)
+		Vector3 north = Vector3.ProjectOnPlane( Vector3.up, up );
+		if ( north.sqrMagnitude < 1e-8f )
 		{
 			// Exactly at a pole - any tangent direction is as good as another.
-			north = Vector3.ProjectOnPlane(Vector3.forward, up);
+			north = Vector3.ProjectOnPlane( Vector3.forward, up );
 		}
 		return north.normalized;
 	}
 
-	static void GetTangentFrame(Vector3 up, float headingDegrees, out Vector3 flatFwd, out Vector3 right)
+	static void GetTangentFrame( Vector3 up, float headingDegrees, out Vector3 flatFwd, out Vector3 right )
 	{
-		Vector3 north = LocalNorth(up);
-		Vector3 east = Vector3.Cross(up, north);
+		Vector3 north = LocalNorth( up );
+		Vector3 east = Vector3.Cross( up, north );
 
 		float h = headingDegrees * Mathf.Deg2Rad;
-		flatFwd = north * Mathf.Cos(h) + east * Mathf.Sin(h);
-		right = Vector3.Cross(up, flatFwd);
+		flatFwd = north * Mathf.Cos( h ) + east * Mathf.Sin( h );
+		right = Vector3.Cross( up, flatFwd );
 	}
 
 	/// <summary>
@@ -256,21 +256,21 @@ public class TestbedCamera : MonoBehaviour
 	/// pose a planned frame will produce - the plan and the camera must not be able to
 	/// disagree, so they share this one implementation.
 	/// </summary>
-	public static void ComputePose(CameraView view, float surfaceRadius,
-		out Vector3 position, out Quaternion rotation)
+	public static void ComputePose( CameraView view, float surfaceRadius,
+		out Vector3 position, out Quaternion rotation )
 	{
-		Vector3 up = GeoMaths.CoordinateToPoint(view.coordinate.ConvertToRadians(), 1f);
-		GetTangentFrame(up, view.heading, out Vector3 flatFwd, out Vector3 right);
+		Vector3 up = GeoMaths.CoordinateToPoint( view.coordinate.ConvertToRadians(), 1f );
+		GetTangentFrame( up, view.heading, out Vector3 flatFwd, out Vector3 right );
 
-		position = up * (surfaceRadius + view.altitude);
-		Vector3 fwd = Quaternion.AngleAxis(view.pitch, right) * flatFwd;
+		position = up * ( surfaceRadius + view.altitude );
+		Vector3 fwd = Quaternion.AngleAxis( view.pitch, right ) * flatFwd;
 
 		// Cross(fwd, right) rather than `up` as the reference: stays exactly orthonormal
 		// at pitch = +/-90, where fwd is parallel to up and LookRotation would degenerate.
-		rotation = Quaternion.LookRotation(fwd, Vector3.Cross(fwd, right));
-		if (Mathf.Abs(view.roll) > 1e-4f)
+		rotation = Quaternion.LookRotation( fwd, Vector3.Cross( fwd, right ) );
+		if ( Mathf.Abs( view.roll ) > 1e-4f )
 		{
-			rotation = Quaternion.AngleAxis(view.roll, fwd) * rotation;
+			rotation = Quaternion.AngleAxis( view.roll, fwd ) * rotation;
 		}
 	}
 
@@ -284,11 +284,11 @@ public class TestbedCamera : MonoBehaviour
 	///
 	/// Direction is preserved, so the swap reads as a zoom rather than a jump to somewhere else.
 	/// </summary>
-	public void SetAltitudeAboveSurface(float targetAltitude)
+	public void SetAltitudeAboveSurface( float targetAltitude )
 	{
-		this.altitude = Mathf.Clamp(targetAltitude, minAltitude, maxAltitude);
+		this.altitude = Mathf.Clamp( targetAltitude, minAltitude, maxAltitude );
 
-		if (mode == Mode.Orbit)
+		if ( mode == Mode.Orbit )
 		{
 			ApplyPose();
 			return;
@@ -299,7 +299,7 @@ public class TestbedCamera : MonoBehaviour
 		Vector3 outward = transform.position.sqrMagnitude > 1e-6f
 			? transform.position.normalized
 			: Vector3.up;
-		transform.position = outward * (SurfaceRadius + this.altitude);
+		transform.position = outward * ( SurfaceRadius + this.altitude );
 	}
 
 	void ApplyPose()
@@ -314,8 +314,8 @@ public class TestbedCamera : MonoBehaviour
 			fieldOfView = fieldOfView
 		};
 
-		ComputePose(view, SurfaceRadius, out Vector3 position, out Quaternion rotation);
-		transform.SetPositionAndRotation(position, rotation);
+		ComputePose( view, SurfaceRadius, out Vector3 position, out Quaternion rotation );
+		transform.SetPositionAndRotation( position, rotation );
 	}
 
 	// -------------------------------------------------------------- free-fly mode
@@ -325,46 +325,46 @@ public class TestbedCamera : MonoBehaviour
 		float dt = Time.unscaledDeltaTime;
 		Vector3 planetUp = PlanetUp();
 
-		if (Input.GetKey(lookModifier))
+		if ( Input.GetKey( lookModifier ) )
 		{
-			float mx = Input.GetAxisRaw("Mouse X") * mouseSensitivity;
-			float my = Input.GetAxisRaw("Mouse Y") * mouseSensitivity;
+			float mx = Input.GetAxisRaw( "Mouse X" ) * mouseSensitivity;
+			float my = Input.GetAxisRaw( "Mouse Y" ) * mouseSensitivity;
 
-			Vector3 fwd = Quaternion.AngleAxis(mx, planetUp) * transform.forward;
+			Vector3 fwd = Quaternion.AngleAxis( mx, planetUp ) * transform.forward;
 
-			Vector3 pitched = Quaternion.AngleAxis(-my, transform.right) * fwd;
+			Vector3 pitched = Quaternion.AngleAxis( -my, transform.right ) * fwd;
 			// Reject pitch that would put the view axis on the pole of the reference
 			// frame, where LookRotation has no defined roll.
-			if (Mathf.Abs(Vector3.Dot(pitched.normalized, planetUp)) < 0.999f) { fwd = pitched; }
+			if ( Mathf.Abs( Vector3.Dot( pitched.normalized, planetUp ) ) < 0.999f ) { fwd = pitched; }
 
 			transform.rotation = gravityAlignedRoll
-				? Quaternion.LookRotation(fwd, planetUp)
-				: Quaternion.LookRotation(fwd, transform.up);
+				? Quaternion.LookRotation( fwd, planetUp )
+				: Quaternion.LookRotation( fwd, transform.up );
 		}
-		else if (gravityAlignedRoll)
+		else if ( gravityAlignedRoll )
 		{
 			// Keep the horizon level as the planet's up direction changes underneath us.
 			Vector3 fwd = transform.forward;
-			if (Mathf.Abs(Vector3.Dot(fwd, planetUp)) < 0.999f)
+			if ( Mathf.Abs( Vector3.Dot( fwd, planetUp ) ) < 0.999f )
 			{
-				transform.rotation = Quaternion.LookRotation(fwd, planetUp);
+				transform.rotation = Quaternion.LookRotation( fwd, planetUp );
 			}
 		}
 
 		float speed = flySpeed;
-		if (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)) { speed *= boostMultiplier; }
-		if (Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt)) { speed *= slowMultiplier; }
-		if (scaleFlySpeedWithAltitude)
+		if ( Input.GetKey( KeyCode.LeftShift ) || Input.GetKey( KeyCode.RightShift ) ) { speed *= boostMultiplier; }
+		if ( Input.GetKey( KeyCode.LeftAlt ) || Input.GetKey( KeyCode.RightAlt ) ) { speed *= slowMultiplier; }
+		if ( scaleFlySpeedWithAltitude )
 		{
-			float altitudeAboveSurface = Mathf.Max(transform.position.magnitude - SurfaceRadius, minAltitude);
-			speed *= altitudeAboveSurface / Mathf.Max(referenceAltitude, 0.01f);
+			float altitudeAboveSurface = Mathf.Max( transform.position.magnitude - SurfaceRadius, minAltitude );
+			speed *= altitudeAboveSurface / Mathf.Max( referenceAltitude, 0.01f );
 		}
 
-		Vector3 move = transform.forward * (AxisFromKeys(KeyCode.W, KeyCode.S) + AxisFromKeys(KeyCode.UpArrow, KeyCode.DownArrow))
-					 + transform.right * (AxisFromKeys(KeyCode.D, KeyCode.A) + AxisFromKeys(KeyCode.RightArrow, KeyCode.LeftArrow))
-					 + planetUp * AxisFromKeys(KeyCode.Space, KeyCode.LeftControl);
+		Vector3 move = transform.forward * ( AxisFromKeys( KeyCode.W, KeyCode.S ) + AxisFromKeys( KeyCode.UpArrow, KeyCode.DownArrow ) )
+					 + transform.right * ( AxisFromKeys( KeyCode.D, KeyCode.A ) + AxisFromKeys( KeyCode.RightArrow, KeyCode.LeftArrow ) )
+					 + planetUp * AxisFromKeys( KeyCode.Space, KeyCode.LeftControl );
 
-		if (move.sqrMagnitude > 1e-8f)
+		if ( move.sqrMagnitude > 1e-8f )
 		{
 			transform.position += move.normalized * speed * dt;
 		}
@@ -382,11 +382,11 @@ public class TestbedCamera : MonoBehaviour
 	/// Switches mode without moving the camera. Entering Orbit reconstructs the orbit
 	/// state from the current transform, so there is no jump-cut in either direction.
 	/// </summary>
-	public void SetMode(Mode newMode)
+	public void SetMode( Mode newMode )
 	{
-		if (newMode == mode) { return; }
+		if ( newMode == mode ) { return; }
 
-		if (newMode == Mode.Orbit) { SeedOrbitFromTransform(); }
+		if ( newMode == Mode.Orbit ) { SeedOrbitFromTransform(); }
 		mode = newMode;
 
 		// Come out of the switch at a height that can be flown from.
@@ -400,9 +400,9 @@ public class TestbedCamera : MonoBehaviour
 		// to orient from - 10 units spans 11.5 units of ground at a 60 degree FOV - and a
 		// fixed 40 was only a third of a radius, still a close-up. Expressed as a fraction it
 		// frames the globe identically at every planet size with nothing to keep in step.
-		float comfortable = Mathf.Clamp(modeSwitchAltitudeFraction * SurfaceRadius, minAltitude, maxAltitude);
+		float comfortable = Mathf.Clamp( modeSwitchAltitudeFraction * SurfaceRadius, minAltitude, maxAltitude );
 		float current = transform.position.magnitude - SurfaceRadius;
-		if (current < comfortable) { SetAltitudeAboveSurface(comfortable); }
+		if ( current < comfortable ) { SetAltitudeAboveSurface( comfortable ); }
 
 	}
 
@@ -429,33 +429,33 @@ public class TestbedCamera : MonoBehaviour
 
 		Vector3 p = transform.position;
 		float r = p.magnitude;
-		if (r < 1e-4f) { return view; }
+		if ( r < 1e-4f ) { return view; }
 
 		Vector3 up = p / r;
-		view.coordinate = GeoMaths.PointToCoordinate(up).ConvertToDegrees();
-		view.altitude = Mathf.Clamp(r - SurfaceRadius, minAltitude, maxAltitude);
+		view.coordinate = GeoMaths.PointToCoordinate( up ).ConvertToDegrees();
+		view.altitude = Mathf.Clamp( r - SurfaceRadius, minAltitude, maxAltitude );
 
 		Vector3 fwd = transform.forward;
-		view.pitch = Mathf.Asin(Mathf.Clamp(-Vector3.Dot(fwd, up), -1f, 1f)) * Mathf.Rad2Deg;
+		view.pitch = Mathf.Asin( Mathf.Clamp( -Vector3.Dot( fwd, up ), -1f, 1f ) ) * Mathf.Rad2Deg;
 
-		Vector3 flat = Vector3.ProjectOnPlane(fwd, up);
-		if (flat.sqrMagnitude < 1e-10f)
+		Vector3 flat = Vector3.ProjectOnPlane( fwd, up );
+		if ( flat.sqrMagnitude < 1e-10f )
 		{
 			// Looking straight up or down: the view axis carries no heading, so take it
 			// from the camera's own up vector, which at +/-90 pitch lies along the
 			// heading direction (negated when looking up).
-			Vector3 camFlat = Vector3.ProjectOnPlane(transform.up, up);
-			if (camFlat.sqrMagnitude < 1e-10f) { return view; }
+			Vector3 camFlat = Vector3.ProjectOnPlane( transform.up, up );
+			if ( camFlat.sqrMagnitude < 1e-10f ) { return view; }
 			flat = view.pitch > 0f ? camFlat : -camFlat;
 		}
 		flat.Normalize();
-		view.heading = Mathf.Repeat(Vector3.SignedAngle(LocalNorth(up), flat, up), 360f);
+		view.heading = Mathf.Repeat( Vector3.SignedAngle( LocalNorth( up ), flat, up ), 360f );
 
 		// Roll is whatever is left between the zero-roll reference up for this
 		// heading/pitch and the camera's actual up.
-		GetTangentFrame(up, view.heading, out Vector3 flatFwd, out Vector3 right);
-		Vector3 refFwd = Quaternion.AngleAxis(view.pitch, right) * flatFwd;
-		view.roll = Vector3.SignedAngle(Vector3.Cross(refFwd, right), transform.up, fwd);
+		GetTangentFrame( up, view.heading, out Vector3 flatFwd, out Vector3 right );
+		Vector3 refFwd = Quaternion.AngleAxis( view.pitch, right ) * flatFwd;
+		view.roll = Vector3.SignedAngle( Vector3.Cross( refFwd, right ), transform.up, fwd );
 
 		return view;
 	}
@@ -489,7 +489,7 @@ public class TestbedCamera : MonoBehaviour
 
 	static CameraView DefaultHomeView => new CameraView
 	{
-		coordinate = new CoordinateDegrees(0f, 20f),
+		coordinate = new CoordinateDegrees( 0f, 20f ),
 		altitude = 10f,
 		pitch = 55f,
 		heading = 0f,
@@ -503,7 +503,7 @@ public class TestbedCamera : MonoBehaviour
 	/// </summary>
 	public void ResetView()
 	{
-		SetView(homeView);
+		SetView( homeView );
 	}
 
 	/// <summary>
@@ -512,51 +512,51 @@ public class TestbedCamera : MonoBehaviour
 	/// </summary>
 	bool HandleBookmarkInput()
 	{
-		if (bookmarks == null) { return false; }
+		if ( bookmarks == null ) { return false; }
 
-		for (int i = 0; i < bookmarks.Count; i++)
+		for ( int i = 0; i < bookmarks.Count; i++ )
 		{
-			KeyCode key = bookmarks.KeyAt(i);
-			if (key == KeyCode.None || !Input.GetKeyDown(key)) { continue; }
+			KeyCode key = bookmarks.KeyAt( i );
+			if ( key == KeyCode.None || !Input.GetKeyDown( key ) ) { continue; }
 
-			bool capturing = captureModifier == KeyCode.None || Input.GetKey(captureModifier);
-			if (capturing)
+			bool capturing = captureModifier == KeyCode.None || Input.GetKey( captureModifier );
+			if ( capturing )
 			{
 				// Read through GetView, not the fields - in free-fly the fields are stale.
 				CameraView captured = GetView();
-				bookmarks.Capture(i, captured);
-				Debug.Log($"Saved camera bookmark '{bookmarks.LabelAt(i)}' ({key}): " +
+				bookmarks.Capture( i, captured );
+				Debug.Log( $"Saved camera bookmark '{bookmarks.LabelAt( i )}' ({key}): " +
 					$"lat {captured.coordinate.latitude:0.00} lon {captured.coordinate.longitude:0.00} " +
 					$"alt {captured.altitude:0.0} heading {captured.heading:0.0} " +
-					$"pitch {captured.pitch:0.0} roll {captured.roll:0.0} fov {captured.fieldOfView:0.0}", this);
+					$"pitch {captured.pitch:0.0} roll {captured.roll:0.0} fov {captured.fieldOfView:0.0}", this );
 			}
-			else if (bookmarks.TryGetView(i, out CameraView view))
+			else if ( bookmarks.TryGetView( i, out CameraView view ) )
 			{
-				SetView(view);
+				SetView( view );
 			}
 			else
 			{
 				// Empty slot. Say so rather than silently doing nothing - otherwise it
 				// looks like the binding is broken.
-				Debug.Log($"Camera bookmark '{bookmarks.LabelAt(i)}' ({key}) is empty. " +
-					$"Hold {captureModifier} and press {key} to save the current view.", this);
+				Debug.Log( $"Camera bookmark '{bookmarks.LabelAt( i )}' ({key}) is empty. " +
+					$"Hold {captureModifier} and press {key} to save the current view.", this );
 			}
 			return true;
 		}
 		return false;
 	}
 
-	public bool JumpToBookmark(int index)
+	public bool JumpToBookmark( int index )
 	{
-		if (bookmarks == null || !bookmarks.TryGetView(index, out CameraView view)) { return false; }
+		if ( bookmarks == null || !bookmarks.TryGetView( index, out CameraView view ) ) { return false; }
 
-		SetView(view);
+		SetView( view );
 		return true;
 	}
 
-	public void CaptureBookmark(int index)
+	public void CaptureBookmark( int index )
 	{
-		if (bookmarks != null) { bookmarks.Capture(index, GetView()); }
+		if ( bookmarks != null ) { bookmarks.Capture( index, GetView() ); }
 	}
 
 	/// <summary>
@@ -567,7 +567,7 @@ public class TestbedCamera : MonoBehaviour
 	/// </summary>
 	public CameraView GetView()
 	{
-		if (mode == Mode.FreeFly) { return ViewFromTransform(); }
+		if ( mode == Mode.FreeFly ) { return ViewFromTransform(); }
 
 		return new CameraView
 		{
@@ -588,21 +588,21 @@ public class TestbedCamera : MonoBehaviour
 	/// Does NOT guarantee the next rendered frame is correct - the atmosphere LUTs lag by
 	/// a frame. Use SnapAndSettle for capture.
 	/// </summary>
-	public void SetView(CameraView view)
+	public void SetView( CameraView view )
 	{
-		SetView(view.coordinate, view.altitude, view.pitch, view.heading, view.roll, view.fieldOfView);
+		SetView( view.coordinate, view.altitude, view.pitch, view.heading, view.roll, view.fieldOfView );
 	}
 
-	public void SetView(CoordinateDegrees coord, float altitude, float pitch, float heading,
-		float roll = 0f, float fov = -1f)
+	public void SetView( CoordinateDegrees coord, float altitude, float pitch, float heading,
+		float roll = 0f, float fov = -1f )
 	{
 		mode = Mode.Orbit;
 		coordinate = coord;
-		this.altitude = Mathf.Clamp(altitude, minAltitude, maxAltitude);
-		this.pitch = Mathf.Clamp(pitch, -90f, 90f);
-		this.heading = Mathf.Repeat(heading, 360f);
-		this.roll = Mathf.DeltaAngle(0f, roll);
-		if (fov > 0f) { fieldOfView = fov; }
+		this.altitude = Mathf.Clamp( altitude, minAltitude, maxAltitude );
+		this.pitch = Mathf.Clamp( pitch, -90f, 90f );
+		this.heading = Mathf.Repeat( heading, 360f );
+		this.roll = Mathf.DeltaAngle( 0f, roll );
+		if ( fov > 0f ) { fieldOfView = fov; }
 
 		ApplyOptics();
 		ApplyPose();
@@ -617,10 +617,10 @@ public class TestbedCamera : MonoBehaviour
 	/// jump is rendered with LUTs belonging to the previous position. Two frames covers
 	/// the dispatch and its use.
 	/// </summary>
-	public IEnumerator SnapAndSettle(CameraView view, int framesToSettle = 2)
+	public IEnumerator SnapAndSettle( CameraView view, int framesToSettle = 2 )
 	{
-		SetView(view);
-		for (int i = 0; i < framesToSettle; i++)
+		SetView( view );
+		for ( int i = 0; i < framesToSettle; i++ )
 		{
 			yield return null;
 		}
@@ -628,7 +628,7 @@ public class TestbedCamera : MonoBehaviour
 
 	void ApplyOptics()
 	{
-		if (cam != null && !Mathf.Approximately(cam.fieldOfView, fieldOfView))
+		if ( cam != null && !Mathf.Approximately( cam.fieldOfView, fieldOfView ) )
 		{
 			cam.fieldOfView = fieldOfView;
 		}
@@ -636,15 +636,15 @@ public class TestbedCamera : MonoBehaviour
 
 	// ------------------------------------------------------------------- helpers
 
-	static float AxisFromKeys(KeyCode positive, KeyCode negative)
+	static float AxisFromKeys( KeyCode positive, KeyCode negative )
 	{
 		float v = 0f;
-		if (Input.GetKey(positive)) { v += 1f; }
-		if (Input.GetKey(negative)) { v -= 1f; }
+		if ( Input.GetKey( positive ) ) { v += 1f; }
+		if ( Input.GetKey( negative ) ) { v -= 1f; }
 		return v;
 	}
 
-	[ContextMenu("Apply Orbit View")]
+	[ContextMenu( "Apply Orbit View" )]
 	void ApplyViewFromInspector()
 	{
 		mode = Mode.Orbit;
@@ -652,13 +652,13 @@ public class TestbedCamera : MonoBehaviour
 		ApplyPose();
 	}
 
-	[ContextMenu("Reset To Home View")]
+	[ContextMenu( "Reset To Home View" )]
 	void ResetViewFromInspector()
 	{
 		ResetView();
 	}
 
-	[ContextMenu("Set Home To Current View")]
+	[ContextMenu( "Set Home To Current View" )]
 	void SetHomeToCurrentView()
 	{
 		homeView = GetView();
@@ -672,14 +672,14 @@ public class TestbedCamera : MonoBehaviour
 
 	void OnValidate()
 	{
-		minAltitude = Mathf.Max(minAltitude, 0.01f);
-		maxAltitude = Mathf.Max(maxAltitude, minAltitude);
-		altitude = Mathf.Clamp(altitude, minAltitude, maxAltitude);
-		fieldOfView = Mathf.Clamp(fieldOfView, 1f, 179f);
+		minAltitude = Mathf.Max( minAltitude, 0.01f );
+		maxAltitude = Mathf.Max( maxAltitude, minAltitude );
+		altitude = Mathf.Clamp( altitude, minAltitude, maxAltitude );
+		fieldOfView = Mathf.Clamp( fieldOfView, 1f, 179f );
 
 		// A home view serialized before this field existed deserializes to all-zero,
 		// which would reset the camera to the planet surface. Treat that as unset.
-		if (homeView.altitude <= 0f)
+		if ( homeView.altitude <= 0f )
 		{
 			homeView = DefaultHomeView;
 		}

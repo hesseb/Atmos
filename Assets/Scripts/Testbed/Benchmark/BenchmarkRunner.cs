@@ -44,10 +44,10 @@ public enum BenchmarkRunMode
 	SelfCheck
 }
 
-[DefaultExecutionOrder(-500)]
+[DefaultExecutionOrder( -500 )]
 public class BenchmarkRunner : MonoBehaviour
 {
-	[Header("What to run")]
+	[Header( "What to run" )]
 	public BenchmarkDefinition benchmark;
 	// Everything -benchmark <id> can select. Listed explicitly rather than loaded from
 	// Resources because a ScriptableObject only reaches a build if something references it -
@@ -56,16 +56,16 @@ public class BenchmarkRunner : MonoBehaviour
 	public CameraBookmarks fallbackBookmarks;
 	public BenchmarkSceneRefs sceneRefs = new BenchmarkSceneRefs();
 
-	[Header("Renderer configurations")]
+	[Header( "Renderer configurations" )]
 	// Leave empty to measure the scene as-authored. With two or more, the summary reports
 	// the delta between them.
 	public RendererProfile[] profiles;
-	[Min(1)] public int repeats = 1;
+	[Min( 1 )] public int repeats = 1;
 	// Interleaved (ABAB) rather than grouped (AABB), so GPU thermal drift does not get
 	// confounded with the renderer being compared.
 	public bool interleaveRepeats = true;
 
-	[Header("Setup")]
+	[Header( "Setup" )]
 	// Timing runs produce the numbers, capture runs produce the images. They are separate
 	// because a screenshot readback stalls the frame it is taken on. Run the same benchmark
 	// in both modes and pair the outputs by frame index - the plan and pose hashes recorded
@@ -75,18 +75,18 @@ public class BenchmarkRunner : MonoBehaviour
 	// window. The atmosphere is five full-screen passes, so its cost scales with pixel count -
 	// results at different resolutions are not comparable, which is why this is pinned and
 	// recorded rather than left to whatever the window happens to be.
-	public Vector2Int targetResolution = new Vector2Int(2560, 1440);
+	public Vector2Int targetResolution = new Vector2Int( 2560, 1440 );
 	public bool pinResolution = true;
 	public bool runOnStart;
 
-	[Header("Output")]
+	[Header( "Output" )]
 	public bool writeResults = true;
 	// Free-text note recorded in run.json - which machine these numbers came from.
 	public string machineLabel = "";
 	// Leave empty for <project>/Results in the editor, <exe>/BenchmarkResults in a build.
 	public string outputRootOverride = "";
 
-	[Header("Debug")]
+	[Header( "Debug" )]
 	public bool logProgress = true;
 
 	public bool IsRunning { get; private set; }
@@ -161,27 +161,27 @@ public class BenchmarkRunner : MonoBehaviour
 
 	void Start()
 	{
-		cli = BenchmarkCommandLine.Parse(System.Environment.GetCommandLineArgs());
+		cli = BenchmarkCommandLine.Parse( System.Environment.GetCommandLineArgs() );
 
-		if (cli.Requested)
+		if ( cli.Requested )
 		{
-			Debug.Log($"[Benchmark] command line: {cli.Describe()}");
+			Debug.Log( $"[Benchmark] command line: {cli.Describe()}" );
 
-			if (cli.errors.Count > 0)
+			if ( cli.errors.Count > 0 )
 			{
-				foreach (string error in cli.errors) { Debug.LogError($"[Benchmark] {error}"); }
-				QuitIfRequested(ExitCannotStart);
+				foreach ( string error in cli.errors ) { Debug.LogError( $"[Benchmark] {error}" ); }
+				QuitIfRequested( ExitCannotStart );
 				return;
 			}
 
-			if (!ApplyCommandLine())
+			if ( !ApplyCommandLine() )
 			{
-				QuitIfRequested(ExitCannotStart);
+				QuitIfRequested( ExitCannotStart );
 				return;
 			}
 		}
 
-		if (runOnStart || cli.Requested) { StartRun(); }
+		if ( runOnStart || cli.Requested ) { StartRun(); }
 	}
 
 	/// <summary>Overlays command-line options onto the scene-authored configuration. Options
@@ -189,58 +189,58 @@ public class BenchmarkRunner : MonoBehaviour
 	/// interactive use.</summary>
 	bool ApplyCommandLine()
 	{
-		if (!string.IsNullOrEmpty(cli.benchmarkId))
+		if ( !string.IsNullOrEmpty( cli.benchmarkId ) )
 		{
-			BenchmarkDefinition selected = FindBenchmark(cli.benchmarkId);
-			if (selected == null)
+			BenchmarkDefinition selected = FindBenchmark( cli.benchmarkId );
+			if ( selected == null )
 			{
-				Debug.LogError($"[Benchmark] -benchmark '{cli.benchmarkId}' is not in " +
-					$"availableBenchmarks. Known: {KnownBenchmarkIds()}", this);
+				Debug.LogError( $"[Benchmark] -benchmark '{cli.benchmarkId}' is not in " +
+					$"availableBenchmarks. Known: {KnownBenchmarkIds()}", this );
 				return false;
 			}
 			benchmark = selected;
 		}
 
-		if (cli.profileIds != null)
+		if ( cli.profileIds != null )
 		{
 			var selected = new List<RendererProfile>();
-			foreach (string id in cli.profileIds)
+			foreach ( string id in cli.profileIds )
 			{
 				RendererProfile match = null;
-				if (profiles != null)
+				if ( profiles != null )
 				{
-					foreach (RendererProfile profile in profiles)
+					foreach ( RendererProfile profile in profiles )
 					{
-						if (profile != null && profile.id == id) { match = profile; break; }
+						if ( profile != null && profile.id == id ) { match = profile; break; }
 					}
 				}
 
-				if (match == null)
+				if ( match == null )
 				{
-					Debug.LogError($"[Benchmark] -profiles: no renderer profile with id '{id}'.", this);
+					Debug.LogError( $"[Benchmark] -profiles: no renderer profile with id '{id}'.", this );
 					return false;
 				}
-				selected.Add(match);
+				selected.Add( match );
 			}
 			profiles = selected.ToArray();
 		}
 
-		if (cli.repeats > 0) { repeats = cli.repeats; }
-		if (cli.mode.HasValue) { mode = cli.mode.Value; }
-		if (cli.resolution.HasValue) { targetResolution = cli.resolution.Value; pinResolution = true; }
-		if (cli.outputRoot != null) { outputRootOverride = cli.outputRoot; }
-		if (cli.machineLabel != null) { machineLabel = cli.machineLabel; }
+		if ( cli.repeats > 0 ) { repeats = cli.repeats; }
+		if ( cli.mode.HasValue ) { mode = cli.mode.Value; }
+		if ( cli.resolution.HasValue ) { targetResolution = cli.resolution.Value; pinResolution = true; }
+		if ( cli.outputRoot != null ) { outputRootOverride = cli.outputRoot; }
+		if ( cli.machineLabel != null ) { machineLabel = cli.machineLabel; }
 
 		return true;
 	}
 
-	BenchmarkDefinition FindBenchmark(string id)
+	BenchmarkDefinition FindBenchmark( string id )
 	{
-		if (availableBenchmarks != null)
+		if ( availableBenchmarks != null )
 		{
-			foreach (BenchmarkDefinition candidate in availableBenchmarks)
+			foreach ( BenchmarkDefinition candidate in availableBenchmarks )
 			{
-				if (candidate != null && candidate.id == id) { return candidate; }
+				if ( candidate != null && candidate.id == id ) { return candidate; }
 			}
 		}
 
@@ -251,43 +251,43 @@ public class BenchmarkRunner : MonoBehaviour
 	string KnownBenchmarkIds()
 	{
 		var ids = new List<string>();
-		if (availableBenchmarks != null)
+		if ( availableBenchmarks != null )
 		{
-			foreach (BenchmarkDefinition candidate in availableBenchmarks)
+			foreach ( BenchmarkDefinition candidate in availableBenchmarks )
 			{
-				if (candidate != null) { ids.Add(candidate.id); }
+				if ( candidate != null ) { ids.Add( candidate.id ); }
 			}
 		}
-		if (benchmark != null && !ids.Contains(benchmark.id)) { ids.Add(benchmark.id); }
+		if ( benchmark != null && !ids.Contains( benchmark.id ) ) { ids.Add( benchmark.id ); }
 
-		return ids.Count > 0 ? string.Join(", ", ids) : "(none)";
+		return ids.Count > 0 ? string.Join( ", ", ids ) : "(none)";
 	}
 
-	void QuitIfRequested(int exitCode)
+	void QuitIfRequested( int exitCode )
 	{
-		if (cli == null || !cli.quitWhenDone) { return; }
+		if ( cli == null || !cli.quitWhenDone ) { return; }
 
-		Debug.Log($"[Benchmark] quitting with exit code {exitCode}.");
+		Debug.Log( $"[Benchmark] quitting with exit code {exitCode}." );
 #if UNITY_EDITOR
 		UnityEditor.EditorApplication.isPlaying = false;
 #else
-		Application.Quit(exitCode);
+		Application.Quit( exitCode );
 #endif
 	}
 
-	[ContextMenu("Start Run")]
+	[ContextMenu( "Start Run" )]
 	public void StartRun()
 	{
-		if (IsRunning)
+		if ( IsRunning )
 		{
-			Debug.LogWarning("[Benchmark] already running.", this);
+			Debug.LogWarning( "[Benchmark] already running.", this );
 			return;
 		}
 
-		if (benchmark == null)
+		if ( benchmark == null )
 		{
-			Debug.LogError("[Benchmark] no BenchmarkDefinition assigned.", this);
-			QuitIfRequested(ExitCannotStart);
+			Debug.LogError( "[Benchmark] no BenchmarkDefinition assigned.", this );
+			QuitIfRequested( ExitCannotStart );
 			return;
 		}
 
@@ -295,18 +295,18 @@ public class BenchmarkRunner : MonoBehaviour
 		// never run, FrameCursor would never advance, and the run would hang forever rather
 		// than fail. Refuse instead - this is the single most likely way to wedge a scripted
 		// run on a build server.
-		if (Application.isBatchMode)
+		if ( Application.isBatchMode )
 		{
-			Debug.LogError("[Benchmark] cannot run under -batchmode: WaitForEndOfFrame never " +
+			Debug.LogError( "[Benchmark] cannot run under -batchmode: WaitForEndOfFrame never " +
 				"resumes, so no frame would ever be recorded and the run would hang. Launch " +
-				"the player windowed.", this);
-			QuitIfRequested(ExitCannotStart);
+				"the player windowed.", this );
+			QuitIfRequested( ExitCannotStart );
 			return;
 		}
 
-		if (!sceneRefs.Resolve(out string error))
+		if ( !sceneRefs.Resolve( out string error ) )
 		{
-			Debug.LogError($"[Benchmark] {error}", this);
+			Debug.LogError( $"[Benchmark] {error}", this );
 			return;
 		}
 
@@ -317,24 +317,24 @@ public class BenchmarkRunner : MonoBehaviour
 		settings.targetResolution = targetResolution;
 		settings.pinResolution = pinResolution;
 
-		BenchmarkEnvironment.Validate(sceneRefs, settings, warnings);
+		BenchmarkEnvironment.Validate( sceneRefs, settings, warnings );
 
 		float aspect = targetResolution.y > 0
 			? (float)targetResolution.x / targetResolution.y
-			: (float)Screen.width / Mathf.Max(1, Screen.height);
+			: (float)Screen.width / Mathf.Max( 1, Screen.height );
 
-		Plan = BenchmarkPlan.Build(benchmark, sceneRefs.Earth,
-			sceneRefs.testbedCamera.SurfaceRadius, aspect, fallbackBookmarks);
+		Plan = BenchmarkPlan.Build( benchmark, sceneRefs.Earth,
+			sceneRefs.testbedCamera.SurfaceRadius, aspect, fallbackBookmarks );
 
-		if (Plan.Length == 0)
+		if ( Plan.Length == 0 )
 		{
-			Debug.LogError("[Benchmark] plan is empty.", this);
+			Debug.LogError( "[Benchmark] plan is empty.", this );
 			return;
 		}
 
-		warnings.AddRange(Plan.warnings);
+		warnings.AddRange( Plan.warnings );
 
-		scope = BenchmarkEnvironment.Pin(sceneRefs, settings, warnings);
+		scope = BenchmarkEnvironment.Pin( sceneRefs, settings, warnings );
 
 		BuildPassPlans();
 		passResults.Clear();
@@ -342,34 +342,34 @@ public class BenchmarkRunner : MonoBehaviour
 
 		// Checked before the run folder exists, so a misconfigured capture does not leave an
 		// empty result directory behind.
-		if (IsCaptureRun)
+		if ( IsCaptureRun )
 		{
-			if (Plan.ScreenshotCount == 0)
+			if ( Plan.ScreenshotCount == 0 )
 			{
-				Debug.LogError($"[Benchmark] capture run, but '{benchmark.id}' marks no frames " +
+				Debug.LogError( $"[Benchmark] capture run, but '{benchmark.id}' marks no frames " +
 					"for a screenshot - it would replay the whole plan and produce nothing. Set " +
-					"screenshotFirstAndLast or screenshotFrames on at least one segment.", this);
+					"screenshotFirstAndLast or screenshotFrames on at least one segment.", this );
 				scope?.Dispose();
 				scope = null;
 				return;
 			}
 
-			AddWarning("CAPTURE_RUN_NOT_MEASURED");
+			AddWarning( "CAPTURE_RUN_NOT_MEASURED" );
 		}
 
-		if (writeResults)
+		if ( writeResults )
 		{
-			string root = string.IsNullOrEmpty(outputRootOverride)
+			string root = string.IsNullOrEmpty( outputRootOverride )
 				? BenchmarkWriter.DefaultOutputRoot()
 				: outputRootOverride;
-			runFolder = BenchmarkWriter.BeginRun(Plan, root, mode);
+			runFolder = BenchmarkWriter.BeginRun( Plan, root, mode );
 
-			if (IsCaptureRun) { Screenshots = new ScreenshotCapture(runFolder); }
+			if ( IsCaptureRun ) { Screenshots = new ScreenshotCapture( runFolder ); }
 		}
-		else if (IsCaptureRun)
+		else if ( IsCaptureRun )
 		{
-			Debug.LogError("[Benchmark] capture run with writeResults off - there is nowhere " +
-				"to put the images.", this);
+			Debug.LogError( "[Benchmark] capture run with writeResults off - there is nowhere " +
+				"to put the images.", this );
 			scope?.Dispose();
 			scope = null;
 			return;
@@ -380,11 +380,11 @@ public class BenchmarkRunner : MonoBehaviour
 		expectedDeltaMs = Plan.CaptureDeltaTime * 1000.0;
 		IsRunning = true;
 		waitForEndOfFrame = new WaitForEndOfFrame();
-		endOfFrameRoutine = StartCoroutine(EndOfFrameLoop());
+		endOfFrameRoutine = StartCoroutine( EndOfFrameLoop() );
 
-		Debug.Log($"[Benchmark] {Plan.Describe()}\n" +
-			$"  passes: {passPlans.Count} ({string.Join(", ", passPlans.ConvertAll(p => p.passId))})\n" +
-			$"  warnings: {(warnings.Count > 0 ? string.Join(", ", warnings) : "none")}", this);
+		Debug.Log( $"[Benchmark] {Plan.Describe()}\n" +
+			$"  passes: {passPlans.Count} ({string.Join( ", ", passPlans.ConvertAll( p => p.passId ) )})\n" +
+			$"  warnings: {( warnings.Count > 0 ? string.Join( ", ", warnings ) : "none" )}", this );
 
 		currentPass = -1;
 		BeginNextPass();
@@ -405,45 +405,45 @@ public class BenchmarkRunner : MonoBehaviour
 		// opposite case: comparing repeats IS the measurement, so it needs at least two.
 		int passRepeats = IsCaptureRun
 			? 1
-			: Mathf.Max(mode == BenchmarkRunMode.SelfCheck ? 2 : 1, repeats);
+			: Mathf.Max( mode == BenchmarkRunMode.SelfCheck ? 2 : 1, repeats );
 
-		if (IsCaptureRun && repeats > 1)
+		if ( IsCaptureRun && repeats > 1 )
 		{
-			Debug.Log($"[Benchmark] capture run: ignoring repeats={repeats}, one pass per profile.", this);
+			Debug.Log( $"[Benchmark] capture run: ignoring repeats={repeats}, one pass per profile.", this );
 		}
-		else if (mode == BenchmarkRunMode.SelfCheck && passRepeats != repeats)
+		else if ( mode == BenchmarkRunMode.SelfCheck && passRepeats != repeats )
 		{
-			Debug.Log($"[Benchmark] self-check: raising repeats {repeats} -> {passRepeats}.", this);
+			Debug.Log( $"[Benchmark] self-check: raising repeats {repeats} -> {passRepeats}.", this );
 		}
 
-		if (profiles == null || profiles.Length == 0)
+		if ( profiles == null || profiles.Length == 0 )
 		{
-			for (int r = 0; r < passRepeats; r++)
+			for ( int r = 0; r < passRepeats; r++ )
 			{
-				passPlans.Add(new PassPlan { profile = null, repeat = r, passId = $"asis_r{r}" });
+				passPlans.Add( new PassPlan { profile = null, repeat = r, passId = $"asis_r{r}" } );
 			}
 			return;
 		}
 
-		if (interleaveRepeats)
+		if ( interleaveRepeats )
 		{
-			for (int r = 0; r < passRepeats; r++)
+			for ( int r = 0; r < passRepeats; r++ )
 			{
-				foreach (RendererProfile profile in profiles)
+				foreach ( RendererProfile profile in profiles )
 				{
-					if (profile == null) { continue; }
-					passPlans.Add(new PassPlan { profile = profile, repeat = r, passId = $"{profile.id}_r{r}" });
+					if ( profile == null ) { continue; }
+					passPlans.Add( new PassPlan { profile = profile, repeat = r, passId = $"{profile.id}_r{r}" } );
 				}
 			}
 		}
 		else
 		{
-			foreach (RendererProfile profile in profiles)
+			foreach ( RendererProfile profile in profiles )
 			{
-				if (profile == null) { continue; }
-				for (int r = 0; r < passRepeats; r++)
+				if ( profile == null ) { continue; }
+				for ( int r = 0; r < passRepeats; r++ )
 				{
-					passPlans.Add(new PassPlan { profile = profile, repeat = r, passId = $"{profile.id}_r{r}" });
+					passPlans.Add( new PassPlan { profile = profile, repeat = r, passId = $"{profile.id}_r{r}" } );
 				}
 			}
 		}
@@ -452,58 +452,58 @@ public class BenchmarkRunner : MonoBehaviour
 	void BeginNextPass()
 	{
 		currentPass++;
-		if (currentPass >= passPlans.Count)
+		if ( currentPass >= passPlans.Count )
 		{
 			FinishRun();
 			return;
 		}
 
-		PassPlan pass = passPlans[currentPass];
+		PassPlan pass = passPlans[ currentPass ];
 
 		// Per-pass scope, so a profile's changes are undone before the next one applies.
 		passScope = new RestoreScope();
-		pass.profile?.Apply(sceneRefs, passScope);
+		pass.profile?.Apply( sceneRefs, passScope );
 
 		// Fresh recording state. The plan is replayed identically, including its boot,
 		// prewarm and warmup phases - which is what absorbs the stale-LUT window and the
 		// pipeline-state compilation that follow a renderer change.
-		Records = new FrameRecord[Plan.Length];
+		Records = new FrameRecord[ Plan.Length ];
 		Sampler = new FrameSampler();
 		FrameCursor = 0;
 		deltaDriftFrames = 0;
 		frameStateWritten = false;
 
-		if (logProgress)
+		if ( logProgress )
 		{
-			Debug.Log($"[Benchmark] pass {currentPass + 1}/{passPlans.Count}: {pass.passId}", this);
+			Debug.Log( $"[Benchmark] pass {currentPass + 1}/{passPlans.Count}: {pass.passId}", this );
 		}
 	}
 
 	void Update()
 	{
-		if (!IsRunning) { return; }
+		if ( !IsRunning ) { return; }
 
 		// A sample taken now describes the frame that just completed, so it belongs to the
 		// previous row. This is why the plan ends with flush frames: the last measured
 		// frame's timing arrives during them.
 		FrameSampler.Sample sample = Sampler.Capture();
-		if (FrameCursor > 0 && FrameCursor - 1 < Records.Length)
+		if ( FrameCursor > 0 && FrameCursor - 1 < Records.Length )
 		{
-			Records[FrameCursor - 1].sample = sample;
+			Records[ FrameCursor - 1 ].sample = sample;
 		}
 
-		if (FrameCursor >= Plan.Length)
+		if ( FrameCursor >= Plan.Length )
 		{
 			EndPass();
 			return;
 		}
 
-		PlannedFrame frame = Plan.frames[FrameCursor];
+		PlannedFrame frame = Plan.frames[ FrameCursor ];
 
 		// Sun first: SolarSystemManager reads these at order 0, just after us.
-		sceneRefs.solarSystem.SetTimes(frame.dayT, frame.monthT, frame.yearT);
+		sceneRefs.solarSystem.SetTimes( frame.dayT, frame.monthT, frame.yearT );
 		// SetView applies the transform synchronously, so onPreCull this frame sees it.
-		sceneRefs.testbedCamera.SetView(frame.view);
+		sceneRefs.testbedCamera.SetView( frame.view );
 
 		// Hand off to the end-of-frame reader. Without this the reader would record any
 		// frame it happened to see, including ones where this method never ran.
@@ -523,51 +523,51 @@ public class BenchmarkRunner : MonoBehaviour
 	/// </summary>
 	IEnumerator EndOfFrameLoop()
 	{
-		while (IsRunning)
+		while ( IsRunning )
 		{
 			yield return waitForEndOfFrame;
 
-			if (!IsRunning) { yield break; }
-			if (!frameStateWritten) { continue; }
-			if (Records == null || FrameCursor >= Records.Length) { continue; }
+			if ( !IsRunning ) { yield break; }
+			if ( !frameStateWritten ) { continue; }
+			if ( Records == null || FrameCursor >= Records.Length ) { continue; }
 
 			Transform camT = sceneRefs.camera.transform;
 
 			// Preserve the sample already written by the next Update's Capture; only the
 			// observed fields are filled here.
-			FrameRecord record = Records[FrameCursor];
+			FrameRecord record = Records[ FrameCursor ];
 			record.cameraPosition = camT.position;
 			record.cameraForward = camT.forward;
 			record.deltaMs = Time.deltaTime * 1000.0;
 			record.lodHighResCount = sceneRefs.lodSystem != null ? sceneRefs.lodSystem.HighResCount : 0;
 
-			if (sceneRefs.solarSystem != null && sceneRefs.solarSystem.sun != null)
+			if ( sceneRefs.solarSystem != null && sceneRefs.solarSystem.sun != null )
 			{
 				record.sunDirection = -sceneRefs.solarSystem.sun.transform.forward;
 			}
 
 			// captureDeltaTime pins Time.deltaTime (not unscaledDeltaTime - measured).
 			// This is the direct check that the frame lock actually engaged.
-			if (Mathf.Abs((float)(record.deltaMs - expectedDeltaMs)) > 0.01f)
+			if ( Mathf.Abs( (float)( record.deltaMs - expectedDeltaMs ) ) > 0.01f )
 			{
 				deltaDriftFrames++;
 			}
 
-			Records[FrameCursor] = record;
+			Records[ FrameCursor ] = record;
 
 			// After the record is complete, so a failed capture cannot cost us the frame's
 			// data, and while FrameCursor still names this frame. The readback stalls here
 			// for milliseconds - harmless, because a capture run reports no timings, and
 			// captureDeltaTime means the stall does not advance simulated time either.
-			if (Screenshots != null && Plan.frames[FrameCursor].screenshot)
+			if ( Screenshots != null && Plan.frames[ FrameCursor ].screenshot )
 			{
-				PlannedFrame planned = Plan.frames[FrameCursor];
+				PlannedFrame planned = Plan.frames[ FrameCursor ];
 				string label = planned.segmentIndex >= 0
 					&& planned.segmentIndex < Plan.segmentLabels.Length
-					? Plan.segmentLabels[planned.segmentIndex] : "";
+					? Plan.segmentLabels[ planned.segmentIndex ] : "";
 
-				Screenshots.CaptureNow(FrameCursor, passPlans[currentPass].passId, planned, label,
-					record.cameraPosition, record.sunDirection, PlanetCentre());
+				Screenshots.CaptureNow( FrameCursor, passPlans[ currentPass ].passId, planned, label,
+					record.cameraPosition, record.sunDirection, PlanetCentre() );
 			}
 
 			frameStateWritten = false;
@@ -577,74 +577,74 @@ public class BenchmarkRunner : MonoBehaviour
 
 	void EndPass()
 	{
-		PassPlan pass = passPlans[currentPass];
+		PassPlan pass = passPlans[ currentPass ];
 		ObservedPoseHash = ComputePoseHash();
 
-		if (deltaDriftFrames > 0) { AddWarning($"DELTA_TIME_DRIFT:{deltaDriftFrames}"); }
+		if ( deltaDriftFrames > 0 ) { AddWarning( $"DELTA_TIME_DRIFT:{deltaDriftFrames}" ); }
 
 		// The plan is a fixed array of frames; rendering a different number of them means the
 		// rows no longer line up with the plan, which invalidates every per-frame column.
-		if (FrameCursor != Plan.Length)
+		if ( FrameCursor != Plan.Length )
 		{
-			AddWarning($"FRAME_COUNT_MISMATCH:{FrameCursor}/{Plan.Length}");
+			AddWarning( $"FRAME_COUNT_MISMATCH:{FrameCursor}/{Plan.Length}" );
 			runFailed = true;
 		}
 
 		// Snapshot the instrumentation state before disposing the sampler - the writer
 		// needs it, and an absent counter must be recorded as absent rather than zero.
-		if (Sampler != null)
+		if ( Sampler != null )
 		{
 			FrameTimingAvailable = Sampler.FrameTimingAvailable;
 			TimingLagFrames = Sampler.TimingLagFrames;
 			AttributionAnomalies = Sampler.AttributionAnomalies;
 			CounterAvailability = Sampler.CounterAvailability();
 
-			if (!FrameTimingAvailable) { AddWarning("NO_GPU_TIME"); }
+			if ( !FrameTimingAvailable ) { AddWarning( "NO_GPU_TIME" ); }
 
 			// A release player strips much of the profiler. Recording that as a warning is
 			// what makes a development-vs-release comparison legible - otherwise the only
 			// evidence is a map in run.json nobody reads.
-			if (CounterAvailability != null)
+			if ( CounterAvailability != null )
 			{
 				int missing = 0;
-				foreach ((string _, bool available) in CounterAvailability)
+				foreach ( (string _, bool available) in CounterAvailability )
 				{
-					if (!available) { missing++; }
+					if ( !available ) { missing++; }
 				}
-				if (missing > 0)
+				if ( missing > 0 )
 				{
-					AddWarning($"COUNTERS_UNAVAILABLE:{missing}/{CounterAvailability.Count}");
+					AddWarning( $"COUNTERS_UNAVAILABLE:{missing}/{CounterAvailability.Count}" );
 				}
 			}
-			if (AttributionAnomalies > 0)
+			if ( AttributionAnomalies > 0 )
 			{
-				AddWarning($"TIMING_ATTRIBUTION_ANOMALIES:{AttributionAnomalies}");
+				AddWarning( $"TIMING_ATTRIBUTION_ANOMALIES:{AttributionAnomalies}" );
 			}
 		}
 
-		if (logProgress)
+		if ( logProgress )
 		{
 			var ci = CultureInfo.InvariantCulture;
 			Debug.Log(
 				$"[Benchmark] pass '{pass.passId}' complete\n" +
 				$"  frames rendered   {FrameCursor} / {Plan.Length} " +
-				$"{(FrameCursor == Plan.Length ? "(exact)" : "MISMATCH")}\n" +
+				$"{( FrameCursor == Plan.Length ? "(exact)" : "MISMATCH" )}\n" +
 				$"  plan_hash         0x{Plan.planHash:x16}\n" +
 				$"  pose_hash         0x{ObservedPoseHash:x16}\n" +
 				$"  delta drift       {deltaDriftFrames} frames " +
-				$"(expected {expectedDeltaMs.ToString("F4", ci)} ms/frame)\n" +
-				$"  gpu timing        {(FrameTimingAvailable ? $"available, lag {TimingLagFrames} frame(s)" : "UNAVAILABLE")}",
-				this);
+				$"(expected {expectedDeltaMs.ToString( "F4", ci )} ms/frame)\n" +
+				$"  gpu timing        {( FrameTimingAvailable ? $"available, lag {TimingLagFrames} frame(s)" : "UNAVAILABLE" )}",
+				this );
 		}
 
-		if (writeResults && !string.IsNullOrEmpty(runFolder))
+		if ( writeResults && !string.IsNullOrEmpty( runFolder ) )
 		{
 			string settings = pass.profile != null
-				? pass.profile.DescribeSettings(sceneRefs)
+				? pass.profile.DescribeSettings( sceneRefs )
 				: "scene as authored";
 
-			passResults.Add(BenchmarkWriter.WritePass(this, runFolder, pass.passId,
-				pass.profile != null ? pass.profile.id : "asis", settings, pass.repeat));
+			passResults.Add( BenchmarkWriter.WritePass( this, runFolder, pass.passId,
+				pass.profile != null ? pass.profile.id : "asis", settings, pass.repeat ) );
 		}
 
 		// Undo this profile before the next one applies.
@@ -660,9 +660,9 @@ public class BenchmarkRunner : MonoBehaviour
 	{
 		IsRunning = false;
 
-		if (endOfFrameRoutine != null)
+		if ( endOfFrameRoutine != null )
 		{
-			StopCoroutine(endOfFrameRoutine);
+			StopCoroutine( endOfFrameRoutine );
 			endOfFrameRoutine = null;
 		}
 
@@ -670,15 +670,15 @@ public class BenchmarkRunner : MonoBehaviour
 		// is serialised, or the run would claim a clean sheet it does not have.
 		FinaliseScreenshots();
 
-		if (writeResults && !string.IsNullOrEmpty(runFolder) && passResults.Count > 0)
+		if ( writeResults && !string.IsNullOrEmpty( runFolder ) && passResults.Count > 0 )
 		{
-			BenchmarkWriter.WriteRunSummary(this, runFolder, passResults, machineLabel);
-			Debug.Log($"[Benchmark] run complete, {passResults.Count} pass(es) written to {runFolder}", this);
+			BenchmarkWriter.WriteRunSummary( this, runFolder, passResults, machineLabel );
+			Debug.Log( $"[Benchmark] run complete, {passResults.Count} pass(es) written to {runFolder}", this );
 		}
 
 		ReleaseResources();
-		onCompleted?.Invoke(this);
-		QuitIfRequested(DetermineExitCode());
+		onCompleted?.Invoke( this );
+		QuitIfRequested( DetermineExitCode() );
 	}
 
 	/// <summary>
@@ -688,22 +688,22 @@ public class BenchmarkRunner : MonoBehaviour
 	/// </summary>
 	int DetermineExitCode()
 	{
-		if (runFailed) { return ExitRunFailed; }
+		if ( runFailed ) { return ExitRunFailed; }
 
 		// Strict exists because degrading silently to CPU-only numbers is how a thesis ends
 		// up with a table nobody can falsify.
-		if (cli != null && cli.strict && !FrameTimingAvailable)
+		if ( cli != null && cli.strict && !FrameTimingAvailable )
 		{
-			Debug.LogError("[Benchmark] -strict: GPU frame timing was unavailable.", this);
+			Debug.LogError( "[Benchmark] -strict: GPU frame timing was unavailable.", this );
 			return ExitStrictViolation;
 		}
 
-		for (int i = 1; i < passResults.Count; i++)
+		for ( int i = 1; i < passResults.Count; i++ )
 		{
-			if (passResults[i].poseHash != passResults[0].poseHash)
+			if ( passResults[ i ].poseHash != passResults[ 0 ].poseHash )
 			{
-				Debug.LogError("[Benchmark] pose hash differs between passes - the passes did " +
-					"not render the same poses, so the comparison is invalid.", this);
+				Debug.LogError( "[Benchmark] pose hash differs between passes - the passes did " +
+					"not render the same poses, so the comparison is invalid.", this );
 				return ExitRunFailed;
 			}
 		}
@@ -711,16 +711,16 @@ public class BenchmarkRunner : MonoBehaviour
 		return ExitOk;
 	}
 
-	[ContextMenu("Abort Run")]
+	[ContextMenu( "Abort Run" )]
 	public void Abort()
 	{
-		if (!IsRunning) { return; }
+		if ( !IsRunning ) { return; }
 
-		Debug.LogWarning($"[Benchmark] aborted at frame {FrameCursor} / {Plan.Length}.", this);
+		Debug.LogWarning( $"[Benchmark] aborted at frame {FrameCursor} / {Plan.Length}.", this );
 		IsRunning = false;
 		runFailed = true;
 		ReleaseResources();
-		QuitIfRequested(ExitRunFailed);
+		QuitIfRequested( ExitRunFailed );
 	}
 
 	/// <summary>
@@ -730,9 +730,9 @@ public class BenchmarkRunner : MonoBehaviour
 	/// </summary>
 	void ReleaseResources()
 	{
-		if (endOfFrameRoutine != null)
+		if ( endOfFrameRoutine != null )
 		{
-			StopCoroutine(endOfFrameRoutine);
+			StopCoroutine( endOfFrameRoutine );
 			endOfFrameRoutine = null;
 		}
 
@@ -756,17 +756,17 @@ public class BenchmarkRunner : MonoBehaviour
 	/// call more than once.</summary>
 	void FinaliseScreenshots()
 	{
-		if (Screenshots == null) { return; }
+		if ( Screenshots == null ) { return; }
 
 		Screenshots.WriteManifest();
 
-		if (Screenshots.FailureCount > 0)
+		if ( Screenshots.FailureCount > 0 )
 		{
-			AddWarning($"SCREENSHOT_FAILURES:{Screenshots.FailureCount}");
+			AddWarning( $"SCREENSHOT_FAILURES:{Screenshots.FailureCount}" );
 		}
 
-		Debug.Log($"[Benchmark] captured {Screenshots.Count} screenshot(s) to " +
-			$"{Screenshots.Folder}", this);
+		Debug.Log( $"[Benchmark] captured {Screenshots.Count} screenshot(s) to " +
+			$"{Screenshots.Folder}", this );
 		ScreenshotsCaptured = Screenshots.Count;
 		Screenshots = null;
 	}
@@ -778,40 +778,40 @@ public class BenchmarkRunner : MonoBehaviour
 		return sceneRefs.Earth != null ? sceneRefs.Earth.transform.position : Vector3.zero;
 	}
 
-	void AddWarning(string warning)
+	void AddWarning( string warning )
 	{
 		// Passes replay the same plan, so a per-pass condition would otherwise be listed
 		// once per pass.
-		if (!warnings.Contains(warning)) { warnings.Add(warning); }
+		if ( !warnings.Contains( warning ) ) { warnings.Add( warning ); }
 	}
 
 	ulong ComputePoseHash()
 	{
 		ulong hash = 0xcbf29ce484222325UL;
-		int count = Mathf.Min(FrameCursor, Records.Length);
+		int count = Mathf.Min( FrameCursor, Records.Length );
 
-		for (int i = 0; i < count; i++)
+		for ( int i = 0; i < count; i++ )
 		{
-			FrameRecord o = Records[i];
-			MixQuantized(ref hash, o.cameraPosition.x, 10000f);
-			MixQuantized(ref hash, o.cameraPosition.y, 10000f);
-			MixQuantized(ref hash, o.cameraPosition.z, 10000f);
-			MixQuantized(ref hash, o.cameraForward.x, 10000f);
-			MixQuantized(ref hash, o.cameraForward.y, 10000f);
-			MixQuantized(ref hash, o.cameraForward.z, 10000f);
-			MixQuantized(ref hash, o.sunDirection.x, 10000f);
-			MixQuantized(ref hash, o.sunDirection.y, 10000f);
-			MixQuantized(ref hash, o.sunDirection.z, 10000f);
+			FrameRecord o = Records[ i ];
+			MixQuantized( ref hash, o.cameraPosition.x, 10000f );
+			MixQuantized( ref hash, o.cameraPosition.y, 10000f );
+			MixQuantized( ref hash, o.cameraPosition.z, 10000f );
+			MixQuantized( ref hash, o.cameraForward.x, 10000f );
+			MixQuantized( ref hash, o.cameraForward.y, 10000f );
+			MixQuantized( ref hash, o.cameraForward.z, 10000f );
+			MixQuantized( ref hash, o.sunDirection.x, 10000f );
+			MixQuantized( ref hash, o.sunDirection.y, 10000f );
+			MixQuantized( ref hash, o.sunDirection.z, 10000f );
 		}
 		return hash;
 	}
 
-	static void MixQuantized(ref ulong hash, float value, float scale)
+	static void MixQuantized( ref ulong hash, float value, float scale )
 	{
-		ulong q = unchecked((ulong)(long)Mathf.Round(value * scale));
-		for (int shift = 0; shift < 64; shift += 8)
+		ulong q = unchecked((ulong)(long)Mathf.Round( value * scale ));
+		for ( int shift = 0; shift < 64; shift += 8 )
 		{
-			hash ^= (q >> shift) & 0xFF;
+			hash ^= ( q >> shift ) & 0xFF;
 			hash *= 0x100000001b3UL;
 		}
 	}
@@ -820,16 +820,16 @@ public class BenchmarkRunner : MonoBehaviour
 	void OnDestroy() { ReleaseResources(); }
 	void OnApplicationQuit() { IsRunning = false; ReleaseResources(); }
 
-	[ContextMenu("Dump Plan CSV To Console")]
+	[ContextMenu( "Dump Plan CSV To Console" )]
 	void DumpPlan()
 	{
-		if (!sceneRefs.Resolve(out string error)) { Debug.LogError(error, this); return; }
+		if ( !sceneRefs.Resolve( out string error ) ) { Debug.LogError( error, this ); return; }
 
 		float aspect = targetResolution.y > 0 ? (float)targetResolution.x / targetResolution.y : 1.78f;
-		BenchmarkPlan plan = BenchmarkPlan.Build(benchmark, sceneRefs.Earth,
-			sceneRefs.testbedCamera.SurfaceRadius, aspect, fallbackBookmarks);
+		BenchmarkPlan plan = BenchmarkPlan.Build( benchmark, sceneRefs.Earth,
+			sceneRefs.testbedCamera.SurfaceRadius, aspect, fallbackBookmarks );
 
-		Debug.Log(plan.Describe(), this);
-		Debug.Log(plan.ToCsv(), this);
+		Debug.Log( plan.Describe(), this );
+		Debug.Log( plan.ToCsv(), this );
 	}
 }

@@ -56,123 +56,123 @@ static class SkyGradientTools
 	// horizon-to-zenith looks conspicuously wrong, and this is the cheapest fix.
 	const float ZenithFalloff = 0.65f;
 
-	[MenuItem("Testbed/Baseline Sky/Generate Default Sky Gradient")]
+	[MenuItem( "Testbed/Baseline Sky/Generate Default Sky Gradient" )]
 	static void Generate()
 	{
-		if (File.Exists(GradientPath))
+		if ( File.Exists( GradientPath ) )
 		{
-			bool overwrite = EditorUtility.DisplayDialog("Overwrite sky gradient?",
+			bool overwrite = EditorUtility.DisplayDialog( "Overwrite sky gradient?",
 				$"{GradientPath} already exists.\n\nIf it has been hand-tuned, regenerating " +
-				"discards that work.", "Overwrite", "Cancel");
-			if (!overwrite) { return; }
+				"discards that work.", "Overwrite", "Cancel" );
+			if ( !overwrite ) { return; }
 		}
 
 		// The inverse has to use the same tone-map constants the renderer will apply, or the
 		// result is wrong by exactly the amount they differ. Read them from the scene rather
 		// than assuming.
-		var renderer = Object.FindFirstObjectByType<BaselineSkyRenderer>(FindObjectsInactive.Include);
+		var renderer = Object.FindFirstObjectByType<BaselineSkyRenderer>( FindObjectsInactive.Include );
 		float intensity = renderer != null ? renderer.intensity : 1f;
 		float contrast = renderer != null ? renderer.contrast : 1.45f;
 		float whitePoint = renderer != null ? renderer.whitePoint : 1.1f;
 
-		if (renderer == null)
+		if ( renderer == null )
 		{
-			Debug.LogWarning("[BaselineSky] no BaselineSkyRenderer in the open scene; using " +
-				"default tone-map constants. If the renderer's differ, regenerate afterwards.");
+			Debug.LogWarning( "[BaselineSky] no BaselineSkyRenderer in the open scene; using " +
+				"default tone-map constants. If the renderer's differ, regenerate afterwards." );
 		}
 
-		Directory.CreateDirectory(Folder);
+		Directory.CreateDirectory( Folder );
 
-		var texture = new Texture2D(Width, Height, TextureFormat.RGBAFloat, false, linear: true);
-		var pixels = new Color[Width * Height];
+		var texture = new Texture2D( Width, Height, TextureFormat.RGBAFloat, false, linear: true );
+		var pixels = new Color[ Width * Height ];
 
-		for (int y = 0; y < Height; y++)
+		for ( int y = 0; y < Height; y++ )
 		{
-			float sunElevation01 = Height == 1 ? 0.5f : y / (float)(Height - 1);
-			float sunElevationDegrees = (sunElevation01 * 2f - 1f) * 90f;
+			float sunElevation01 = Height == 1 ? 0.5f : y / (float)( Height - 1 );
+			float sunElevationDegrees = ( sunElevation01 * 2f - 1f ) * 90f;
 
-			Sample(sunElevationDegrees, out Color horizon, out Color zenith);
+			Sample( sunElevationDegrees, out Color horizon, out Color zenith );
 
-			for (int x = 0; x < Width; x++)
+			for ( int x = 0; x < Width; x++ )
 			{
-				float viewElevation01 = Width == 1 ? 0.5f : x / (float)(Width - 1);
+				float viewElevation01 = Width == 1 ? 0.5f : x / (float)( Width - 1 );
 
 				// Interpolate in display space, then invert once. Interpolating the stored
 				// values instead would make the midpoint of a gradient not look like the
 				// midpoint, since the tone map is non-linear.
-				Color displayed = Shade(viewElevation01, horizon, zenith);
-				pixels[y * Width + x] = InverseToneMap(displayed, intensity, contrast, whitePoint);
+				Color displayed = Shade( viewElevation01, horizon, zenith );
+				pixels[ y * Width + x ] = InverseToneMap( displayed, intensity, contrast, whitePoint );
 			}
 		}
 
-		texture.SetPixels(pixels);
+		texture.SetPixels( pixels );
 		texture.Apply();
 
-		File.WriteAllBytes(GradientPath, texture.EncodeToEXR(Texture2D.EXRFlags.OutputAsFloat));
-		Object.DestroyImmediate(texture);
+		File.WriteAllBytes( GradientPath, texture.EncodeToEXR( Texture2D.EXRFlags.OutputAsFloat ) );
+		Object.DestroyImmediate( texture );
 
-		AssetDatabase.ImportAsset(GradientPath, ImportAssetOptions.ForceUpdate);
-		ConfigureImporter(GradientPath);
+		AssetDatabase.ImportAsset( GradientPath, ImportAssetOptions.ForceUpdate );
+		ConfigureImporter( GradientPath );
 
 		// This gradient is inverse-tone-mapped, so it is the tone-map constants it goes stale
 		// against - not the atmosphere.
-		SkyBakeStampWriter.Record(GradientPath, SkyBakeStamp.Recipe.ToneMap, null, renderer,
-			new SkyBakeStamp.Inputs().Add("bakeWidth", Width).Add("bakeHeight", Height)
-				.Add("bakeZenithFalloff", ZenithFalloff));
+		SkyBakeStampWriter.Record( GradientPath, SkyBakeStamp.Recipe.ToneMap, null, renderer,
+			new SkyBakeStamp.Inputs().Add( "bakeWidth", Width ).Add( "bakeHeight", Height )
+				.Add( "bakeZenithFalloff", ZenithFalloff ) );
 
-		Debug.Log($"[BaselineSky] wrote {Width}x{Height} sky gradient to {GradientPath}\n" +
+		Debug.Log( $"[BaselineSky] wrote {Width}x{Height} sky gradient to {GradientPath}\n" +
 			"  U = view elevation (0 down, 0.5 horizon, 1 zenith), V = sun elevation (-90 to +90)\n" +
 			$"  Linear EXR, pre-tone-map. Inverted against intensity={intensity}, " +
 			$"contrast={contrast}, whitePoint={whitePoint}.\n" +
-			"  Changing those on the renderer means regenerating or the sky shifts.");
+			"  Changing those on the renderer means regenerating or the sky shifts." );
 
-		Selection.activeObject = AssetDatabase.LoadAssetAtPath<Texture2D>(GradientPath);
+		Selection.activeObject = AssetDatabase.LoadAssetAtPath<Texture2D>( GradientPath );
 	}
 
 	/// <summary>Interpolates the anchor set at a given sun elevation.</summary>
-	static void Sample(float sunElevationDegrees, out Color horizon, out Color zenith)
+	static void Sample( float sunElevationDegrees, out Color horizon, out Color zenith )
 	{
-		if (sunElevationDegrees <= Anchors[0].sunElevationDegrees)
+		if ( sunElevationDegrees <= Anchors[ 0 ].sunElevationDegrees )
 		{
-			horizon = Anchors[0].horizon;
-			zenith = Anchors[0].zenith;
+			horizon = Anchors[ 0 ].horizon;
+			zenith = Anchors[ 0 ].zenith;
 			return;
 		}
 
-		for (int i = 1; i < Anchors.Length; i++)
+		for ( int i = 1; i < Anchors.Length; i++ )
 		{
-			if (sunElevationDegrees > Anchors[i].sunElevationDegrees) { continue; }
+			if ( sunElevationDegrees > Anchors[ i ].sunElevationDegrees ) { continue; }
 
-			SkyAnchor a = Anchors[i - 1];
-			SkyAnchor b = Anchors[i];
+			SkyAnchor a = Anchors[ i - 1 ];
+			SkyAnchor b = Anchors[ i ];
 			float span = b.sunElevationDegrees - a.sunElevationDegrees;
-			float t = span > 0f ? (sunElevationDegrees - a.sunElevationDegrees) / span : 0f;
+			float t = span > 0f ? ( sunElevationDegrees - a.sunElevationDegrees ) / span : 0f;
 
 			// Smoothstep rather than linear: linear interpolation between anchors produces a
 			// visible crease as the sun crosses one, which is exactly when someone is looking.
-			t = t * t * (3f - 2f * t);
+			t = t * t * ( 3f - 2f * t );
 
-			horizon = Color.Lerp(a.horizon, b.horizon, t);
-			zenith = Color.Lerp(a.zenith, b.zenith, t);
+			horizon = Color.Lerp( a.horizon, b.horizon, t );
+			zenith = Color.Lerp( a.zenith, b.zenith, t );
 			return;
 		}
 
-		horizon = Anchors[Anchors.Length - 1].horizon;
-		zenith = Anchors[Anchors.Length - 1].zenith;
+		horizon = Anchors[ Anchors.Length - 1 ].horizon;
+		zenith = Anchors[ Anchors.Length - 1 ].zenith;
 	}
 
-	static Color Shade(float viewElevation01, Color horizon, Color zenith)
+	static Color Shade( float viewElevation01, Color horizon, Color zenith )
 	{
-		if (viewElevation01 >= 0.5f)
+		if ( viewElevation01 >= 0.5f )
 		{
-			float t = Mathf.Pow((viewElevation01 - 0.5f) * 2f, ZenithFalloff);
-			return Color.Lerp(horizon, zenith, t);
+			float t = Mathf.Pow( ( viewElevation01 - 0.5f ) * 2f, ZenithFalloff );
+			return Color.Lerp( horizon, zenith, t );
 		}
 
 		// Below the horizon. Terrain covers this from the ground, but this is a globe scene -
 		// from orbit the camera looks down past the limb and needs something there.
 		float below = viewElevation01 * 2f;
-		return horizon * Mathf.Lerp(0.25f, 1f, below);
+		return horizon * Mathf.Lerp( 0.25f, 1f, below );
 	}
 
 	// ------------------------------------------------------------------ tone map inverse
@@ -181,34 +181,34 @@ static class SkyGradientTools
 	/// The exact inverse of toneMap() in DrawAtmosphereCommon.hlsl, minus the smoothMax floor
 	/// (which is identity above zero and only soft-clamps negatives).
 	/// </summary>
-	static Color InverseToneMap(Color displayed, float intensity, float contrast, float whitePoint)
+	static Color InverseToneMap( Color displayed, float intensity, float contrast, float whitePoint )
 	{
 		return new Color(
-			InverseToneMapChannel(displayed.r, intensity, contrast, whitePoint),
-			InverseToneMapChannel(displayed.g, intensity, contrast, whitePoint),
-			InverseToneMapChannel(displayed.b, intensity, contrast, whitePoint),
-			1f);
+			InverseToneMapChannel( displayed.r, intensity, contrast, whitePoint ),
+			InverseToneMapChannel( displayed.g, intensity, contrast, whitePoint ),
+			InverseToneMapChannel( displayed.b, intensity, contrast, whitePoint ),
+			1f );
 	}
 
-	static float InverseToneMapChannel(float displayed, float intensity, float contrast, float whitePoint)
+	static float InverseToneMapChannel( float displayed, float intensity, float contrast, float whitePoint )
 	{
-		displayed = Mathf.Max(0f, displayed);
+		displayed = Mathf.Max( 0f, displayed );
 
 		// reinhard_extended is v * (1 + v/W^2) / (1 + v). Setting that equal to the displayed
 		// value and rearranging gives v^2 + W^2*(1-d)*v - W^2*d = 0; take the positive root.
 		// It is monotonic and unbounded, so every non-negative target has exactly one answer.
 		float w2 = whitePoint * whitePoint;
-		float b = w2 * (1f - displayed);
-		float v = (-b + Mathf.Sqrt(b * b + 4f * w2 * displayed)) * 0.5f;
+		float b = w2 * ( 1f - displayed );
+		float v = ( -b + Mathf.Sqrt( b * b + 4f * w2 * displayed ) ) * 0.5f;
 
 		// Then undo the contrast pedestal and the intensity scale.
-		return (0.5f + (v - 0.5f) / Mathf.Max(1e-4f, contrast)) / Mathf.Max(1e-4f, intensity);
+		return ( 0.5f + ( v - 0.5f ) / Mathf.Max( 1e-4f, contrast ) ) / Mathf.Max( 1e-4f, intensity );
 	}
 
-	static void ConfigureImporter(string path)
+	static void ConfigureImporter( string path )
 	{
-		var importer = AssetImporter.GetAtPath(path) as TextureImporter;
-		if (importer == null) { return; }
+		var importer = AssetImporter.GetAtPath( path ) as TextureImporter;
+		if ( importer == null ) { return; }
 
 		// sRGB off: the values are pre-tone-map radiance, not display colour.
 		importer.sRGBTexture = false;

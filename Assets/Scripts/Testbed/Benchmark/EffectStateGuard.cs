@@ -19,7 +19,7 @@ public static class EffectStateGuard
 {
 	public const string SessionKey = "Benchmark.EffectStateGuard";
 
-	public static void Arm(PostProcessingEffect[] effects)
+	public static void Arm( PostProcessingEffect[] effects )
 	{
 #if UNITY_EDITOR
 		if (effects == null) { return; }

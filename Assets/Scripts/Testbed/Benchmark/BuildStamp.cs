@@ -25,10 +25,10 @@ public class BuildStamp : ScriptableObject
 	/// without the build script.</summary>
 	public static BuildStamp Load()
 	{
-		if (loadAttempted) { return cached; }
+		if ( loadAttempted ) { return cached; }
 
 		loadAttempted = true;
-		cached = Resources.Load<BuildStamp>(ResourcePath);
+		cached = Resources.Load<BuildStamp>( ResourcePath );
 		return cached;
 	}
 }

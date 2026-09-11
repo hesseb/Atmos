@@ -47,8 +47,8 @@ public class FrameSampler : System.IDisposable
 
 	const int TimingWindow = 16;
 
-	readonly ProfilerRecorder[] recorders = new ProfilerRecorder[CounterDefs.Length];
-	readonly FrameTiming[] timingBuffer = new FrameTiming[TimingWindow];
+	readonly ProfilerRecorder[] recorders = new ProfilerRecorder[ CounterDefs.Length ];
+	readonly FrameTiming[] timingBuffer = new FrameTiming[ TimingWindow ];
 	readonly System.Diagnostics.Stopwatch stopwatch = new System.Diagnostics.Stopwatch();
 
 	long previousTicks;
@@ -62,9 +62,9 @@ public class FrameSampler : System.IDisposable
 
 	public FrameSampler()
 	{
-		for (int i = 0; i < CounterDefs.Length; i++)
+		for ( int i = 0; i < CounterDefs.Length; i++ )
 		{
-			recorders[i] = ProfilerRecorder.StartNew(CounterDefs[i].category, CounterDefs[i].name);
+			recorders[ i ] = ProfilerRecorder.StartNew( CounterDefs[ i ].category, CounterDefs[ i ].name );
 		}
 		stopwatch.Start();
 		previousTicks = stopwatch.ElapsedTicks;
@@ -75,15 +75,15 @@ public class FrameSampler : System.IDisposable
 	/// as zero.</summary>
 	public List<(string name, bool available)> CounterAvailability()
 	{
-		var list = new List<(string, bool)>(CounterDefs.Length);
-		for (int i = 0; i < CounterDefs.Length; i++)
+		var list = new List<(string, bool)>( CounterDefs.Length );
+		for ( int i = 0; i < CounterDefs.Length; i++ )
 		{
-			list.Add((CounterDefs[i].name, recorders[i].Valid));
+			list.Add( (CounterDefs[ i ].name, recorders[ i ].Valid) );
 		}
 		return list;
 	}
 
-	public bool CounterValid(int index) => recorders[index].Valid;
+	public bool CounterValid( int index ) => recorders[ index ].Valid;
 
 	/// <summary>Takes a sample describing the frame that just completed.</summary>
 	public Sample Capture()
@@ -91,20 +91,20 @@ public class FrameSampler : System.IDisposable
 		var sample = new Sample();
 
 		long ticks = stopwatch.ElapsedTicks;
-		sample.wallMs = (ticks - previousTicks) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+		sample.wallMs = ( ticks - previousTicks ) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
 		previousTicks = ticks;
 
 		FrameTimingManager.CaptureFrameTimings();
 		captureCount++;
 
-		uint count = FrameTimingManager.GetLatestTimings(TimingWindow, timingBuffer);
+		uint count = FrameTimingManager.GetLatestTimings( TimingWindow, timingBuffer );
 		int fresh = 0;
-		if (count > 0)
+		if ( count > 0 )
 		{
 			// Buffer is newest-first; walk until we reach one already seen.
-			for (int i = 0; i < count; i++)
+			for ( int i = 0; i < count; i++ )
 			{
-				if (lastSeenPresentTime >= 0 && timingBuffer[i].cpuTimePresentCalled <= lastSeenPresentTime)
+				if ( lastSeenPresentTime >= 0 && timingBuffer[ i ].cpuTimePresentCalled <= lastSeenPresentTime )
 				{
 					break;
 				}
@@ -118,13 +118,13 @@ public class FrameSampler : System.IDisposable
 		// failure.
 		bool hadBaseline = lastSeenPresentTime >= 0;
 
-		if (fresh > 0)
+		if ( fresh > 0 )
 		{
-			lastSeenPresentTime = timingBuffer[0].cpuTimePresentCalled;
+			lastSeenPresentTime = timingBuffer[ 0 ].cpuTimePresentCalled;
 
 			// The newest is the frame just completed. If more than one arrived we are no
 			// longer one-to-one; record it and take the newest.
-			FrameTiming timing = timingBuffer[0];
+			FrameTiming timing = timingBuffer[ 0 ];
 			sample.cpuFrameMs = timing.cpuFrameTime;
 			sample.cpuMainMs = timing.cpuMainThreadFrameTime;
 			sample.cpuRenderMs = timing.cpuRenderThreadFrameTime;
@@ -132,7 +132,7 @@ public class FrameSampler : System.IDisposable
 			sample.gpuMs = timing.gpuFrameTime;
 			sample.timingValid = true;
 
-			if (!FrameTimingAvailable && timing.gpuFrameTime > 0)
+			if ( !FrameTimingAvailable && timing.gpuFrameTime > 0 )
 			{
 				FrameTimingAvailable = true;
 				TimingLagFrames = captureCount;
@@ -143,44 +143,44 @@ public class FrameSampler : System.IDisposable
 			// and zero timing_valid=0 frames, so nothing was actually mis-attributed. A
 			// warning that fires on every run is worse than none: it teaches the reader to
 			// ignore the field that is supposed to mean something.
-			if (fresh > 1 && hadBaseline) { AttributionAnomalies++; }
+			if ( fresh > 1 && hadBaseline ) { AttributionAnomalies++; }
 		}
-		else if (captureCount > 4)
+		else if ( captureCount > 4 )
 		{
 			// Past priming, a frame with no new timing breaks one-to-one attribution.
 			AttributionAnomalies++;
 		}
 
-		ReadCounters(ref sample);
+		ReadCounters( ref sample );
 		return sample;
 	}
 
-	void ReadCounters(ref Sample sample)
+	void ReadCounters( ref Sample sample )
 	{
-		sample.drawCalls = Read(0);
-		sample.batches = Read(1);
-		sample.setPassCalls = Read(2);
-		sample.triangles = Read(3);
-		sample.vertices = Read(4);
-		sample.shadowCasters = Read(5);
-		sample.gcAllocBytes = Read(6);
-		sample.totalUsedBytes = Read(7);
-		sample.totalReservedBytes = Read(8);
-		sample.gfxUsedBytes = Read(9);
-		sample.systemUsedBytes = Read(10);
-		sample.gcUsedBytes = Read(11);
-		sample.gcReservedBytes = Read(12);
+		sample.drawCalls = Read( 0 );
+		sample.batches = Read( 1 );
+		sample.setPassCalls = Read( 2 );
+		sample.triangles = Read( 3 );
+		sample.vertices = Read( 4 );
+		sample.shadowCasters = Read( 5 );
+		sample.gcAllocBytes = Read( 6 );
+		sample.totalUsedBytes = Read( 7 );
+		sample.totalReservedBytes = Read( 8 );
+		sample.gfxUsedBytes = Read( 9 );
+		sample.systemUsedBytes = Read( 10 );
+		sample.gcUsedBytes = Read( 11 );
+		sample.gcReservedBytes = Read( 12 );
 	}
 
 	// -1 means "counter not available", which the writer emits as an empty cell so it can
 	// never be mistaken for a genuine zero.
-	long Read(int index) => recorders[index].Valid ? recorders[index].LastValue : -1L;
+	long Read( int index ) => recorders[ index ].Valid ? recorders[ index ].LastValue : -1L;
 
 	public void Dispose()
 	{
-		for (int i = 0; i < recorders.Length; i++)
+		for ( int i = 0; i < recorders.Length; i++ )
 		{
-			if (recorders[i].Valid) { recorders[i].Dispose(); }
+			if ( recorders[ i ].Valid ) { recorders[ i ].Dispose(); }
 		}
 		stopwatch.Stop();
 	}

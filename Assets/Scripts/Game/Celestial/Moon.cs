@@ -19,22 +19,22 @@ namespace SolarSystem
 
 		public Renderer moonRenderer;
 
-		[Header("Lighting")]
-		[Tooltip("Colour of moonlight for shaders that sample it. Moonlight is reflected sunlight " +
+		[Header( "Lighting" )]
+		[Tooltip( "Colour of moonlight for shaders that sample it. Moonlight is reflected sunlight " +
 			"off a grey body, so it is close to neutral - the familiar blue cast is the eye, not " +
-			"the light.")]
-		public Color moonLightColour = new Color(0.85f, 0.89f, 1f);
-		[Tooltip("Scales moonLightColour. Real moonlight is about a 400,000th of sunlight, which " +
-			"no display transform here would survive, so this is an authored level.")]
+			"the light." )]
+		public Color moonLightColour = new Color( 0.85f, 0.89f, 1f );
+		[Tooltip( "Scales moonLightColour. Real moonlight is about a 400,000th of sunlight, which " +
+			"no display transform here would survive, so this is an authored level." )]
 		public float moonLightIntensity = 0.06f;
-		[Tooltip("Needed for the moon's phase. Without it the moon reads as always full.")]
+		[Tooltip( "Needed for the moon's phase. Without it the moon reads as always full." )]
 		public Light sunLight;
 
-		static readonly int MoonPositionId = Shader.PropertyToID("moonPosition");
-		static readonly int MoonLightColourId = Shader.PropertyToID("moonLightColour");
+		static readonly int MoonPositionId = Shader.PropertyToID( "moonPosition" );
+		static readonly int MoonLightColourId = Shader.PropertyToID( "moonLightColour" );
 
 		Material material;
-		[Header("Debug")]
+		[Header( "Debug" )]
 		public Camera camTest;
 		public float debug_dst;
 		public bool freezeOrbit;
@@ -42,29 +42,29 @@ namespace SolarSystem
 
 
 
-		public void UpdateOrbit(float monthT, EarthOrbit earth, bool geocentric)
+		public void UpdateOrbit( float monthT, EarthOrbit earth, bool geocentric )
 		{
 
-			transform.localScale = Vector3.one * size * ((Application.isPlaying) ? 1 : 2);
+			transform.localScale = Vector3.one * size * ( ( Application.isPlaying ) ? 1 : 2 );
 
-			if (freezeOrbit)
+			if ( freezeOrbit )
 			{
 				return;
 			}
 
-			Vector3 xAxis = new Vector3(Mathf.Cos(moonOrbitAngle * Mathf.Deg2Rad), Mathf.Sin(moonOrbitAngle * Mathf.Deg2Rad), 0);
+			Vector3 xAxis = new Vector3( Mathf.Cos( moonOrbitAngle * Mathf.Deg2Rad ), Mathf.Sin( moonOrbitAngle * Mathf.Deg2Rad ), 0 );
 			Vector3 yAxis = Vector3.forward;
 
-			Vector2 orbitPos = Orbit.CalculatePointOnOrbit(periapsis, apoapsis, monthT);
+			Vector2 orbitPos = Orbit.CalculatePointOnOrbit( periapsis, apoapsis, monthT );
 			debug_dst = orbitPos.magnitude;
-			Vector3 moonPos = (xAxis * orbitPos.x + yAxis * orbitPos.y) * dstMultiplier;
-			Quaternion moonRot = Quaternion.Euler(0, 0, -moonTilt) * Quaternion.Euler(0, -monthT * 360, 0);
+			Vector3 moonPos = ( xAxis * orbitPos.x + yAxis * orbitPos.y ) * dstMultiplier;
+			Quaternion moonRot = Quaternion.Euler( 0, 0, -moonTilt ) * Quaternion.Euler( 0, -monthT * 360, 0 );
 
 			// Earth object doesn't actually move/rotate, so have to move moon to account for that
-			if (geocentric)
+			if ( geocentric )
 			{
-				transform.position = Quaternion.Inverse(earth.earthRot) * moonPos;
-				transform.rotation = Quaternion.Inverse(earth.earthRot) * moonRot;
+				transform.position = Quaternion.Inverse( earth.earthRot ) * moonPos;
+				transform.rotation = Quaternion.Inverse( earth.earthRot ) * moonRot;
 			}
 			else
 			{
@@ -74,10 +74,10 @@ namespace SolarSystem
 
 			PublishMoonLighting();
 
-			if (camTest)
+			if ( camTest )
 			{
-				camTest.transform.position = (geocentric) ? Vector3.zero : earth.earthPos;
-				camTest.transform.LookAt(transform);
+				camTest.transform.position = ( geocentric ) ? Vector3.zero : earth.earthPos;
+				camTest.transform.LookAt( transform );
 			}
 		}
 
@@ -96,7 +96,7 @@ namespace SolarSystem
 		/// </summary>
 		void PublishMoonLighting()
 		{
-			Shader.SetGlobalVector(MoonPositionId, transform.position);
+			Shader.SetGlobalVector( MoonPositionId, transform.position );
 
 			// Illuminated fraction as seen from the planet. The moon is opposite the sun at full,
 			// so the dot is -1 there and +1 at new.
@@ -104,17 +104,17 @@ namespace SolarSystem
 				? transform.position.normalized
 				: Vector3.up;
 			Vector3 toSun = sunLight != null ? -sunLight.transform.forward : Vector3.up;
-			float phase = Mathf.Clamp01((1f - Vector3.Dot(toMoon, toSun)) * 0.5f);
+			float phase = Mathf.Clamp01( ( 1f - Vector3.Dot( toMoon, toSun ) ) * 0.5f );
 
-			Shader.SetGlobalVector(MoonLightColourId, (Vector4)(moonLightColour * moonLightIntensity * phase));
+			Shader.SetGlobalVector( MoonLightColourId, (Vector4)( moonLightColour * moonLightIntensity * phase ) );
 		}
 
-		public void Setup(CommandBuffer cmd)
+		public void Setup( CommandBuffer cmd )
 		{
-			moonRenderer.gameObject.GetComponent<MeshFilter>().mesh = Seb.Meshing.IcoSphere.Generate(resolution).ToMesh();
+			moonRenderer.gameObject.GetComponent<MeshFilter>().mesh = Seb.Meshing.IcoSphere.Generate( resolution ).ToMesh();
 			Material mat = moonRenderer.sharedMaterial;
 
-			cmd.DrawRenderer(moonRenderer, mat);
+			cmd.DrawRenderer( moonRenderer, mat );
 		}
 
 	}

@@ -25,23 +25,23 @@ namespace Clouds
 	[ExecuteInEditMode]
 	public class BaselineCloudShell : MonoBehaviour
 	{
-		[Tooltip("The parameters. Shared with the post-process delivery deliberately - both read " +
-			"this one asset, so neither can drift.")]
+		[Tooltip( "The parameters. Shared with the post-process delivery deliberately - both read " +
+			"this one asset, so neither can drift." )]
 		public BaselineCloudEffect settings;
 
 		public Shader shellShader;
 
-		[Tooltip("Icosphere subdivisions. Only decides which pixels get shaded, never how: the " +
+		[Tooltip( "Icosphere subdivisions. Only decides which pixels get shaded, never how: the " +
 			"fragment intersects the analytic sphere regardless, so faceting cannot reach the " +
-			"shading. Enough that the silhouette is smooth is enough.")]
-		[Range(0, 128)] public int resolution = 48;
+			"shading. Enough that the silhouette is smooth is enough." )]
+		[Range( 0, 128 )] public int resolution = 48;
 
-		[Tooltip("Scales the shell fractionally past its deck radius. An inscribed polyhedron's " +
+		[Tooltip( "Scales the shell fractionally past its deck radius. An inscribed polyhedron's " +
 			"silhouette sits inside the sphere it approximates, so without this a thin crescent is " +
-			"clipped off the limb - which is exactly where a cloud deck is most visible.")]
-		[Range(1f, 1.05f)] public float edgeInflate = 1.004f;
+			"clipped off the limb - which is exactly where a cloud deck is most visible." )]
+		[Range( 1f, 1.05f )] public float edgeInflate = 1.004f;
 
-		[Tooltip("Layer the shells are drawn on. Must be one the main camera renders.")]
+		[Tooltip( "Layer the shells are drawn on. Must be one the main camera renders." )]
 		public int drawLayer;
 
 		Mesh sphere;
@@ -60,30 +60,30 @@ namespace Clouds
 
 		void Release()
 		{
-			if (sphere != null) { DestroyImmediate(sphere); sphere = null; }
-			if (lowerMaterial != null) { DestroyImmediate(lowerMaterial); lowerMaterial = null; }
-			if (upperMaterial != null) { DestroyImmediate(upperMaterial); upperMaterial = null; }
+			if ( sphere != null ) { DestroyImmediate( sphere ); sphere = null; }
+			if ( lowerMaterial != null ) { DestroyImmediate( lowerMaterial ); lowerMaterial = null; }
+			if ( upperMaterial != null ) { DestroyImmediate( upperMaterial ); upperMaterial = null; }
 		}
 
 		void LateUpdate()
 		{
-			if (settings == null || shellShader == null) { return; }
-			if (settings.TextureFor(settings.lower) == null) { return; }
+			if ( settings == null || shellShader == null ) { return; }
+			if ( settings.TextureFor( settings.lower ) == null ) { return; }
 
 			EnsureResources();
 
 			Camera drawCamera = ResolveCamera();
-			if (drawCamera == null) { return; }
+			if ( drawCamera == null ) { return; }
 
 			// Pixel height of the frame, since the mip footprint follows the pass resolution. The
 			// mesh always draws at full resolution - there is no half-res mode here, because
 			// rendering geometry at half resolution and upsampling is a different technique rather
 			// than the same one cheaper.
-			settings.ApplyShadingValuesTo(lowerMaterial, drawCamera.pixelHeight);
-			settings.ApplyShadingValuesTo(upperMaterial, drawCamera.pixelHeight);
+			settings.ApplyShadingValuesTo( lowerMaterial, drawCamera.pixelHeight );
+			settings.ApplyShadingValuesTo( upperMaterial, drawCamera.pixelHeight );
 
-			lowerMaterial.SetFloat("baselineShellIsUpper", 0f);
-			upperMaterial.SetFloat("baselineShellIsUpper", 1f);
+			lowerMaterial.SetFloat( "baselineShellIsUpper", 0f );
+			upperMaterial.SetFloat( "baselineShellIsUpper", 1f );
 
 			float cameraRadius = drawCamera.transform.position.magnitude;
 			float lowerRadius = settings.bodyRadius + settings.lower.altitude;
@@ -93,8 +93,8 @@ namespace Clouds
 			// you see; inside it, the far one is. This is the geometric counterpart of
 			// baselineLayerHit taking the near hit from outside and the exit hit from inside, and
 			// getting it wrong either draws the deck twice or not at all.
-			lowerMaterial.SetFloat("_Cull", cameraRadius > lowerRadius ? 2f : 1f);   // Back : Front
-			upperMaterial.SetFloat("_Cull", cameraRadius > upperRadius ? 2f : 1f);
+			lowerMaterial.SetFloat( "_Cull", cameraRadius > lowerRadius ? 2f : 1f );   // Back : Front
+			upperMaterial.SetFloat( "_Cull", cameraRadius > upperRadius ? 2f : 1f );
 
 			// Per-OBJECT sorting, and that is a real limitation of this delivery rather than an
 			// oversight.
@@ -112,13 +112,13 @@ namespace Clouds
 			lowerMaterial.renderQueue = lowerIsFarther ? 3000 : 3001;
 			upperMaterial.renderQueue = lowerIsFarther ? 3001 : 3000;
 
-			Matrix4x4 lowerMatrix = Matrix4x4.Scale(Vector3.one * (lowerRadius * edgeInflate));
-			Graphics.DrawMesh(sphere, lowerMatrix, lowerMaterial, drawLayer, drawCamera);
+			Matrix4x4 lowerMatrix = Matrix4x4.Scale( Vector3.one * ( lowerRadius * edgeInflate ) );
+			Graphics.DrawMesh( sphere, lowerMatrix, lowerMaterial, drawLayer, drawCamera );
 
-			if (settings.UpperActive)
+			if ( settings.UpperActive )
 			{
-				Matrix4x4 upperMatrix = Matrix4x4.Scale(Vector3.one * (upperRadius * edgeInflate));
-				Graphics.DrawMesh(sphere, upperMatrix, upperMaterial, drawLayer, drawCamera);
+				Matrix4x4 upperMatrix = Matrix4x4.Scale( Vector3.one * ( upperRadius * edgeInflate ) );
+				Graphics.DrawMesh( sphere, upperMatrix, upperMaterial, drawLayer, drawCamera );
 			}
 		}
 
@@ -128,7 +128,7 @@ namespace Clouds
 		/// </summary>
 		Camera ResolveCamera()
 		{
-			if (cachedCamera == null) { cachedCamera = Camera.main; }
+			if ( cachedCamera == null ) { cachedCamera = Camera.main; }
 			return cachedCamera;
 		}
 
@@ -136,22 +136,22 @@ namespace Clouds
 		{
 			// A unit sphere, scaled to each deck's radius by the draw matrix. One mesh, two draws -
 			// the decks differ only in radius, so a second copy would be the same vertices again.
-			if (sphere == null)
+			if ( sphere == null )
 			{
 				// MeshHelper picks the 16- or 32-bit index format from the vertex count, and computes
 				// the bounds - which Unity then transforms by the draw matrix, so the unit sphere's
 				// bounds scale to the deck's radius for culling without anything further here.
-				sphere = MeshHelper.CreateMesh(IcoSphere.Generate(resolution, 1f));
+				sphere = MeshHelper.CreateMesh( IcoSphere.Generate( resolution, 1f ) );
 				sphere.name = "Baseline Cloud Shell";
 			}
 
-			if (lowerMaterial == null)
+			if ( lowerMaterial == null )
 			{
-				lowerMaterial = new Material(shellShader) { hideFlags = HideFlags.HideAndDontSave };
+				lowerMaterial = new Material( shellShader ) { hideFlags = HideFlags.HideAndDontSave };
 			}
-			if (upperMaterial == null)
+			if ( upperMaterial == null )
 			{
-				upperMaterial = new Material(shellShader) { hideFlags = HideFlags.HideAndDontSave };
+				upperMaterial = new Material( shellShader ) { hideFlags = HideFlags.HideAndDontSave };
 			}
 		}
 	}

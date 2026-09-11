@@ -64,7 +64,7 @@ Shader "Hidden/DrawSky"
 
 				float cosTheta = dot(rayDir, sunDir);
 				if (cosTheta >= minSunCosTheta) return 1;
-				
+
 				float offset = minSunCosTheta - cosTheta;
 				float gaussianBloom = exp(-offset*1000 * sunDiscBlurA)*0.5;
 				float invBloom = 1.0/(0.02 + offset * 100 * sunDiscBlurB)*0.01;
@@ -85,7 +85,7 @@ Shader "Hidden/DrawSky"
 				float3 sunDisc = sunDiscWithBloom(viewDir, dirToSun);
 				float3 transmittance = sampleTransmittanceLUT(TransmittanceLUT, _WorldSpaceCameraPos, viewDir);
 				skyLum += sunDisc * transmittance;
-				
+
 				skyLum = toneMap(skyLum);
 
 				// So, this is a horrifying mess.
@@ -99,10 +99,10 @@ Shader "Hidden/DrawSky"
 				float3 transmittedCol = lerp(originalCol, 0, t);
 				float3 t2 = transmittedCol * lerp(dot(transmittance,1/3.0), transmittance, skyTransmittanceWeight);
 				transmittedCol = lerp(originalCol, t2, saturate(skyIntensity * 4));
-				
+
 				// Combine background colour with sky colour
 				skyLum = transmittedCol + skyLum;
-					
+
 					// Apply dithering to try combat banding
 				skyLum = blueNoiseDither(skyLum, i.uv, ditherStrength);
 

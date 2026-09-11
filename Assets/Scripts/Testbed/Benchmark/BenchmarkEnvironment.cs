@@ -26,48 +26,48 @@ public class BenchmarkSceneRefs
 
 	public EarthOrbit Earth => solarSystem != null ? solarSystem.earth : null;
 
-	public bool Resolve(out string error)
+	public bool Resolve( out string error )
 	{
-		if (camera == null) { camera = Camera.main; }
-		if (testbedCamera == null) { testbedCamera = Object.FindFirstObjectByType<TestbedCamera>(); }
-		if (solarSystem == null) { solarSystem = Object.FindFirstObjectByType<SolarSystemManager>(); }
-		if (timeController == null) { timeController = Object.FindFirstObjectByType<TimeController>(); }
-		if (lodSystem == null) { lodSystem = Object.FindFirstObjectByType<SimpleLodSystem>(); }
-		if (postProcessing == null) { postProcessing = Object.FindFirstObjectByType<PostProcessingManager>(); }
+		if ( camera == null ) { camera = Camera.main; }
+		if ( testbedCamera == null ) { testbedCamera = Object.FindFirstObjectByType<TestbedCamera>(); }
+		if ( solarSystem == null ) { solarSystem = Object.FindFirstObjectByType<SolarSystemManager>(); }
+		if ( timeController == null ) { timeController = Object.FindFirstObjectByType<TimeController>(); }
+		if ( lodSystem == null ) { lodSystem = Object.FindFirstObjectByType<SimpleLodSystem>(); }
+		if ( postProcessing == null ) { postProcessing = Object.FindFirstObjectByType<PostProcessingManager>(); }
 
-		if (countryInteraction == null)
+		if ( countryInteraction == null )
 		{
-			GlobePicker picker = Object.FindFirstObjectByType<GlobePicker>(FindObjectsInactive.Include);
-			if (picker != null) { countryInteraction = picker.gameObject; }
+			GlobePicker picker = Object.FindFirstObjectByType<GlobePicker>( FindObjectsInactive.Include );
+			if ( picker != null ) { countryInteraction = picker.gameObject; }
 		}
 
-		if (renderingManager == null)
+		if ( renderingManager == null )
 		{
 			renderingManager = Object.FindFirstObjectByType<RenderingManager>();
 		}
-		if (baselineCloudShell == null)
+		if ( baselineCloudShell == null )
 		{
 			// Include inactive: a profile that selects the mesh delivery needs a handle to it while
 			// it is disabled, which is its resting state whenever anything else is being measured.
 			baselineCloudShell = Object.FindFirstObjectByType<Clouds.BaselineCloudShell>(
-				FindObjectsInactive.Include);
+				FindObjectsInactive.Include );
 		}
-		if (baselineSky == null)
+		if ( baselineSky == null )
 		{
 			// FindObjectsInactive.Include, because a profile that enables the baseline needs a
 			// handle to it while it is disabled - which is its resting state whenever the
 			// physically based renderer is the one being measured.
-			baselineSky = Object.FindFirstObjectByType<BaselineSkyRenderer>(FindObjectsInactive.Include);
+			baselineSky = Object.FindFirstObjectByType<BaselineSkyRenderer>( FindObjectsInactive.Include );
 		}
 
 		var missing = new List<string>();
-		if (camera == null) { missing.Add(nameof(camera)); }
-		if (testbedCamera == null) { missing.Add(nameof(testbedCamera)); }
-		if (solarSystem == null) { missing.Add(nameof(solarSystem)); }
-		if (solarSystem != null && solarSystem.earth == null) { missing.Add("solarSystem.earth"); }
-		if (lodSystem == null) { missing.Add(nameof(lodSystem)); }
+		if ( camera == null ) { missing.Add( nameof( camera ) ); }
+		if ( testbedCamera == null ) { missing.Add( nameof( testbedCamera ) ); }
+		if ( solarSystem == null ) { missing.Add( nameof( solarSystem ) ); }
+		if ( solarSystem != null && solarSystem.earth == null ) { missing.Add( "solarSystem.earth" ); }
+		if ( lodSystem == null ) { missing.Add( nameof( lodSystem ) ); }
 
-		error = missing.Count == 0 ? null : "missing scene references: " + string.Join(", ", missing);
+		error = missing.Count == 0 ? null : "missing scene references: " + string.Join( ", ", missing );
 		return missing.Count == 0;
 	}
 }
@@ -93,7 +93,7 @@ public static class BenchmarkEnvironment
 	public static Settings Defaults => new Settings
 	{
 		simulatedFps = 60f,
-		targetResolution = new Vector2Int(1920, 1080),
+		targetResolution = new Vector2Int( 1920, 1080 ),
 		pinResolution = true,
 		lodFramesPerUpdate = 1
 	};
@@ -102,7 +102,7 @@ public static class BenchmarkEnvironment
 	/// Applies the pinned environment. Dispose the returned scope to restore everything.
 	/// Warnings describe conditions that make a run less trustworthy but do not stop it.
 	/// </summary>
-	public static RestoreScope Pin(BenchmarkSceneRefs refs, Settings settings, List<string> warnings)
+	public static RestoreScope Pin( BenchmarkSceneRefs refs, Settings settings, List<string> warnings )
 	{
 		var scope = new RestoreScope();
 
@@ -110,37 +110,37 @@ public static class BenchmarkEnvironment
 		// captureDeltaTime fixes Time.deltaTime (and therefore Time.time, and the
 		// _Time the ocean shader animates from) without throttling - measured, see NOTES.
 		// Time.unscaledDeltaTime is NOT pinned by it and still reports real elapsed time.
-		scope.Set(() => Time.captureDeltaTime, v => Time.captureDeltaTime = v,
-			1f / Mathf.Max(1f, settings.simulatedFps));
-		scope.Set(() => Application.targetFrameRate, v => Application.targetFrameRate = v, -1);
-		scope.Set(() => QualitySettings.vSyncCount, v => QualitySettings.vSyncCount = v, 0);
-		scope.Set(() => Application.runInBackground, v => Application.runInBackground = v, true);
+		scope.Set( () => Time.captureDeltaTime, v => Time.captureDeltaTime = v,
+			1f / Mathf.Max( 1f, settings.simulatedFps ) );
+		scope.Set( () => Application.targetFrameRate, v => Application.targetFrameRate = v, -1 );
+		scope.Set( () => QualitySettings.vSyncCount, v => QualitySettings.vSyncCount = v, 0 );
+		scope.Set( () => Application.runInBackground, v => Application.runInBackground = v, true );
 
-		if (QualitySettings.vSyncCount != 0)
+		if ( QualitySettings.vSyncCount != 0 )
 		{
-			warnings.Add("VSYNC_ON");
+			warnings.Add( "VSYNC_ON" );
 		}
 
 		// ---- resolution -------------------------------------------------------
 		// Screen.SetResolution is a no-op in the editor, so the caller must compare
 		// requested against actual rather than assume this took.
-		if (settings.pinResolution && !Application.isEditor)
+		if ( settings.pinResolution && !Application.isEditor )
 		{
-			Screen.SetResolution(settings.targetResolution.x, settings.targetResolution.y,
-				FullScreenMode.Windowed);
+			Screen.SetResolution( settings.targetResolution.x, settings.targetResolution.y,
+				FullScreenMode.Windowed );
 		}
 
 		// ---- input and overlays ----------------------------------------------
-		if (refs.testbedCamera != null)
+		if ( refs.testbedCamera != null )
 		{
-			scope.Set(() => refs.testbedCamera.inputEnabled,
-				v => refs.testbedCamera.inputEnabled = v, false);
+			scope.Set( () => refs.testbedCamera.inputEnabled,
+				v => refs.testbedCamera.inputEnabled = v, false );
 		}
 
-		if (refs.timeController != null)
+		if ( refs.timeController != null )
 		{
-			scope.Set(() => refs.timeController.inputEnabled,
-				v => refs.timeController.inputEnabled = v, false);
+			scope.Set( () => refs.timeController.inputEnabled,
+				v => refs.timeController.inputEnabled = v, false );
 			// The overlay is no longer suppressed from here. There is one panel now, owned by
 			// BenchmarkHud, and its OnGUI already returns early while a run is in progress - which is
 			// the stronger guarantee, since it does not depend on this scope having been applied.
@@ -150,18 +150,18 @@ public static class BenchmarkEnvironment
 		// The sun otherwise integrates Time.deltaTime. Note SolarSystemManager re-derives
 		// sun/earth/moon/stars from the T values every frame regardless of this flag, so
 		// writing dayT is still sufficient to move the sun.
-		if (refs.solarSystem != null)
+		if ( refs.solarSystem != null )
 		{
-			scope.Set(() => refs.solarSystem.animate, v => refs.solarSystem.animate = v, false);
+			scope.Set( () => refs.solarSystem.animate, v => refs.solarSystem.animate = v, false );
 		}
 
 		// ---- country UI -------------------------------------------------------
 		// One GameObject carries all three components; deactivating it also clears the
 		// COUNTRY_HIGHLIGHT_ON keyword from the terrain shader.
-		if (refs.countryInteraction != null && refs.countryInteraction.activeSelf)
+		if ( refs.countryInteraction != null && refs.countryInteraction.activeSelf )
 		{
 			GameObject go = refs.countryInteraction;
-			scope.Set(() => go.activeSelf, v => go.SetActive(v), false);
+			scope.Set( () => go.activeSelf, v => go.SetActive( v ), false );
 		}
 
 		// ---- terrain LOD ------------------------------------------------------
@@ -174,17 +174,17 @@ public static class BenchmarkEnvironment
 		//
 		// The component is deliberately NOT disabled: it subscribes Camera.onPreCull in
 		// Start and unsubscribes only in OnDestroy, so disabling it would not stop it.
-		if (refs.lodSystem != null)
+		if ( refs.lodSystem != null )
 		{
 			SimpleLodSystem lod = refs.lodSystem;
-			scope.Set(() => lod.numFramesPerUpdate, v => lod.numFramesPerUpdate = v,
-				Mathf.Max(1, settings.lodFramesPerUpdate));
+			scope.Set( () => lod.numFramesPerUpdate, v => lod.numFramesPerUpdate = v,
+				Mathf.Max( 1, settings.lodFramesPerUpdate ) );
 		}
 
 		// ---- post-processing effect states -----------------------------------
-		PinEffectStates(refs, scope, warnings);
+		PinEffectStates( refs, scope, warnings );
 
-		if (Application.isEditor) { warnings.Add("EDITOR_RUN"); }
+		if ( Application.isEditor ) { warnings.Add( "EDITOR_RUN" ); }
 
 		return scope;
 	}
@@ -198,51 +198,51 @@ public static class BenchmarkEnvironment
 	/// disk. Snapshotting the whole array means a run cannot leave the chain in a state
 	/// that differs from what was authored, whichever effects a profile happened to flip.
 	/// </summary>
-	static void PinEffectStates(BenchmarkSceneRefs refs, RestoreScope scope, List<string> warnings)
+	static void PinEffectStates( BenchmarkSceneRefs refs, RestoreScope scope, List<string> warnings )
 	{
-		if (refs.postProcessing == null || refs.postProcessing.effects == null) { return; }
+		if ( refs.postProcessing == null || refs.postProcessing.effects == null ) { return; }
 
-		foreach (PostProcessingEffect effect in refs.postProcessing.effects)
+		foreach ( PostProcessingEffect effect in refs.postProcessing.effects )
 		{
-			if (effect == null) { continue; }
+			if ( effect == null ) { continue; }
 
 			PostProcessingEffect captured = effect;
 			bool previous = captured.enabled;
-			scope.Add(() => captured.enabled = previous);
+			scope.Add( () => captured.enabled = previous );
 		}
 
-		EffectStateGuard.Arm(refs.postProcessing.effects);
-		scope.Add(EffectStateGuard.Disarm);
+		EffectStateGuard.Arm( refs.postProcessing.effects );
+		scope.Add( EffectStateGuard.Disarm );
 	}
 
 	/// <summary>
 	/// Conditions that would make a run untrustworthy. Separate from Pin so a caller can
 	/// check before committing to a run.
 	/// </summary>
-	public static void Validate(BenchmarkSceneRefs refs, Settings settings, List<string> warnings)
+	public static void Validate( BenchmarkSceneRefs refs, Settings settings, List<string> warnings )
 	{
-		if (!SystemInfo.supportsAsyncGPUReadback) { warnings.Add("NO_ASYNC_READBACK"); }
+		if ( !SystemInfo.supportsAsyncGPUReadback ) { warnings.Add( "NO_ASYNC_READBACK" ); }
 
-		if (Application.isEditor && settings.pinResolution)
+		if ( Application.isEditor && settings.pinResolution )
 		{
 			// Screen.SetResolution does nothing in the editor; the Game view size wins.
-			warnings.Add("RESOLUTION_NOT_PINNED_IN_EDITOR");
+			warnings.Add( "RESOLUTION_NOT_PINNED_IN_EDITOR" );
 		}
 
-		if (refs.solarSystem != null && !refs.solarSystem.geocentric)
+		if ( refs.solarSystem != null && !refs.solarSystem.geocentric )
 		{
 			// SolarTime's whole derivation assumes geocentric mode.
-			warnings.Add("NOT_GEOCENTRIC");
+			warnings.Add( "NOT_GEOCENTRIC" );
 		}
 
 		// A baked baseline whose inputs have moved on still renders, still looks plausible, and
 		// silently measures the staleness rather than the technique. This puts it in warnings[]
 		// next to the numbers it invalidates.
-		AtmosphereEffect atmosphere = FindAtmosphere(refs);
-		Clouds.CloudEffect clouds = FindClouds(refs);
-		foreach (string stale in SkyBakeStamp.FindStale(atmosphere, refs.baselineSky, clouds))
+		AtmosphereEffect atmosphere = FindAtmosphere( refs );
+		Clouds.CloudEffect clouds = FindClouds( refs );
+		foreach ( string stale in SkyBakeStamp.FindStale( atmosphere, refs.baselineSky, clouds ) )
 		{
-			warnings.Add($"BAKE_STALE:{stale}");
+			warnings.Add( $"BAKE_STALE:{stale}" );
 		}
 	}
 
@@ -251,24 +251,24 @@ public static class BenchmarkEnvironment
 	/// scanning the chain rather than held as a scene reference, the same way the atmosphere is -
 	/// an effect is an asset, not a scene object.
 	/// </summary>
-	static Clouds.CloudEffect FindClouds(BenchmarkSceneRefs refs)
+	static Clouds.CloudEffect FindClouds( BenchmarkSceneRefs refs )
 	{
-		if (refs.postProcessing == null || refs.postProcessing.effects == null) { return null; }
+		if ( refs.postProcessing == null || refs.postProcessing.effects == null ) { return null; }
 
-		foreach (PostProcessingEffect effect in refs.postProcessing.effects)
+		foreach ( PostProcessingEffect effect in refs.postProcessing.effects )
 		{
-			if (effect is Clouds.CloudEffect clouds) { return clouds; }
+			if ( effect is Clouds.CloudEffect clouds ) { return clouds; }
 		}
 		return null;
 	}
 
-	static AtmosphereEffect FindAtmosphere(BenchmarkSceneRefs refs)
+	static AtmosphereEffect FindAtmosphere( BenchmarkSceneRefs refs )
 	{
-		if (refs.postProcessing == null || refs.postProcessing.effects == null) { return null; }
+		if ( refs.postProcessing == null || refs.postProcessing.effects == null ) { return null; }
 
-		foreach (PostProcessingEffect effect in refs.postProcessing.effects)
+		foreach ( PostProcessingEffect effect in refs.postProcessing.effects )
 		{
-			if (effect is AtmosphereEffect atmosphere) { return atmosphere; }
+			if ( effect is AtmosphereEffect atmosphere ) { return atmosphere; }
 		}
 		return null;
 	}

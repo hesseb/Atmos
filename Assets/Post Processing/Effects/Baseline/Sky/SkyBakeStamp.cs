@@ -60,10 +60,10 @@ public class SkyBakeStamp : ScriptableObject
 		public string bakedUtc;
 		/// <summary>The inputs in readable form, so a mismatch says *what* changed rather than
 		/// only that something did.</summary>
-		[TextArea(2, 6)] public string inputs;
+		[TextArea( 2, 6 )] public string inputs;
 	}
 
-	public Entry[] entries = new Entry[0];
+	public Entry[] entries = new Entry[ 0 ];
 
 	static SkyBakeStamp cached;
 	static bool loadAttempted;
@@ -71,21 +71,21 @@ public class SkyBakeStamp : ScriptableObject
 	/// <summary>Null if no bake has ever been stamped.</summary>
 	public static SkyBakeStamp Load()
 	{
-		if (loadAttempted) { return cached; }
+		if ( loadAttempted ) { return cached; }
 
 		loadAttempted = true;
-		cached = Resources.Load<SkyBakeStamp>(ResourcePath);
+		cached = Resources.Load<SkyBakeStamp>( ResourcePath );
 		return cached;
 	}
 
 	/// <summary>Forces the next Load to hit disk. Called by the bakers after writing.</summary>
 	public static void Invalidate() { loadAttempted = false; cached = null; }
 
-	public bool TryGet(string assetPath, out Entry entry)
+	public bool TryGet( string assetPath, out Entry entry )
 	{
-		foreach (Entry candidate in entries)
+		foreach ( Entry candidate in entries )
 		{
-			if (candidate.assetPath == assetPath) { entry = candidate; return true; }
+			if ( candidate.assetPath == assetPath ) { entry = candidate; return true; }
 		}
 		entry = default;
 		return false;
@@ -105,26 +105,26 @@ public class SkyBakeStamp : ScriptableObject
 		static readonly CultureInfo Ci = CultureInfo.InvariantCulture;
 		readonly StringBuilder text = new StringBuilder();
 
-		public Inputs Add(string name, float value)
+		public Inputs Add( string name, float value )
 		{
-			text.Append(name).Append('=').Append(value.ToString("R", Ci)).Append('\n');
+			text.Append( name ).Append( '=' ).Append( value.ToString( "R", Ci ) ).Append( '\n' );
 			return this;
 		}
 
-		public Inputs Add(string name, int value)
+		public Inputs Add( string name, int value )
 		{
-			text.Append(name).Append('=').Append(value.ToString(Ci)).Append('\n');
+			text.Append( name ).Append( '=' ).Append( value.ToString( Ci ) ).Append( '\n' );
 			return this;
 		}
 
-		public Inputs Add(string name, Vector3 value)
+		public Inputs Add( string name, Vector3 value )
 		{
-			return Add(name + ".x", value.x).Add(name + ".y", value.y).Add(name + ".z", value.z);
+			return Add( name + ".x", value.x ).Add( name + ".y", value.y ).Add( name + ".z", value.z );
 		}
 
-		public Inputs Add(string name, Vector2Int value)
+		public Inputs Add( string name, Vector2Int value )
 		{
-			return Add(name + ".x", value.x).Add(name + ".y", value.y);
+			return Add( name + ".x", value.x ).Add( name + ".y", value.y );
 		}
 
 		public string Text => text.ToString();
@@ -133,12 +133,12 @@ public class SkyBakeStamp : ScriptableObject
 		public string Hash()
 		{
 			ulong hash = 0xcbf29ce484222325UL;
-			foreach (char c in text.ToString())
+			foreach ( char c in text.ToString() )
 			{
 				hash ^= c;
 				hash *= 0x100000001b3UL;
 			}
-			return "0x" + hash.ToString("x16");
+			return "0x" + hash.ToString( "x16" );
 		}
 	}
 
@@ -147,28 +147,28 @@ public class SkyBakeStamp : ScriptableObject
 	/// cannot disagree about what counts as an input - and so adding a parameter to the
 	/// atmosphere later means adding it here once.
 	/// </summary>
-	public static Inputs AtmosphereInputs(AtmosphereEffect a)
+	public static Inputs AtmosphereInputs( AtmosphereEffect a )
 	{
 		return new Inputs()
-			.Add("bodyRadius", a.bodyRadius)
-			.Add("atmosphereThickness", a.atmosphereThickness)
-			.Add("wavelengthsRGB", a.wavelengthsRGB)
-			.Add("wavelengthScale", a.wavelengthScale)
-			.Add("rayleighDensityAvg", a.rayleighDensityAvg)
-			.Add("mieCoefficient", a.mieCoefficient)
-			.Add("mieDensityAvg", a.mieDensityAvg)
-			.Add("mieAbsorption", a.mieAbsorption)
-			.Add("mieAsymmetry", a.mieAsymmetry)
-			.Add("densityMultiplier", a.densityMultiplier)
-			.Add("sunIlluminance", a.sunIlluminance)
-			.Add("ozonePeakDensityAltitude", a.ozonePeakDensityAltitude)
-			.Add("ozoneDensityFalloff", a.ozoneDensityFalloff)
-			.Add("ozoneStrength", a.ozoneStrength)
-			.Add("ozoneAbsorption", a.ozoneAbsorption)
-			.Add("transmittanceLUTSize", a.transmittanceLUTSize)
-			.Add("multipleScatteringStrength", a.multipleScatteringStrength)
-			.Add("multipleScatteringLUTSize", a.multipleScatteringLUTSize)
-			.Add("groundAlbedo", a.groundAlbedo);
+			.Add( "bodyRadius", a.bodyRadius )
+			.Add( "atmosphereThickness", a.atmosphereThickness )
+			.Add( "wavelengthsRGB", a.wavelengthsRGB )
+			.Add( "wavelengthScale", a.wavelengthScale )
+			.Add( "rayleighDensityAvg", a.rayleighDensityAvg )
+			.Add( "mieCoefficient", a.mieCoefficient )
+			.Add( "mieDensityAvg", a.mieDensityAvg )
+			.Add( "mieAbsorption", a.mieAbsorption )
+			.Add( "mieAsymmetry", a.mieAsymmetry )
+			.Add( "densityMultiplier", a.densityMultiplier )
+			.Add( "sunIlluminance", a.sunIlluminance )
+			.Add( "ozonePeakDensityAltitude", a.ozonePeakDensityAltitude )
+			.Add( "ozoneDensityFalloff", a.ozoneDensityFalloff )
+			.Add( "ozoneStrength", a.ozoneStrength )
+			.Add( "ozoneAbsorption", a.ozoneAbsorption )
+			.Add( "transmittanceLUTSize", a.transmittanceLUTSize )
+			.Add( "multipleScatteringStrength", a.multipleScatteringStrength )
+			.Add( "multipleScatteringLUTSize", a.multipleScatteringLUTSize )
+			.Add( "groundAlbedo", a.groundAlbedo );
 	}
 
 	/// <summary>
@@ -176,83 +176,83 @@ public class SkyBakeStamp : ScriptableObject
 	/// deliberately absent: the capture records where cloud IS, not how it is lit, so sun intensity
 	/// or phase moving does not stale it.
 	/// </summary>
-	public static Inputs CloudInputs(Clouds.CloudEffect c)
+	public static Inputs CloudInputs( Clouds.CloudEffect c )
 	{
-		if (c == null) { return new Inputs(); }
+		if ( c == null ) { return new Inputs(); }
 
 		return new Inputs()
-			.Add("bodyRadius", c.bodyRadius)
-			.Add("cloudBottomAltitude", c.cloudBottomAltitude)
-			.Add("cloudTopAltitude", c.cloudTopAltitude)
-			.Add("shapeScale", c.shapeScale)
-			.Add("detailScale", c.detailScale)
-			.Add("detailWeight", c.detailWeight)
-			.Add("densityMultiplier", c.densityMultiplier)
-			.Add("coverageMultiplier", c.coverageMultiplier)
-			.Add("typeOffset", c.typeOffset)
-			.Add("baseVariation", c.baseVariation)
-			.Add("bandThickness", c.bandThickness)
-			.Add("edgeSoftness", c.edgeSoftness)
-			.Add("precipDensity", c.precipDensity)
-			.Add("precipTypePush", c.precipTypePush)
-			.Add("precipBaseDrop", c.precipBaseDrop)
-			.Add("weatherMapSize", c.weatherMapSize)
-			.Add("weatherOctaves", c.weatherOctaves)
-			.Add("weatherLacunarity", c.weatherLacunarity)
-			.Add("weatherGain", c.weatherGain)
-			.Add("weatherRangeGain", c.weatherRangeGain)
-			.Add("coverageScale", c.coverageScale)
-			.Add("coverageBias", c.coverageBias)
-			.Add("coverageContrast", c.coverageContrast)
-			.Add("typeScale", c.typeScale)
-			.Add("typeBias", c.typeBias)
-			.Add("typeContrast", c.typeContrast)
-			.Add("precipitationScale", c.precipitationScale)
-			.Add("precipitationBias", c.precipitationBias)
-			.Add("baseHeightScale", c.baseHeightScale)
-			.Add("baseHeightBias", c.baseHeightBias)
+			.Add( "bodyRadius", c.bodyRadius )
+			.Add( "cloudBottomAltitude", c.cloudBottomAltitude )
+			.Add( "cloudTopAltitude", c.cloudTopAltitude )
+			.Add( "shapeScale", c.shapeScale )
+			.Add( "detailScale", c.detailScale )
+			.Add( "detailWeight", c.detailWeight )
+			.Add( "densityMultiplier", c.densityMultiplier )
+			.Add( "coverageMultiplier", c.coverageMultiplier )
+			.Add( "typeOffset", c.typeOffset )
+			.Add( "baseVariation", c.baseVariation )
+			.Add( "bandThickness", c.bandThickness )
+			.Add( "edgeSoftness", c.edgeSoftness )
+			.Add( "precipDensity", c.precipDensity )
+			.Add( "precipTypePush", c.precipTypePush )
+			.Add( "precipBaseDrop", c.precipBaseDrop )
+			.Add( "weatherMapSize", c.weatherMapSize )
+			.Add( "weatherOctaves", c.weatherOctaves )
+			.Add( "weatherLacunarity", c.weatherLacunarity )
+			.Add( "weatherGain", c.weatherGain )
+			.Add( "weatherRangeGain", c.weatherRangeGain )
+			.Add( "coverageScale", c.coverageScale )
+			.Add( "coverageBias", c.coverageBias )
+			.Add( "coverageContrast", c.coverageContrast )
+			.Add( "typeScale", c.typeScale )
+			.Add( "typeBias", c.typeBias )
+			.Add( "typeContrast", c.typeContrast )
+			.Add( "precipitationScale", c.precipitationScale )
+			.Add( "precipitationBias", c.precipitationBias )
+			.Add( "baseHeightScale", c.baseHeightScale )
+			.Add( "baseHeightBias", c.baseHeightBias )
 			// The ice layer. Captured into the baseline's upper deck along with everything else the
 			// density model produces, so a change here really does invalidate the bake - and an
 			// omission would mean the captured baseline quietly stopped corresponding to the
 			// renderer it was derived from, which is the exact failure this stamp exists to catch.
-			.Add("highStrength", c.highStrength)
-			.Add("highBase", c.highBase)
-			.Add("highThickness", c.highThickness)
-			.Add("highScale", c.highScale)
-			.Add("highDensityMultiplier", c.highDensityMultiplier)
-			.Add("highCoverageMultiplier", c.highCoverageMultiplier)
-			.Add("highStretch", c.highStretch)
-			.Add("highGranularity", c.highGranularity)
-			.Add("highWindDirection", c.highWindDirection)
-			.Add("highCoverageScale", c.highCoverageScale)
-			.Add("highCoverageBias", c.highCoverageBias)
-			.Add("highCoverageContrast", c.highCoverageContrast)
-			.Add("highFormScale", c.highFormScale)
-			.Add("highFormBias", c.highFormBias)
+			.Add( "highStrength", c.highStrength )
+			.Add( "highBase", c.highBase )
+			.Add( "highThickness", c.highThickness )
+			.Add( "highScale", c.highScale )
+			.Add( "highDensityMultiplier", c.highDensityMultiplier )
+			.Add( "highCoverageMultiplier", c.highCoverageMultiplier )
+			.Add( "highStretch", c.highStretch )
+			.Add( "highGranularity", c.highGranularity )
+			.Add( "highWindDirection", c.highWindDirection )
+			.Add( "highCoverageScale", c.highCoverageScale )
+			.Add( "highCoverageBias", c.highCoverageBias )
+			.Add( "highCoverageContrast", c.highCoverageContrast )
+			.Add( "highFormScale", c.highFormScale )
+			.Add( "highFormBias", c.highFormBias )
 			// Deliberately included: a capture taken while a genus was pinned is not a capture of the
 			// renderer's weather, and it would be indistinguishable from one that was.
-			.Add("genusOverride", (int)c.genusOverride);
+			.Add( "genusOverride", (int)c.genusOverride );
 	}
 
 	/// <summary>The tone-map constants the hand-authored gradient is inverse-mapped against.</summary>
-	public static Inputs ToneMapInputs(BaselineSkyRenderer b)
+	public static Inputs ToneMapInputs( BaselineSkyRenderer b )
 	{
 		return new Inputs()
-			.Add("intensity", b != null ? b.intensity : 1f)
-			.Add("contrast", b != null ? b.contrast : 1.45f)
-			.Add("whitePoint", b != null ? b.whitePoint : 1.1f);
+			.Add( "intensity", b != null ? b.intensity : 1f )
+			.Add( "contrast", b != null ? b.contrast : 1.45f )
+			.Add( "whitePoint", b != null ? b.whitePoint : 1.1f );
 	}
 
 	/// <summary>The scene-derived inputs for a recipe. One place, so bakers and the staleness
 	/// check cannot disagree about what an asset depends on.</summary>
-	public static Inputs InputsFor(Recipe recipe, AtmosphereEffect atmosphere, BaselineSkyRenderer baseline,
-		Clouds.CloudEffect clouds = null)
+	public static Inputs InputsFor( Recipe recipe, AtmosphereEffect atmosphere, BaselineSkyRenderer baseline,
+		Clouds.CloudEffect clouds = null )
 	{
-		switch (recipe)
+		switch ( recipe )
 		{
-			case Recipe.ToneMap: return ToneMapInputs(baseline);
-			case Recipe.Clouds: return CloudInputs(clouds);
-			default: return AtmosphereInputs(atmosphere);
+			case Recipe.ToneMap: return ToneMapInputs( baseline );
+			case Recipe.Clouds: return CloudInputs( clouds );
+			default: return AtmosphereInputs( atmosphere );
 		}
 	}
 
@@ -262,23 +262,23 @@ public class SkyBakeStamp : ScriptableObject
 	/// Returns descriptions rather than logging, so the benchmark harness can fold them into
 	/// `run.json`'s warnings where they end up next to the numbers they invalidate.
 	/// </summary>
-	public static List<string> FindStale(AtmosphereEffect atmosphere, BaselineSkyRenderer baseline,
-		Clouds.CloudEffect clouds = null)
+	public static List<string> FindStale( AtmosphereEffect atmosphere, BaselineSkyRenderer baseline,
+		Clouds.CloudEffect clouds = null )
 	{
 		var stale = new List<string>();
 		SkyBakeStamp stamp = Load();
-		if (stamp == null || atmosphere == null) { return stale; }
+		if ( stamp == null || atmosphere == null ) { return stale; }
 
-		foreach (Entry entry in stamp.entries)
+		foreach ( Entry entry in stamp.entries )
 		{
 			// A cloud-recipe entry cannot be checked without the effect it derives from, and
 			// reporting it stale on that basis would be a false alarm every time the clouds are
 			// simply not in the chain.
-			if (entry.recipe == Recipe.Clouds && clouds == null) { continue; }
+			if ( entry.recipe == Recipe.Clouds && clouds == null ) { continue; }
 
-			if (InputsFor(entry.recipe, atmosphere, baseline, clouds).Hash() != entry.hash)
+			if ( InputsFor( entry.recipe, atmosphere, baseline, clouds ).Hash() != entry.hash )
 			{
-				stale.Add($"{entry.assetPath} (baked {entry.bakedUtc})");
+				stale.Add( $"{entry.assetPath} (baked {entry.bakedUtc})" );
 			}
 		}
 		return stale;

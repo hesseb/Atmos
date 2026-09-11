@@ -47,7 +47,7 @@ float3 getBlueNoise(float2 uv) {
 	float3 blueNoise = getBlueNoiseRaw(uv);
 	float3 m = 0;
 	m.r = remap_noise_tri_erp(blueNoise.r);
-	m.g = remap_noise_tri_erp(blueNoise.g);	
+	m.g = remap_noise_tri_erp(blueNoise.g);
 	m.b = remap_noise_tri_erp(blueNoise.b);
 
 	float3 weightedNoise = (m * 2.0 - 0.5);

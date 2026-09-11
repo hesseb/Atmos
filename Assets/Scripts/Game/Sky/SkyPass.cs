@@ -28,7 +28,7 @@ public enum SkyMode
 /// </summary>
 public static class SkyPass
 {
-	static readonly int TempTarget = Shader.PropertyToID("_TempSkyRenderTexture");
+	static readonly int TempTarget = Shader.PropertyToID( "_TempSkyRenderTexture" );
 
 	/// <summary>
 	/// Reads the camera target, shades it, and writes it back.
@@ -38,11 +38,11 @@ public static class SkyPass
 	/// blend cannot express that, so the round trip through a temporary is required rather
 	/// than merely convenient.
 	/// </summary>
-	public static void Record(CommandBuffer cmd, Material material)
+	public static void Record( CommandBuffer cmd, Material material )
 	{
-		cmd.GetTemporaryRT(TempTarget, -1, -1, 0, FilterMode.Bilinear);
-		cmd.Blit(BuiltinRenderTextureType.CameraTarget, TempTarget, material);
-		cmd.Blit(TempTarget, BuiltinRenderTextureType.CameraTarget);
-		cmd.ReleaseTemporaryRT(TempTarget);
+		cmd.GetTemporaryRT( TempTarget, -1, -1, 0, FilterMode.Bilinear );
+		cmd.Blit( BuiltinRenderTextureType.CameraTarget, TempTarget, material );
+		cmd.Blit( TempTarget, BuiltinRenderTextureType.CameraTarget );
+		cmd.ReleaseTemporaryRT( TempTarget );
 	}
 }

@@ -112,7 +112,7 @@ ScatteringParameters getScatteringValues(float3 rayPos) {
 
 	scattering.mie = mie;
 	scattering.rayleigh = rayleigh;
-	
+
 	scattering.extinction = mie + mieAbsorption * mieDensity + rayleigh + ozoneAbsorption * ozoneDensity;
 	return scattering;
 }
@@ -132,10 +132,10 @@ float mieAsymmetry;
 float getMiePhase(float cosTheta) {
 	float g = mieAsymmetry;
 	const float scale = 3.0/(8.0*PI);
-	
+
 	float num = (1.0-g*g)*(1.0+cosTheta*cosTheta);
 	float denom = (2.0+g*g)*pow(abs(1.0 + g*g - 2.0*g*cosTheta), 1.5);
-	
+
 	return scale*num/denom;
 }
 
@@ -193,7 +193,7 @@ float rayIntersectSphere(float3 rayPos, float3 rayDir, float radius) {
 
 float3 getSunTransmittance(float3 pos, float3 sunDir) {
 	const int sunTransmittanceSteps = 40;
-	
+
 	float2 atmoHitInfo = raySphere(0, atmosphereRadius, pos, sunDir);
 	float rayLength = atmoHitInfo.y;
 
@@ -304,7 +304,7 @@ void raymarchSegment(inout ScatteringState state, float3 segmentStart, float3 ra
 
 	// Step through the atmosphere
 	for (int stepIndex = 0; stepIndex < numSteps; stepIndex ++) {
-		
+
 		// At each step, light travelling from the sun may be scattered into the path toward the camera (in scattering)
 		// Some of this in-scattered light may be scattered away as it travels toward the camera (out scattering)
 		// Some light may also previously have been out-scattered while travelling through the atmosphere from the sun
@@ -314,7 +314,7 @@ void raymarchSegment(inout ScatteringState state, float3 segmentStart, float3 ra
 		// The proportion of light transmitted along the ray from the current sample point to the previous one
 		float3 opticalDepth = scattering.extinction * stepSize;
 		float3 sampleTransmittance = exp(-opticalDepth);
-		
+
 		// The proportion of light that reaches this point from the sun, from the LUT rather than
 		// from a nested 40-step march. getSunTransmittance still exists and is what BAKES that LUT;
 		// it is not an alternative to this line.
@@ -412,7 +412,7 @@ void raymarchSegment(inout ScatteringState state, float3 segmentStart, float3 ra
 		// counts. Same closed form as Hillaire 2020.
 		float3 scatteringIntegral = inScattering * stepSize * integralFactor(opticalDepth, sampleTransmittance);
 		luminance += scatteringIntegral*transmittance;
-		
+
 
 		// Update the transmittance along the ray from the current point in the atmosphere back to the camera
 		transmittance *= sampleTransmittance;

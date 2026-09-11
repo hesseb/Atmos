@@ -27,50 +27,50 @@ namespace SolarSystem
 
 
 
-		public void SetUpStarRenderingCommand(CommandBuffer cmd)
+		public void SetUpStarRenderingCommand( CommandBuffer cmd )
 		{
-			if (Application.isPlaying)
+			if ( Application.isPlaying )
 			{
 				cam = Camera.main;
 
 				CreateQuadMesh();
 				EditorOnlyInit();
 
-				starMaterial = new Material(starInstanceShader);
+				starMaterial = new Material( starInstanceShader );
 
-				ComputeHelper.Release(argsBuffer, starDataBuffer);
-				argsBuffer = ComputeHelper.CreateArgsBuffer(quadMesh, starData.NumStars);
+				ComputeHelper.Release( argsBuffer, starDataBuffer );
+				argsBuffer = ComputeHelper.CreateArgsBuffer( quadMesh, starData.NumStars );
 
-				starDataBuffer = ComputeHelper.CreateStructuredBuffer(starData.Stars);
+				starDataBuffer = ComputeHelper.CreateStructuredBuffer( starData.Stars );
 
 
 				SetBuffer();
 
-				cmd.DrawMeshInstancedIndirect(quadMesh, 0, starMaterial, 0, argsBuffer, 0);
+				cmd.DrawMeshInstancedIndirect( quadMesh, 0, starMaterial, 0, argsBuffer, 0 );
 
 			}
 		}
 
 		void SetBuffer()
 		{
-			starMaterial.SetBuffer("StarData", starDataBuffer);
+			starMaterial.SetBuffer( "StarData", starDataBuffer );
 		}
 
 
-		public void UpdateFixedStars(EarthOrbit earth, bool geocentric)
+		public void UpdateFixedStars( EarthOrbit earth, bool geocentric )
 		{
-			if (Application.isPlaying)
+			if ( Application.isPlaying )
 			{
-				starMaterial.SetFloat("size", size);
-				starMaterial.SetFloat("brightnessMultiplier", brightnessMultiplier);
-				Matrix4x4 rotMatrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, Vector3.one);
+				starMaterial.SetFloat( "size", size );
+				starMaterial.SetFloat( "brightnessMultiplier", brightnessMultiplier );
+				Matrix4x4 rotMatrix = Matrix4x4.TRS( Vector3.zero, Quaternion.identity, Vector3.one );
 				// Earth remains stationary and without rotation, so rotate the stars instead
-				if (geocentric)
+				if ( geocentric )
 				{
-					rotMatrix = Matrix4x4.Rotate(Quaternion.Inverse(earth.earthRot));
+					rotMatrix = Matrix4x4.Rotate( Quaternion.Inverse( earth.earthRot ) );
 				}
 
-				starMaterial.SetMatrix("rotationMatrix", rotMatrix);
+				starMaterial.SetMatrix( "rotationMatrix", rotMatrix );
 			}
 		}
 
@@ -88,13 +88,13 @@ namespace SolarSystem
 
 			int[] triangles = { 0, 2, 1, 0, 3, 2 };
 
-			quadMesh.SetVertices(vertices);
-			quadMesh.SetTriangles(triangles, 0, true);
+			quadMesh.SetVertices( vertices );
+			quadMesh.SetTriangles( triangles, 0, true );
 		}
 
 		void OnDestroy()
 		{
-			ComputeHelper.Release(argsBuffer, starDataBuffer);
+			ComputeHelper.Release( argsBuffer, starDataBuffer );
 		}
 
 		void EditorOnlyInit()

@@ -5,7 +5,7 @@ using UnityEditor;
 
 namespace SolarSystem.CustomEditors
 {
-	[CustomEditor(typeof(StarData))]
+	[CustomEditor( typeof( StarData ) )]
 	public class StarDataEditor : Editor
 	{
 
@@ -14,7 +14,7 @@ namespace SolarSystem.CustomEditors
 			base.OnInspectorGUI();
 			StarData starData = target as StarData;
 
-			if (GUILayout.Button("Generate"))
+			if ( GUILayout.Button( "Generate" ) )
 			{
 				starData.CreateStarData();
 			}

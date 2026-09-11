@@ -19,41 +19,41 @@ static class SkyBakeStampWriter
 	///
 	/// `bakeConstants` is recorded but not hashed - see the Recipe docs for why.
 	/// </summary>
-	public static void Record(string assetPath, SkyBakeStamp.Recipe recipe,
+	public static void Record( string assetPath, SkyBakeStamp.Recipe recipe,
 		AtmosphereEffect atmosphere, BaselineSkyRenderer baseline, SkyBakeStamp.Inputs bakeConstants,
-		Clouds.CloudEffect clouds = null)
+		Clouds.CloudEffect clouds = null )
 	{
 		SkyBakeStamp stamp = LoadOrCreate();
 
-		SkyBakeStamp.Inputs scene = SkyBakeStamp.InputsFor(recipe, atmosphere, baseline, clouds);
+		SkyBakeStamp.Inputs scene = SkyBakeStamp.InputsFor( recipe, atmosphere, baseline, clouds );
 
 		var entry = new SkyBakeStamp.Entry
 		{
 			assetPath = assetPath,
 			recipe = recipe,
 			hash = scene.Hash(),
-			bakedUtc = System.DateTime.UtcNow.ToString("u", CultureInfo.InvariantCulture),
-			inputs = scene.Text + (bakeConstants != null ? bakeConstants.Text : "")
+			bakedUtc = System.DateTime.UtcNow.ToString( "u", CultureInfo.InvariantCulture ),
+			inputs = scene.Text + ( bakeConstants != null ? bakeConstants.Text : "" )
 		};
 
-		var entries = new System.Collections.Generic.List<SkyBakeStamp.Entry>(stamp.entries);
-		entries.RemoveAll(e => e.assetPath == assetPath);
-		entries.Add(entry);
+		var entries = new System.Collections.Generic.List<SkyBakeStamp.Entry>( stamp.entries );
+		entries.RemoveAll( e => e.assetPath == assetPath );
+		entries.Add( entry );
 		stamp.entries = entries.ToArray();
 
-		EditorUtility.SetDirty(stamp);
+		EditorUtility.SetDirty( stamp );
 		AssetDatabase.SaveAssets();
 		SkyBakeStamp.Invalidate();
 	}
 
 	static SkyBakeStamp LoadOrCreate()
 	{
-		var stamp = AssetDatabase.LoadAssetAtPath<SkyBakeStamp>(StampPath);
-		if (stamp != null) { return stamp; }
+		var stamp = AssetDatabase.LoadAssetAtPath<SkyBakeStamp>( StampPath );
+		if ( stamp != null ) { return stamp; }
 
-		System.IO.Directory.CreateDirectory(Folder);
+		System.IO.Directory.CreateDirectory( Folder );
 		stamp = ScriptableObject.CreateInstance<SkyBakeStamp>();
-		AssetDatabase.CreateAsset(stamp, StampPath);
+		AssetDatabase.CreateAsset( stamp, StampPath );
 		return stamp;
 	}
 }

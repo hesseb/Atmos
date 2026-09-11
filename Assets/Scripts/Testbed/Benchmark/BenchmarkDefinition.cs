@@ -72,7 +72,7 @@ public struct SunKey
 	public bool rising;
 	public bool highest;
 
-	public static SunKey FromDayT(float dayT) => new SunKey { mode = ModeKind.DayT, dayT = dayT };
+	public static SunKey FromDayT( float dayT ) => new SunKey { mode = ModeKind.DayT, dayT = dayT };
 }
 
 [System.Serializable]
@@ -80,23 +80,23 @@ public struct BenchmarkSegment
 {
 	public string label;
 	public SegmentKind kind;
-	[Min(1)] public int frames;
+	[Min( 1 )] public int frames;
 	// 0 uses the definition's default; only a positive value overrides.
-	[Min(0)] public int settleFramesOverride;
+	[Min( 0 )] public int settleFramesOverride;
 
 	public ViewRef from;
 	public ViewRef to;
 	public EaseMode ease;
 
-	[Header("Orbit")]
+	[Header( "Orbit" )]
 	public float sweepDegrees;
 	public OrbitAxis sweepAxis;
 
-	[Header("Sun")]
+	[Header( "Sun" )]
 	public SunKey sunFrom;
 	public SunKey sunTo;
 
-	[Header("Screenshots")]
+	[Header( "Screenshots" )]
 	public bool screenshotFirstAndLast;
 	public int[] screenshotFrames;
 }
@@ -107,7 +107,7 @@ public struct BenchmarkSegment
 /// whole run flattens into a fixed frame array before rendering, making "both renderers saw
 /// identical poses" provable by hash.
 /// </summary>
-[CreateAssetMenu(menuName = "Testbed/Benchmark Definition", fileName = "Benchmark")]
+[CreateAssetMenu( menuName = "Testbed/Benchmark Definition", fileName = "Benchmark" )]
 public class BenchmarkDefinition : ScriptableObject
 {
 	public string id = "benchmark";
@@ -116,28 +116,28 @@ public class BenchmarkDefinition : ScriptableObject
 	/// frames to be a meaningful result but still needs to stay reachable individually.</summary>
 	public bool includeInAll = true;
 
-	[TextArea(2, 5)] public string description;
+	[TextArea( 2, 5 )] public string description;
 
-	[Header("Phase lengths (frames)")]
+	[Header( "Phase lengths (frames)" )]
 	public int bootFrames = 60;
 	// One prewarm frame per N frames of content (0 disables). Steps a decimated sample of the
 	// run's poses so pipeline-state compilation happens before measurement, not during it -
 	// there is no ShaderVariantCollection in this project. The camera teleporting through the
 	// route in a fraction of a second is expected.
-	[Min(0)] public int prewarmPosesEvery = 40;
+	[Min( 0 )] public int prewarmPosesEvery = 40;
 	public int warmupFrames = 120;
 	public int defaultSettleFrames = 6;
 	public int flushFrames = 16;
 
-	[Header("Simulation")]
+	[Header( "Simulation" )]
 	// Time.captureDeltaTime is set to 1/this - fixes Time.deltaTime without throttling the run.
 	public float simulatedFps = 60f;
-	[Range(0f, 1f)] public float monthT = 0.404f;
-	[Range(0f, 1f)] public float yearT = 0.288f;
+	[Range( 0f, 1f )] public float monthT = 0.404f;
+	[Range( 0f, 1f )] public float yearT = 0.288f;
 
 	public BenchmarkSegment[] segments;
 
-	public int SettleFramesFor(BenchmarkSegment segment)
+	public int SettleFramesFor( BenchmarkSegment segment )
 	{
 		return segment.settleFramesOverride > 0 ? segment.settleFramesOverride : defaultSettleFrames;
 	}

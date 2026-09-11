@@ -18,28 +18,28 @@ public static partial class BenchmarkWriter
 		public int repeat;
 	}
 
-	static RunMetadata BuildMetadata(BenchmarkRunner runner, string commit, string branch,
-		bool dirty, string machineLabel, string runId, List<PassResult> passes)
+	static RunMetadata BuildMetadata( BenchmarkRunner runner, string commit, string branch,
+		bool dirty, string machineLabel, string runId, List<PassResult> passes )
 	{
 		BenchmarkPlan plan = runner.Plan;
 		BenchmarkSceneRefs refs = runner.sceneRefs;
 		Camera cam = refs.camera;
 
 		int measured = 0;
-		if (!runner.IsCaptureRun)
+		if ( !runner.IsCaptureRun )
 		{
-			foreach (PlannedFrame f in plan.frames)
+			foreach ( PlannedFrame f in plan.frames )
 			{
-				if (f.phase == BenchmarkPhase.Measure) { measured++; }
+				if ( f.phase == BenchmarkPhase.Measure ) { measured++; }
 			}
 		}
 
 		var counters = new List<CounterAvailabilityEntry>();
-		if (runner.CounterAvailability != null)
+		if ( runner.CounterAvailability != null )
 		{
-			foreach ((string name, bool available) in runner.CounterAvailability)
+			foreach ( (string name, bool available) in runner.CounterAvailability )
 			{
-				counters.Add(new CounterAvailabilityEntry { name = name, available = available });
+				counters.Add( new CounterAvailabilityEntry { name = name, available = available } );
 			}
 		}
 
@@ -49,7 +49,7 @@ public static partial class BenchmarkWriter
 		return new RunMetadata
 		{
 			run_id = runId,
-			started_utc = System.DateTime.UtcNow.ToString("o", Ci),
+			started_utc = System.DateTime.UtcNow.ToString( "o", Ci ),
 			machine_label = machineLabel,
 			git_commit = commit,
 			git_branch = branch,
@@ -69,9 +69,9 @@ public static partial class BenchmarkWriter
 				asset_name = plan.definition.name,
 				id = plan.definition.id,
 				description = plan.definition.description,
-				plan_hash = "0x" + plan.planHash.ToString("x16"),
+				plan_hash = "0x" + plan.planHash.ToString( "x16" ),
 				pose_hash = passes != null && passes.Count > 0
-					? "0x" + passes[0].poseHash.ToString("x16") : "",
+					? "0x" + passes[ 0 ].poseHash.ToString( "x16" ) : "",
 				total_frames = plan.Length,
 				measured_frames = measured,
 				segment_count = plan.segmentLabels.Length,
@@ -97,7 +97,7 @@ public static partial class BenchmarkWriter
 			quality = new QualityMeta
 			{
 				level_name = QualitySettings.names.Length > 0
-					? QualitySettings.names[QualitySettings.GetQualityLevel()] : "?",
+					? QualitySettings.names[ QualitySettings.GetQualityLevel() ] : "?",
 				colour_space = QualitySettings.activeColorSpace.ToString(),
 				rendering_path = cam != null ? cam.actualRenderingPath.ToString() : "?",
 				anti_aliasing = QualitySettings.antiAliasing,
@@ -147,26 +147,26 @@ public static partial class BenchmarkWriter
 				counters_available = counters.ToArray()
 			},
 
-			passes = BuildPassMeta(passes),
-			warnings = new List<string>(runner.Warnings).ToArray()
+			passes = BuildPassMeta( passes ),
+			warnings = new List<string>( runner.Warnings ).ToArray()
 		};
 	}
 
-	static PassMeta[] BuildPassMeta(List<PassResult> passes)
+	static PassMeta[] BuildPassMeta( List<PassResult> passes )
 	{
-		if (passes == null) { return new PassMeta[0]; }
+		if ( passes == null ) { return new PassMeta[ 0 ]; }
 
-		var result = new PassMeta[passes.Count];
-		for (int i = 0; i < passes.Count; i++)
+		var result = new PassMeta[ passes.Count ];
+		for ( int i = 0; i < passes.Count; i++ )
 		{
-			result[i] = new PassMeta
+			result[ i ] = new PassMeta
 			{
-				pass_id = passes[i].passId,
-				profile_id = passes[i].profileId,
-				profile_settings = passes[i].profileSettings,
-				repeat = passes[i].repeat,
-				pose_hash = "0x" + passes[i].poseHash.ToString("x16"),
-				scene_hash = "0x" + passes[i].sceneHash.ToString("x16")
+				pass_id = passes[ i ].passId,
+				profile_id = passes[ i ].profileId,
+				profile_settings = passes[ i ].profileSettings,
+				repeat = passes[ i ].repeat,
+				pose_hash = "0x" + passes[ i ].poseHash.ToString( "x16" ),
+				scene_hash = "0x" + passes[ i ].sceneHash.ToString( "x16" )
 			};
 		}
 		return result;

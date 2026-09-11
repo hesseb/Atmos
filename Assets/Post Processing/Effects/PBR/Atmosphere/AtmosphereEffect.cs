@@ -4,7 +4,7 @@ using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
 
-[CreateAssetMenu(menuName = "PostProcessing/Atmosphere")]
+[CreateAssetMenu( menuName = "PostProcessing/Atmosphere" )]
 public class AtmosphereEffect : PostProcessingEffect
 {
 
@@ -23,17 +23,17 @@ public class AtmosphereEffect : PostProcessingEffect
 	public int aerialStepsPerSlice = 6;
 
 
-	[Header("Rayleigh Scattering")]
+	[Header( "Rayleigh Scattering" )]
 	// Wavelengths of red, green, and blue light (nanometres)
-	public Vector3 wavelengthsRGB = new Vector3(700, 530, 460);
+	public Vector3 wavelengthsRGB = new Vector3( 700, 530, 460 );
 	// Scale value to adjust all wavelengths at once
 	public float wavelengthScale = 300;
 	// Altitude [0, 1] at which the average density of particles causing rayleigh scattering is found
-	[Range(0, 1)] public float rayleighDensityAvg = 0.1f;
+	[Range( 0, 1 )] public float rayleighDensityAvg = 0.1f;
 
-	[Header("Mie Scattering")]
+	[Header( "Mie Scattering" )]
 	// Altitude [0, 1] at which the average density of particles causing mie scattering is found
-	[Range(0, 1)] public float mieDensityAvg = 0.1f;
+	[Range( 0, 1 )] public float mieDensityAvg = 0.1f;
 	// Strength of mie scattering
 	public float mieCoefficient;
 	// Strength of mie absorption
@@ -42,9 +42,9 @@ public class AtmosphereEffect : PostProcessingEffect
 	/// Asymmetry of the Cornette-Shanks phase function. 0 is isotropic (reduces to the Rayleigh
 	/// phase); higher values scatter more sharply forward.
 	/// </summary>
-	[Range(0, 0.99f)] public float mieAsymmetry = 0.8f;
+	[Range( 0, 0.99f )] public float mieAsymmetry = 0.8f;
 
-	[Header("Density")]
+	[Header( "Density" )]
 	/// <summary>
 	/// Multiplies every scattering/absorption coefficient - how much denser this atmosphere is
 	/// than Earth's. Needed because the small planet's slant path is too short to redden a sunset
@@ -54,45 +54,45 @@ public class AtmosphereEffect : PostProcessingEffect
 	/// </summary>
 	public float densityMultiplier = 1;
 
-	[Header("Illumination")]
+	[Header( "Illumination" )]
 	/// <summary>
 	/// Illuminance at the top of the atmosphere. 4*PI matches the average in-scatter the old
 	/// hardcoded `rayleighPhaseValue = 1` produced; not yet tied to SI radiometry.
 	/// </summary>
 	public float sunIlluminance = 4 * Mathf.PI;
 
-	[Header("Ozone")]
+	[Header( "Ozone" )]
 	//Altitude [0, 1] at which ozone density is at the greatest
-	[Range(0, 1)] public float ozonePeakDensityAltitude = 0.25f;
-	[Range(0, 10)] public float ozoneDensityFalloff = 4;
-	[Range(0, 5)] public float ozoneStrength = 1;
+	[Range( 0, 1 )] public float ozonePeakDensityAltitude = 0.25f;
+	[Range( 0, 10 )] public float ozoneDensityFalloff = 4;
+	[Range( 0, 5 )] public float ozoneStrength = 1;
 	public Vector3 ozoneAbsorption;
 
-	[Header("Sun Disc")]
+	[Header( "Sun Disc" )]
 	public float sunDiscSize;
 	public float sunDiscBlurA;
 	public float sunDiscBlurB;
 
-	[Header("Transmittance LUT (2D)")]
+	[Header( "Transmittance LUT (2D)" )]
 	public ComputeShader transmittanceLUTCompute;
 	public Vector2Int transmittanceLUTSize;
 
-	[Header("Multiple Scattering LUT (2D)")]
+	[Header( "Multiple Scattering LUT (2D)" )]
 	public ComputeShader multipleScatteringLUTCompute;
 	/// <summary>32x32 is Hillaire's size and is ample: Psi_ms is smooth in both altitude and sun elevation.</summary>
-	public Vector2Int multipleScatteringLUTSize = new Vector2Int(32, 32);
+	public Vector2Int multipleScatteringLUTSize = new Vector2Int( 32, 32 );
 	/// <summary>0 disables multiple scattering, leaving single scattering alone - the control condition for the comparison.</summary>
-	[Range(0, 2)] public float multipleScatteringStrength = 1;
+	[Range( 0, 2 )] public float multipleScatteringStrength = 1;
 	/// <summary>Ground reflectance for the LUT's Lambertian bounce. 0.1 is Hillaire's default, about right for ocean-and-land average.</summary>
-	[Range(0, 1)] public float groundAlbedo = 0.1f;
+	[Range( 0, 1 )] public float groundAlbedo = 0.1f;
 
-	[Header("Sky View LUT (2D)")]
+	[Header( "Sky View LUT (2D)" )]
 	public ComputeShader skyViewLUTCompute;
 	/// <summary>
 	/// 192 x 128 is Hillaire's size. The parameterisation crowds v toward the horizon, so most of
 	/// that height is spent on the band that actually varies.
 	/// </summary>
-	public Vector2Int skyViewLUTSize = new Vector2Int(192, 128);
+	public Vector2Int skyViewLUTSize = new Vector2Int( 192, 128 );
 	public int numSkyViewScatteringSteps = 32;
 	/// <summary>
 	/// Altitude the LUT is evaluated at. 0 (sea level) is correct for the ocean's reflection: the
@@ -106,19 +106,19 @@ public class AtmosphereEffect : PostProcessingEffect
 	/// lower half is definitionally black; 0.5 recovers Hillaire's full-sphere split for a future
 	/// consumer at altitude.
 	/// </summary>
-	[Range(0.5f, 1f)] public float skyViewHorizonV = 1f;
+	[Range( 0.5f, 1f )] public float skyViewHorizonV = 1f;
 
-	[Header("Aerial Perspective LUT")]
+	[Header( "Aerial Perspective LUT" )]
 	public ComputeShader aerialPerspectiveLUTCompute;
 	public int aerialPerspectiveLUTSize;
 	// Allow control over how strongly atmosphere affects appearance of terrain
-	[Range(0, 1)] public float aerialPerspectiveStrength = 1;
+	[Range( 0, 1 )] public float aerialPerspectiveStrength = 1;
 
-	[Tooltip("How much the cloud deck occludes multiply-scattered light, in addition to direct sun. " +
+	[Tooltip( "How much the cloud deck occludes multiply-scattered light, in addition to direct sun. " +
 		"Without this, multiple scattering (a large share of in-scatter here) fills shafts back in " +
 		"and washes them out. Partial, since some of that light genuinely arrives from the sides. " +
-		"0 matches the previous behaviour.")]
-	[Range(0, 1)] public float cloudShaftMultipleScattering = 0.7f;
+		"0 matches the previous behaviour." )]
+	[Range( 0, 1 )] public float cloudShaftMultipleScattering = 0.7f;
 
 	/// <summary>
 	/// Draws the light-shaft occlusion term instead of the scene, to tell "no shafts" apart from
@@ -132,12 +132,12 @@ public class AtmosphereEffect : PostProcessingEffect
 		ShaftVisibility = 1,
 	}
 
-	[Tooltip("Shaft Visibility replaces the frame with the cloud occlusion the in-scatter march " +
-		"sees, averaged along each view ray. White is unoccluded.")]
+	[Tooltip( "Shaft Visibility replaces the frame with the cloud occlusion the in-scatter march " +
+		"sees, averaged along each view ray. White is unoccluded." )]
 	public DebugMode debugMode = DebugMode.Off;
 
 
-	[Header("Sky Texture")]
+	[Header( "Sky Texture" )]
 	// Num raymarch steps when drawing the sky (this is drawn small and upscaled, so can afford to be fairly high)
 	public int numSkyScatteringSteps = 100;
 	public ComputeShader skyRenderCompute;
@@ -145,26 +145,26 @@ public class AtmosphereEffect : PostProcessingEffect
 	// However, the vertical resolution should be increased (~128x256) so that earth shadow isn't too jaggedy
 	public Vector2Int skyRenderSize;
 	// Allow control over how strongly atmosphere affects appearance of objects in the sky (moon, stars)
-	[Range(0, 1)] public float skyTransmittanceWeight = 1;
+	[Range( 0, 1 )] public float skyTransmittanceWeight = 1;
 
-	[Header("Tone mapping")]
+	[Header( "Tone mapping" )]
 	public float intensity = 1;
 	public float contrast = 1.45f;
 	public float whitePoint = 1.1f;
 
 
-	[Header("Later")]
+	[Header( "Later" )]
 	public float ditherStrength = 0.8f;
 	public Texture2D blueNoise;
 
-	[Header("Debug")]
+	[Header( "Debug" )]
 	/// <summary>
 	/// Derived from wavelengthsRGB/wavelengthScale, shown for inspection only - editing it does
 	/// nothing, it is overwritten on the next settings update.
 	/// </summary>
 	public Vector3 rayleighCoefficients;
 
-	[Header(("Debug"))]
+	[Header( ( "Debug" ) )]
 	public RenderTexture transmittanceLUT;
 	public RenderTexture multipleScatteringLUT;
 	public RenderTexture skyViewLUT;
@@ -190,41 +190,41 @@ public class AtmosphereEffect : PostProcessingEffect
 		Camera.onPreCull += RenderLUTs;
 	}
 
-	public void SetupSkyRenderingCommand(CommandBuffer skyRenderCommand)
+	public void SetupSkyRenderingCommand( CommandBuffer skyRenderCommand )
 	{
 		lutUpdateRequired = true;
 
 		// HideAndDontSave: recreated every domain reload under [ExecuteInEditMode], otherwise
 		// each reload leaks a material.
-		if (drawSkyMaterial == null || drawSkyMaterial.shader != drawSkyShader)
+		if ( drawSkyMaterial == null || drawSkyMaterial.shader != drawSkyShader )
 		{
-			drawSkyMaterial = new Material(drawSkyShader) { hideFlags = HideFlags.HideAndDontSave };
+			drawSkyMaterial = new Material( drawSkyShader ) { hideFlags = HideFlags.HideAndDontSave };
 		}
 
 		// Shared with the baseline sky, so the two passes cannot drift apart.
-		SkyPass.Record(skyRenderCommand, drawSkyMaterial);
+		SkyPass.Record( skyRenderCommand, drawSkyMaterial );
 
-		SetDrawSkyShaderParameters(drawSkyMaterial);
+		SetDrawSkyShaderParameters( drawSkyMaterial );
 	}
 
 
 	// Called on camera pre-cull
-	void RenderLUTs(Camera activeCamera)
+	void RenderLUTs( Camera activeCamera )
 	{
 
-		if (lutUpdateRequired)
+		if ( lutUpdateRequired )
 		{
-			if (activeCamera == cam)
+			if ( activeCamera == cam )
 			{
 				lutUpdateRequired = false;
 
 				// Derived once here rather than inside each consumer: both marches parameterise
 				// their rays off the same four corners, and deriving them costs a matrix inversion.
-				FrustumCorners corners = CalculateFrustumCorners(activeCamera);
+				FrustumCorners corners = CalculateFrustumCorners( activeCamera );
 
-				RenderSky(corners);
-				RenderSkyViewLUT(activeCamera);
-				RenderAerialPerspectiveLUTs(activeCamera, corners);
+				RenderSky( corners );
+				RenderSkyViewLUT( activeCamera );
+				RenderAerialPerspectiveLUTs( activeCamera, corners );
 			}
 		}
 
@@ -248,15 +248,15 @@ public class AtmosphereEffect : PostProcessingEffect
 		// exposure the sky pass used. Not part of ShaderValues (which only the atmosphere's own
 		// materials get) since these change with the world-scale preset and can't be authored
 		// directly on the ocean material.
-		Shader.SetGlobalFloat("intensity", intensity);
-		Shader.SetGlobalFloat("contrast", contrast);
-		Shader.SetGlobalFloat("whitePoint", whitePoint);
-		Shader.SetGlobalFloat("ditherStrength", ditherStrength);
-		if (blueNoise != null) { Shader.SetGlobalTexture("BlueNoise", blueNoise); }
+		Shader.SetGlobalFloat( "intensity", intensity );
+		Shader.SetGlobalFloat( "contrast", contrast );
+		Shader.SetGlobalFloat( "whitePoint", whitePoint );
+		Shader.SetGlobalFloat( "ditherStrength", ditherStrength );
+		if ( blueNoise != null ) { Shader.SetGlobalTexture( "BlueNoise", blueNoise ); }
 
-		if (transmittanceLUT != null) { Shader.SetGlobalTexture("TransmittanceLUT", transmittanceLUT); }
-		if (multipleScatteringLUT != null) { Shader.SetGlobalTexture("MultipleScatteringLUT", multipleScatteringLUT); }
-		if (skyViewLUT != null) { Shader.SetGlobalTexture("SkyViewLUT", skyViewLUT); }
+		if ( transmittanceLUT != null ) { Shader.SetGlobalTexture( "TransmittanceLUT", transmittanceLUT ); }
+		if ( multipleScatteringLUT != null ) { Shader.SetGlobalTexture( "MultipleScatteringLUT", multipleScatteringLUT ); }
+		if ( skyViewLUT != null ) { Shader.SetGlobalTexture( "SkyViewLUT", skyViewLUT ); }
 	}
 
 	void OnDisable()
@@ -267,11 +267,11 @@ public class AtmosphereEffect : PostProcessingEffect
 		Camera.onPreCull -= RenderLUTs;
 	}
 
-	protected override void RenderEffectToTarget(RenderTexture source, RenderTexture target)
+	protected override void RenderEffectToTarget( RenderTexture source, RenderTexture target )
 	{
 		SetProperties();
 		lutUpdateRequired = true;
-		Graphics.Blit(source, target, material);
+		Graphics.Blit( source, target, material );
 	}
 
 	/// <summary>
@@ -281,18 +281,18 @@ public class AtmosphereEffect : PostProcessingEffect
 	/// </summary>
 	void ResolveSun()
 	{
-		if (light != null || sunTagMissing) { return; }
+		if ( light != null || sunTagMissing ) { return; }
 
 		GameObject sunObject;
 		try
 		{
-			sunObject = GameObject.FindGameObjectWithTag("Sun");
+			sunObject = GameObject.FindGameObjectWithTag( "Sun" );
 		}
-		catch (UnityException)
+		catch ( UnityException )
 		{
 			sunTagMissing = true;
-			Debug.LogWarning("AtmosphereEffect: no \"Sun\" tag defined in this project, so the sun " +
-				"direction cannot be resolved. Assign the light manually on the effect asset.");
+			Debug.LogWarning( "AtmosphereEffect: no \"Sun\" tag defined in this project, so the sun " +
+				"direction cannot be resolved. Assign the light manually on the effect asset." );
 			return;
 		}
 
@@ -306,9 +306,9 @@ public class AtmosphereEffect : PostProcessingEffect
 
 		ResolveSun();
 
-		if (material != null && light != null)
+		if ( material != null && light != null )
 		{
-			material.SetVector(ShaderParamID.dirToSun, -light.transform.forward);
+			material.SetVector( ShaderParamID.dirToSun, -light.transform.forward );
 		}
 		// Was `!settingsUpToDate || !Application.isPlaying`, which reran the whole init branch
 		// (including the transmittance LUT dispatch) every frame in edit mode. The dirty flag
@@ -319,15 +319,15 @@ public class AtmosphereEffect : PostProcessingEffect
 		// reload; only LUT creation and dispatch stay behind the dirty flag.
 		BindComputeResources();
 
-		if (!settingsUpToDate || transmittanceLUT == null || multipleScatteringLUT == null)
+		if ( !settingsUpToDate || transmittanceLUT == null || multipleScatteringLUT == null )
 		{
 			sharedAtmosphereValues = GetShaderValues();
-			sharedAtmosphereValues.Apply(material);
-			if (multipleScatteringLUTCompute != null) { sharedAtmosphereValues.Apply(multipleScatteringLUTCompute); }
-			if (skyViewLUTCompute != null) { sharedAtmosphereValues.Apply(skyViewLUTCompute); }
-			sharedAtmosphereValues.Apply(transmittanceLUTCompute);
-			sharedAtmosphereValues.Apply(aerialPerspectiveLUTCompute);
-			sharedAtmosphereValues.Apply(skyRenderCompute);
+			sharedAtmosphereValues.Apply( material );
+			if ( multipleScatteringLUTCompute != null ) { sharedAtmosphereValues.Apply( multipleScatteringLUTCompute ); }
+			if ( skyViewLUTCompute != null ) { sharedAtmosphereValues.Apply( skyViewLUTCompute ); }
+			sharedAtmosphereValues.Apply( transmittanceLUTCompute );
+			sharedAtmosphereValues.Apply( aerialPerspectiveLUTCompute );
+			sharedAtmosphereValues.Apply( skyRenderCompute );
 
 
 			InitAndRenderTransmittanceLUT();
@@ -342,12 +342,12 @@ public class AtmosphereEffect : PostProcessingEffect
 			BindComputeResources();
 
 			// Set shader params after all LUTs have been initialized
-			SetDrawAerialPerspectiveShaderParams(material);
+			SetDrawAerialPerspectiveShaderParams( material );
 
 			// Draw sky settings
-			if (drawSkyMaterial != null)
+			if ( drawSkyMaterial != null )
 			{
-				SetDrawSkyShaderParameters(drawSkyMaterial);
+				SetDrawSkyShaderParameters( drawSkyMaterial );
 			}
 
 			// Done
@@ -357,7 +357,7 @@ public class AtmosphereEffect : PostProcessingEffect
 			// decoupled way RenderingManager publishes skyReflectionStrength. The cloud deck's
 			// radiance bake reads this to notice when the baked LUTs' contents change.
 			settingsVersion++;
-			Shader.SetGlobalFloat("atmosphereSettingsVersion", settingsVersion);
+			Shader.SetGlobalFloat( "atmosphereSettingsVersion", settingsVersion );
 
 			onSettingsUpdated?.Invoke();
 		}
@@ -369,30 +369,30 @@ public class AtmosphereEffect : PostProcessingEffect
 	/// scattering code as the runtime renderer rather than a reimplementation that could silently
 	/// diverge from it.
 	/// </summary>
-	public void ApplyAtmosphereValuesTo(ComputeShader compute)
+	public void ApplyAtmosphereValuesTo( ComputeShader compute )
 	{
 		// SetProperties takes its init branch whenever settings are dirty or a LUT is missing, so
 		// after this call the transmittance LUT is guaranteed current.
 		SetProperties();
-		GetShaderValues().Apply(compute);
+		GetShaderValues().Apply( compute );
 
 		// The bakers call raymarch() too, so they need the multiple-scattering LUT bound like
 		// every other consumer - otherwise the bake would omit a term the runtime has, measuring
 		// the bake rather than the technique.
-		if (multipleScatteringLUT != null) { compute.SetTexture(0, "MultipleScatteringLUT", multipleScatteringLUT); }
+		if ( multipleScatteringLUT != null ) { compute.SetTexture( 0, "MultipleScatteringLUT", multipleScatteringLUT ); }
 	}
 
 	ShaderValues GetShaderValues()
 	{
 		ShaderValues values = new ShaderValues();
 		// Size values
-		values.floats.Add(("atmosphereThickness", atmosphereThickness));
-		values.floats.Add(("atmosphereRadius", bodyRadius + atmosphereThickness));
-		values.floats.Add(("planetRadius", bodyRadius));
+		values.floats.Add( ("atmosphereThickness", atmosphereThickness) );
+		values.floats.Add( ("atmosphereRadius", bodyRadius + atmosphereThickness) );
+		values.floats.Add( ("planetRadius", bodyRadius) );
 
 		// Divided by on both write and read, so this has to be one shared value rather than two
 		// int uniforms that could drift apart.
-		values.vectors.Add(("transmittanceLutSize", new Vector2(transmittanceLUTSize.x, transmittanceLUTSize.y)));
+		values.vectors.Add( ("transmittanceLutSize", new Vector2( transmittanceLUTSize.x, transmittanceLUTSize.y )) );
 
 		// The shader works in absolute altitude and per-world-unit coefficients; the inspector's
 		// normalised fields are converted here so the physics stays numerically checkable.
@@ -402,87 +402,87 @@ public class AtmosphereEffect : PostProcessingEffect
 		// Floored like ozoneHalfWidth below: both scale heights are inspector fractions that can
 		// hit exactly zero, and getScatteringValues divides by them inside exp() - producing a NaN
 		// that survives every downstream saturate/clamp rather than a harmless infinity.
-		values.floats.Add(("rayleighScaleHeight", Mathf.Max(1e-4f, rayleighDensityAvg * thickness)));
+		values.floats.Add( ("rayleighScaleHeight", Mathf.Max( 1e-4f, rayleighDensityAvg * thickness )) );
 		// Arbitrary scale to give nicer range of reasonable values for the scattering constant
 		// Strength of (rayleigh) scattering is dependent on wavelength (~ 1/wavelength^4)
-		Vector3 inverseWavelengths = new Vector3(1 / wavelengthsRGB.x, 1 / wavelengthsRGB.y, 1 / wavelengthsRGB.z);
-		Vector3 rayleigh = Pow(inverseWavelengths * wavelengthScale, 4);
-		values.vectors.Add(("rayleighCoefficients", rayleigh * densityMultiplier / thickness));
+		Vector3 inverseWavelengths = new Vector3( 1 / wavelengthsRGB.x, 1 / wavelengthsRGB.y, 1 / wavelengthsRGB.z );
+		Vector3 rayleigh = Pow( inverseWavelengths * wavelengthScale, 4 );
+		values.vectors.Add( ("rayleighCoefficients", rayleigh * densityMultiplier / thickness) );
 
 		// Mirrored only when changed - writing unconditionally dirtied the asset on every update.
-		if (rayleighCoefficients != rayleigh) { rayleighCoefficients = rayleigh; }
+		if ( rayleighCoefficients != rayleigh ) { rayleighCoefficients = rayleigh; }
 
 		// Mie values
-		values.floats.Add(("mieScaleHeight", Mathf.Max(1e-4f, mieDensityAvg * thickness)));
-		values.floats.Add(("mieCoefficient", mieCoefficient * densityMultiplier / thickness));
-		values.floats.Add(("mieAbsorption", mieAbsorption * densityMultiplier / thickness));
-		values.floats.Add(("mieAsymmetry", mieAsymmetry));
+		values.floats.Add( ("mieScaleHeight", Mathf.Max( 1e-4f, mieDensityAvg * thickness )) );
+		values.floats.Add( ("mieCoefficient", mieCoefficient * densityMultiplier / thickness) );
+		values.floats.Add( ("mieAbsorption", mieAbsorption * densityMultiplier / thickness) );
+		values.floats.Add( ("mieAsymmetry", mieAsymmetry) );
 
 		// Dimensionless, so no thickness conversion - it only affects the phase, not optical
 		// depth/transmittance.
-		values.floats.Add(("sunIlluminance", sunIlluminance));
+		values.floats.Add( ("sunIlluminance", sunIlluminance) );
 
 		// Sent as float2 since both write and read divide by it - an int pair could let two
 		// conversions disagree.
-		values.vectors.Add(("multipleScatteringLutSize", new Vector2(multipleScatteringLUTSize.x, multipleScatteringLUTSize.y)));
-		values.floats.Add(("multipleScatteringStrength", multipleScatteringStrength));
-		values.floats.Add(("cloudShaftMultipleScattering", cloudShaftMultipleScattering));
-		values.floats.Add(("groundAlbedo", groundAlbedo));
+		values.vectors.Add( ("multipleScatteringLutSize", new Vector2( multipleScatteringLUTSize.x, multipleScatteringLUTSize.y )) );
+		values.floats.Add( ("multipleScatteringStrength", multipleScatteringStrength) );
+		values.floats.Add( ("cloudShaftMultipleScattering", cloudShaftMultipleScattering) );
+		values.floats.Add( ("groundAlbedo", groundAlbedo) );
 
 		// Sky view. The size goes as a float2 because both the write and the read divide by it.
-		values.vectors.Add(("skyViewLutSize", new Vector2(skyViewLUTSize.x, skyViewLUTSize.y)));
-		values.floats.Add(("skyViewLutRadius", bodyRadius + skyViewLutAltitude));
-		values.floats.Add(("skyViewHorizonV", skyViewHorizonV));
+		values.vectors.Add( ("skyViewLutSize", new Vector2( skyViewLUTSize.x, skyViewLUTSize.y )) );
+		values.floats.Add( ("skyViewLutRadius", bodyRadius + skyViewLutAltitude) );
+		values.floats.Add( ("skyViewHorizonV", skyViewHorizonV) );
 
 		// Ozone values. The tent was `1 - |peak01 - h01| * falloff` in normalised altitude, so
 		// its half-width in world units is thickness / falloff.
-		values.floats.Add(("ozonePeakAltitude", ozonePeakDensityAltitude * thickness));
-		values.floats.Add(("ozoneHalfWidth", thickness / Mathf.Max(1e-4f, ozoneDensityFalloff)));
-		values.vectors.Add(("ozoneAbsorption", ozoneAbsorption * ozoneStrength * densityMultiplier * 0.1f / thickness));
+		values.floats.Add( ("ozonePeakAltitude", ozonePeakDensityAltitude * thickness) );
+		values.floats.Add( ("ozoneHalfWidth", thickness / Mathf.Max( 1e-4f, ozoneDensityFalloff )) );
+		values.vectors.Add( ("ozoneAbsorption", ozoneAbsorption * ozoneStrength * densityMultiplier * 0.1f / thickness) );
 
 		return values;
 	}
 
-	void SetDrawSkyShaderParameters(Material drawSky)
+	void SetDrawSkyShaderParameters( Material drawSky )
 	{
 		// Textures
-		drawSky.SetTexture("Sky", sky);
-		drawSky.SetTexture("TransmittanceLUT", transmittanceLUT);
-		drawSky.SetTexture("BlueNoise", blueNoise);
+		drawSky.SetTexture( "Sky", sky );
+		drawSky.SetTexture( "TransmittanceLUT", transmittanceLUT );
+		drawSky.SetTexture( "BlueNoise", blueNoise );
 
 		// Values
-		drawSky.SetFloat("atmosphereThickness", atmosphereThickness);
-		drawSky.SetFloat("planetRadius", bodyRadius);
+		drawSky.SetFloat( "atmosphereThickness", atmosphereThickness );
+		drawSky.SetFloat( "planetRadius", bodyRadius );
 		// Bruneton's parameterisation needs both radius and size - a silent zero here would
 		// divide the whole mapping by nothing and put every sample in one corner of the LUT.
-		drawSky.SetFloat("atmosphereRadius", bodyRadius + atmosphereThickness);
-		drawSky.SetVector("transmittanceLutSize", new Vector2(transmittanceLUTSize.x, transmittanceLUTSize.y));
-		drawSky.SetFloat("sunDiscSize", sunDiscSize);
-		drawSky.SetFloat("sunDiscBlurA", sunDiscBlurA);
-		drawSky.SetFloat("sunDiscBlurB", sunDiscBlurB);
-		drawSky.SetFloat("ditherStrength", ditherStrength);
-		drawSky.SetFloat("intensity", intensity);
-		drawSky.SetFloat("contrast", contrast);
-		drawSky.SetFloat("whitePoint", whitePoint);
-		drawSky.SetFloat("skyTransmittanceWeight", skyTransmittanceWeight);
+		drawSky.SetFloat( "atmosphereRadius", bodyRadius + atmosphereThickness );
+		drawSky.SetVector( "transmittanceLutSize", new Vector2( transmittanceLUTSize.x, transmittanceLUTSize.y ) );
+		drawSky.SetFloat( "sunDiscSize", sunDiscSize );
+		drawSky.SetFloat( "sunDiscBlurA", sunDiscBlurA );
+		drawSky.SetFloat( "sunDiscBlurB", sunDiscBlurB );
+		drawSky.SetFloat( "ditherStrength", ditherStrength );
+		drawSky.SetFloat( "intensity", intensity );
+		drawSky.SetFloat( "contrast", contrast );
+		drawSky.SetFloat( "whitePoint", whitePoint );
+		drawSky.SetFloat( "skyTransmittanceWeight", skyTransmittanceWeight );
 	}
 
 
-	void SetDrawAerialPerspectiveShaderParams(Material drawAerial)
+	void SetDrawAerialPerspectiveShaderParams( Material drawAerial )
 	{
 		// Textures
-		drawAerial.SetTexture("AerialPerspectiveLUT", aerialPerspectiveLuminance);
-		drawAerial.SetTexture("TransmittanceLUT3D", aerialPerspectiveTransmittance);
-		drawAerial.SetTexture("BlueNoise", blueNoise);
+		drawAerial.SetTexture( "AerialPerspectiveLUT", aerialPerspectiveLuminance );
+		drawAerial.SetTexture( "TransmittanceLUT3D", aerialPerspectiveTransmittance );
+		drawAerial.SetTexture( "BlueNoise", blueNoise );
 
 		// Values
-		drawAerial.SetFloat("ditherStrength", ditherStrength);
-		drawAerial.SetFloat("aerialPerspectiveStrength", aerialPerspectiveStrength);
-		drawAerial.SetInt("atmosphereDebugMode", (int)debugMode);
+		drawAerial.SetFloat( "ditherStrength", ditherStrength );
+		drawAerial.SetFloat( "aerialPerspectiveStrength", aerialPerspectiveStrength );
+		drawAerial.SetInt( "atmosphereDebugMode", (int)debugMode );
 
-		drawAerial.SetFloat("intensity", intensity);
-		drawAerial.SetFloat("contrast", contrast);
-		drawAerial.SetFloat("whitePoint", whitePoint);
+		drawAerial.SetFloat( "intensity", intensity );
+		drawAerial.SetFloat( "contrast", contrast );
+		drawAerial.SetFloat( "whitePoint", whitePoint );
 	}
 
 	// Create lookup texture for the transmittance (proportion of light reaching given point through the atmosphere)
@@ -490,11 +490,11 @@ public class AtmosphereEffect : PostProcessingEffect
 	void InitAndRenderTransmittanceLUT()
 	{
 		GraphicsFormat transmittanceLUTFormat = GraphicsFormat.R16G16B16A16_UNorm;
-		ComputeHelper.CreateRenderTexture(ref transmittanceLUT, transmittanceLUTSize.x, transmittanceLUTSize.y, FilterMode.Bilinear, transmittanceLUTFormat, "Transmittance LUT");
-		transmittanceLUTCompute.SetTexture(0, "TransmittanceLUT", transmittanceLUT);
-		transmittanceLUTCompute.SetInt("width", transmittanceLUTSize.x);
-		transmittanceLUTCompute.SetInt("height", transmittanceLUTSize.y);
-		ComputeHelper.Dispatch(transmittanceLUTCompute, transmittanceLUT);
+		ComputeHelper.CreateRenderTexture( ref transmittanceLUT, transmittanceLUTSize.x, transmittanceLUTSize.y, FilterMode.Bilinear, transmittanceLUTFormat, "Transmittance LUT" );
+		transmittanceLUTCompute.SetTexture( 0, "TransmittanceLUT", transmittanceLUT );
+		transmittanceLUTCompute.SetInt( "width", transmittanceLUTSize.x );
+		transmittanceLUTCompute.SetInt( "height", transmittanceLUTSize.y );
+		ComputeHelper.Dispatch( transmittanceLUTCompute, transmittanceLUT );
 	}
 
 	/// <summary>
@@ -505,16 +505,16 @@ public class AtmosphereEffect : PostProcessingEffect
 	/// </summary>
 	void InitAndRenderMultipleScatteringLUT()
 	{
-		if (multipleScatteringLUTCompute == null) { return; }
+		if ( multipleScatteringLUTCompute == null ) { return; }
 
 		// SFloat, unlike the transmittance LUT's UNorm - Psi_ms is unbounded radiance, not a
 		// fraction, and a UNorm would clamp the bright end silently.
-		ComputeHelper.CreateRenderTexture(ref multipleScatteringLUT, multipleScatteringLUTSize.x, multipleScatteringLUTSize.y,
-			FilterMode.Bilinear, GraphicsFormat.R16G16B16A16_SFloat, "Multiple Scattering LUT");
+		ComputeHelper.CreateRenderTexture( ref multipleScatteringLUT, multipleScatteringLUTSize.x, multipleScatteringLUTSize.y,
+			FilterMode.Bilinear, GraphicsFormat.R16G16B16A16_SFloat, "Multiple Scattering LUT" );
 
-		multipleScatteringLUTCompute.SetTexture(0, "MultipleScatteringResult", multipleScatteringLUT);
-		multipleScatteringLUTCompute.SetTexture(0, "TransmittanceLUT", transmittanceLUT);
-		ComputeHelper.Dispatch(multipleScatteringLUTCompute, multipleScatteringLUT);
+		multipleScatteringLUTCompute.SetTexture( 0, "MultipleScatteringResult", multipleScatteringLUT );
+		multipleScatteringLUTCompute.SetTexture( 0, "TransmittanceLUT", transmittanceLUT );
+		ComputeHelper.Dispatch( multipleScatteringLUTCompute, multipleScatteringLUT );
 	}
 
 	/// <summary>
@@ -523,36 +523,36 @@ public class AtmosphereEffect : PostProcessingEffect
 	/// </summary>
 	void InitSkyViewLUT()
 	{
-		if (skyViewLUTCompute == null) { return; }
+		if ( skyViewLUTCompute == null ) { return; }
 
 		// SFloat: this is a radiance like the sky texture, not a fraction like the transmittance LUT.
-		ComputeHelper.CreateRenderTexture(ref skyViewLUT, skyViewLUTSize.x, skyViewLUTSize.y,
-			FilterMode.Bilinear, GraphicsFormat.R16G16B16A16_SFloat, "Sky View LUT");
+		ComputeHelper.CreateRenderTexture( ref skyViewLUT, skyViewLUTSize.x, skyViewLUTSize.y,
+			FilterMode.Bilinear, GraphicsFormat.R16G16B16A16_SFloat, "Sky View LUT" );
 	}
 
 	void InitAeiralPerspectiveLUTs()
 	{
 		GraphicsFormat aerialPerspectiveLUTFormat = GraphicsFormat.R16G16B16A16_SFloat;
 		GraphicsFormat transmittance3DFormat = GraphicsFormat.R16G16B16A16_UNorm;
-		ComputeHelper.CreateRenderTexture3D(ref aerialPerspectiveLuminance, aerialPerspectiveLUTSize, aerialPerspectiveLUTFormat, TextureWrapMode.Clamp, "Aerial Perspective");
-		ComputeHelper.CreateRenderTexture3D(ref aerialPerspectiveTransmittance, aerialPerspectiveLUTSize, transmittance3DFormat, TextureWrapMode.Clamp, "Transmittance LUT 3D");
+		ComputeHelper.CreateRenderTexture3D( ref aerialPerspectiveLuminance, aerialPerspectiveLUTSize, aerialPerspectiveLUTFormat, TextureWrapMode.Clamp, "Aerial Perspective" );
+		ComputeHelper.CreateRenderTexture3D( ref aerialPerspectiveTransmittance, aerialPerspectiveLUTSize, transmittance3DFormat, TextureWrapMode.Clamp, "Transmittance LUT 3D" );
 	}
 
-	void RenderAerialPerspectiveLUTs(Camera cam, FrustumCorners corners)
+	void RenderAerialPerspectiveLUTs( Camera cam, FrustumCorners corners )
 	{
 		// Guarded like RenderSkyViewLUT below - all three run from Camera.onPreCull, so an
 		// unresolved sun would throw once per camera per frame from inside Unity's render loop.
-		if (aerialPerspectiveLUTCompute == null || light == null) { return; }
+		if ( aerialPerspectiveLUTCompute == null || light == null ) { return; }
 
 		// Assign dynamic values
 		// nearClip/farClip used to be set here; the depth axis is normalised per ray against the
 		// atmosphere chord now, not the camera's clip planes.
-		SetRaymarchParams(aerialPerspectiveLUTCompute, corners);
-		aerialPerspectiveLUTCompute.SetVector(ShaderParamID.dirToSun, -light.transform.forward);
+		SetRaymarchParams( aerialPerspectiveLUTCompute, corners );
+		aerialPerspectiveLUTCompute.SetVector( ShaderParamID.dirToSun, -light.transform.forward );
 
 		// 2D over (x, y) only - each thread walks the depth slices itself, so a 3D dispatch would
 		// have multiple threads writing the same voxels.
-		ComputeHelper.Dispatch(aerialPerspectiveLUTCompute, aerialPerspectiveLUTSize, aerialPerspectiveLUTSize, 1);
+		ComputeHelper.Dispatch( aerialPerspectiveLUTCompute, aerialPerspectiveLUTSize, aerialPerspectiveLUTSize, 1 );
 	}
 
 
@@ -563,7 +563,7 @@ public class AtmosphereEffect : PostProcessingEffect
 		// so the levels below 0 are undefined. DrawSky samples with tex2D, which could pick an
 		// undefined mip once the sky texture is minified - not an issue at today's sizes, but not
 		// guaranteed by the code.
-		ComputeHelper.CreateRenderTexture(ref sky, skyRenderSize.x, skyRenderSize.y, FilterMode.Bilinear, skyFormat, "Sky");
+		ComputeHelper.CreateRenderTexture( ref sky, skyRenderSize.x, skyRenderSize.y, FilterMode.Bilinear, skyFormat, "Sky" );
 	}
 
 	/// <summary>
@@ -576,56 +576,56 @@ public class AtmosphereEffect : PostProcessingEffect
 	{
 		// Every raymarch() consumer needs the multiple-scattering LUT bound, including via
 		// ApplyAtmosphereValuesTo - an unbound compute texture fails silently rather than loudly.
-		if (multipleScatteringLUT != null)
+		if ( multipleScatteringLUT != null )
 		{
-			if (material != null) { material.SetTexture("MultipleScatteringLUT", multipleScatteringLUT); }
-			if (skyRenderCompute != null) { skyRenderCompute.SetTexture(0, "MultipleScatteringLUT", multipleScatteringLUT); }
-			if (aerialPerspectiveLUTCompute != null) { aerialPerspectiveLUTCompute.SetTexture(0, "MultipleScatteringLUT", multipleScatteringLUT); }
+			if ( material != null ) { material.SetTexture( "MultipleScatteringLUT", multipleScatteringLUT ); }
+			if ( skyRenderCompute != null ) { skyRenderCompute.SetTexture( 0, "MultipleScatteringLUT", multipleScatteringLUT ); }
+			if ( aerialPerspectiveLUTCompute != null ) { aerialPerspectiveLUTCompute.SetTexture( 0, "MultipleScatteringLUT", multipleScatteringLUT ); }
 		}
 
 		// The cloud deck, for light shafts in raymarchSegment. Bound explicitly since computes
 		// don't receive Shader.SetGlobalTexture - every kernel referencing CloudShadowMap needs
 		// an explicit bind or the dispatch fails outright. Rebound every frame since the owning
 		// renderer can change between profiles.
-		CloudShadowGlobals.BindTo(skyViewLUTCompute, 0);
-		CloudShadowGlobals.BindTo(skyRenderCompute, 0);
-		CloudShadowGlobals.BindTo(aerialPerspectiveLUTCompute, 0);
+		CloudShadowGlobals.BindTo( skyViewLUTCompute, 0 );
+		CloudShadowGlobals.BindTo( skyRenderCompute, 0 );
+		CloudShadowGlobals.BindTo( aerialPerspectiveLUTCompute, 0 );
 
-		if (skyViewLUTCompute != null && skyViewLUT != null)
+		if ( skyViewLUTCompute != null && skyViewLUT != null )
 		{
-			skyViewLUTCompute.SetTexture(0, "SkyViewResult", skyViewLUT);
-			skyViewLUTCompute.SetTexture(0, "TransmittanceLUT", transmittanceLUT);
-			if (multipleScatteringLUT != null) { skyViewLUTCompute.SetTexture(0, "MultipleScatteringLUT", multipleScatteringLUT); }
-			skyViewLUTCompute.SetInt("numSkyViewSteps", numSkyViewScatteringSteps);
+			skyViewLUTCompute.SetTexture( 0, "SkyViewResult", skyViewLUT );
+			skyViewLUTCompute.SetTexture( 0, "TransmittanceLUT", transmittanceLUT );
+			if ( multipleScatteringLUT != null ) { skyViewLUTCompute.SetTexture( 0, "MultipleScatteringLUT", multipleScatteringLUT ); }
+			skyViewLUTCompute.SetInt( "numSkyViewSteps", numSkyViewScatteringSteps );
 		}
 
-		if (skyRenderCompute != null && sky != null)
+		if ( skyRenderCompute != null && sky != null )
 		{
-			skyRenderCompute.SetTexture(0, "TransmittanceLUT", transmittanceLUT);
-			skyRenderCompute.SetTexture(0, "Sky", sky);
-			skyRenderCompute.SetInt("numScatteringSteps", numSkyScatteringSteps);
-			skyRenderCompute.SetInts("size", skyRenderSize.x, skyRenderSize.y);
+			skyRenderCompute.SetTexture( 0, "TransmittanceLUT", transmittanceLUT );
+			skyRenderCompute.SetTexture( 0, "Sky", sky );
+			skyRenderCompute.SetInt( "numScatteringSteps", numSkyScatteringSteps );
+			skyRenderCompute.SetInts( "size", skyRenderSize.x, skyRenderSize.y );
 		}
 
-		if (aerialPerspectiveLUTCompute != null && aerialPerspectiveLuminance != null)
+		if ( aerialPerspectiveLUTCompute != null && aerialPerspectiveLuminance != null )
 		{
-			aerialPerspectiveLUTCompute.SetTexture(0, "AerialPerspectiveLuminance", aerialPerspectiveLuminance);
-			aerialPerspectiveLUTCompute.SetTexture(0, "AerialPerspectiveTransmittance", aerialPerspectiveTransmittance);
-			aerialPerspectiveLUTCompute.SetTexture(0, "TransmittanceLUT", transmittanceLUT);
-			aerialPerspectiveLUTCompute.SetInt("size", aerialPerspectiveLUTSize);
-			aerialPerspectiveLUTCompute.SetInt("stepsPerSlice", aerialStepsPerSlice);
+			aerialPerspectiveLUTCompute.SetTexture( 0, "AerialPerspectiveLuminance", aerialPerspectiveLuminance );
+			aerialPerspectiveLUTCompute.SetTexture( 0, "AerialPerspectiveTransmittance", aerialPerspectiveTransmittance );
+			aerialPerspectiveLUTCompute.SetTexture( 0, "TransmittanceLUT", transmittanceLUT );
+			aerialPerspectiveLUTCompute.SetInt( "size", aerialPerspectiveLUTSize );
+			aerialPerspectiveLUTCompute.SetInt( "stepsPerSlice", aerialStepsPerSlice );
 		}
 	}
 
 	// Render the sky to a small texture, which then will be upscaled to reduce expensive raymarching
 	// This is rendered every frame
-	void RenderSky(FrustumCorners corners)
+	void RenderSky( FrustumCorners corners )
 	{
-		if (skyRenderCompute == null || light == null) { return; }
+		if ( skyRenderCompute == null || light == null ) { return; }
 
-		SetRaymarchParams(skyRenderCompute, corners);
-		skyRenderCompute.SetVector(ShaderParamID.dirToSun, -light.transform.forward);
-		ComputeHelper.Dispatch(skyRenderCompute, sky);
+		SetRaymarchParams( skyRenderCompute, corners );
+		skyRenderCompute.SetVector( ShaderParamID.dirToSun, -light.transform.forward );
+		ComputeHelper.Dispatch( skyRenderCompute, sky );
 	}
 
 	/// <summary>
@@ -636,16 +636,16 @@ public class AtmosphereEffect : PostProcessingEffect
 	/// visible ocean spans up to 20 degrees of arc - a third LUT axis is the clean fix, noted in
 	/// NOTES.
 	/// </summary>
-	void RenderSkyViewLUT(Camera cam)
+	void RenderSkyViewLUT( Camera cam )
 	{
-		if (skyViewLUTCompute == null || skyViewLUT == null || light == null) { return; }
+		if ( skyViewLUTCompute == null || skyViewLUT == null || light == null ) { return; }
 
 		Vector3 up = cam.transform.position.normalized;
-		float cosSunZenith = Mathf.Clamp(Vector3.Dot(up, -light.transform.forward), -1f, 1f);
-		float sinSunZenith = Mathf.Sqrt(Mathf.Max(0f, 1f - cosSunZenith * cosSunZenith));
+		float cosSunZenith = Mathf.Clamp( Vector3.Dot( up, -light.transform.forward ), -1f, 1f );
+		float sinSunZenith = Mathf.Sqrt( Mathf.Max( 0f, 1f - cosSunZenith * cosSunZenith ) );
 
-		skyViewLUTCompute.SetVector(ShaderParamID.dirToSun, new Vector3(sinSunZenith, cosSunZenith, 0f));
-		ComputeHelper.Dispatch(skyViewLUTCompute, skyViewLUT);
+		skyViewLUTCompute.SetVector( ShaderParamID.dirToSun, new Vector3( sinSunZenith, cosSunZenith, 0f ) );
+		ComputeHelper.Dispatch( skyViewLUTCompute, skyViewLUT );
 	}
 
 	/// <summary>
@@ -658,53 +658,53 @@ public class AtmosphereEffect : PostProcessingEffect
 		public Vector3 camPos;
 	}
 
-	static FrustumCorners CalculateFrustumCorners(Camera camera)
+	static FrustumCorners CalculateFrustumCorners( Camera camera )
 	{
-		Matrix4x4 clipToView = GL.GetGPUProjectionMatrix(camera.projectionMatrix, true).inverse;
+		Matrix4x4 clipToView = GL.GetGPUProjectionMatrix( camera.projectionMatrix, true ).inverse;
 		Matrix4x4 viewToWorld = camera.transform.localToWorldMatrix;
 
 		FrustumCorners corners;
-		corners.topLeft = CornerDirection(clipToView, viewToWorld, 0, 1);
-		corners.topRight = CornerDirection(clipToView, viewToWorld, 1, 1);
-		corners.bottomLeft = CornerDirection(clipToView, viewToWorld, 0, 0);
-		corners.bottomRight = CornerDirection(clipToView, viewToWorld, 1, 0);
+		corners.topLeft = CornerDirection( clipToView, viewToWorld, 0, 1 );
+		corners.topRight = CornerDirection( clipToView, viewToWorld, 1, 1 );
+		corners.bottomLeft = CornerDirection( clipToView, viewToWorld, 0, 0 );
+		corners.bottomRight = CornerDirection( clipToView, viewToWorld, 1, 0 );
 		corners.camPos = camera.transform.position;
 		return corners;
 	}
 
-	static Vector3 CornerDirection(Matrix4x4 clipToView, Matrix4x4 viewToWorld, float u, float v)
+	static Vector3 CornerDirection( Matrix4x4 clipToView, Matrix4x4 viewToWorld, float u, float v )
 	{
-		Vector3 viewVector = clipToView * new Vector4(u * 2 - 1, v * 2 - 1, 0, -1);
-		viewVector = viewToWorld * new Vector4(viewVector.x, viewVector.y, viewVector.z, 0);
+		Vector3 viewVector = clipToView * new Vector4( u * 2 - 1, v * 2 - 1, 0, -1 );
+		viewVector = viewToWorld * new Vector4( viewVector.x, viewVector.y, viewVector.z, 0 );
 		return viewVector.normalized;
 	}
 
-	static void SetRaymarchParams(ComputeShader raymarchCompute, FrustumCorners corners)
+	static void SetRaymarchParams( ComputeShader raymarchCompute, FrustumCorners corners )
 	{
-		raymarchCompute.SetVector(ShaderParamID.topLeftDir, corners.topLeft);
-		raymarchCompute.SetVector(ShaderParamID.topRightDir, corners.topRight);
-		raymarchCompute.SetVector(ShaderParamID.bottomLeftDir, corners.bottomLeft);
-		raymarchCompute.SetVector(ShaderParamID.bottomRightDir, corners.bottomRight);
-		raymarchCompute.SetVector(ShaderParamID.camPos, corners.camPos);
+		raymarchCompute.SetVector( ShaderParamID.topLeftDir, corners.topLeft );
+		raymarchCompute.SetVector( ShaderParamID.topRightDir, corners.topRight );
+		raymarchCompute.SetVector( ShaderParamID.bottomLeftDir, corners.bottomLeft );
+		raymarchCompute.SetVector( ShaderParamID.bottomRightDir, corners.bottomRight );
+		raymarchCompute.SetVector( ShaderParamID.camPos, corners.camPos );
 	}
 
 	public static class ShaderParamID
 	{
-		public static int topLeftDir = Shader.PropertyToID("topLeftDir");
-		public static int topRightDir = Shader.PropertyToID("topRightDir");
-		public static int bottomLeftDir = Shader.PropertyToID("bottomLeftDir");
-		public static int bottomRightDir = Shader.PropertyToID("bottomRightDir");
-		public static int camPos = Shader.PropertyToID("camPos");
+		public static int topLeftDir = Shader.PropertyToID( "topLeftDir" );
+		public static int topRightDir = Shader.PropertyToID( "topRightDir" );
+		public static int bottomLeftDir = Shader.PropertyToID( "bottomLeftDir" );
+		public static int bottomRightDir = Shader.PropertyToID( "bottomRightDir" );
+		public static int camPos = Shader.PropertyToID( "camPos" );
 
-		public static int dirToSun = Shader.PropertyToID("dirToSun");
+		public static int dirToSun = Shader.PropertyToID( "dirToSun" );
 
 	}
 
 	public override void OnDestroy()
 	{
 		// multipleScatteringLUT and skyViewLUT were both missing from this list.
-		ComputeHelper.Release(aerialPerspectiveLuminance, sky, transmittanceLUT, aerialPerspectiveTransmittance,
-			multipleScatteringLUT, skyViewLUT);
+		ComputeHelper.Release( aerialPerspectiveLuminance, sky, transmittanceLUT, aerialPerspectiveTransmittance,
+			multipleScatteringLUT, skyViewLUT );
 	}
 
 
@@ -717,15 +717,15 @@ public class AtmosphereEffect : PostProcessingEffect
 
 	void OnValidate()
 	{
-		if (Application.isEditor)
+		if ( Application.isEditor )
 		{
 			settingsUpToDate = false;
 		}
 	}
 
-	Vector3 Pow(Vector3 vector, float power)
+	Vector3 Pow( Vector3 vector, float power )
 	{
-		return new Vector3(Mathf.Pow(vector.x, power), Mathf.Pow(vector.y, power), Mathf.Pow(vector.z, power));
+		return new Vector3( Mathf.Pow( vector.x, power ), Mathf.Pow( vector.y, power ), Mathf.Pow( vector.z, power ) );
 	}
 
 	void EditorOnlyInit()
@@ -748,29 +748,29 @@ public class AtmosphereEffect : PostProcessingEffect
 			vectors = new List<(string name, Vector4 value)>();
 		}
 
-		public void Apply(Material material)
+		public void Apply( Material material )
 		{
-			foreach (var data in floats)
+			foreach ( var data in floats )
 			{
-				material.SetFloat(data.name, data.value);
+				material.SetFloat( data.name, data.value );
 			}
 
-			foreach (var data in vectors)
+			foreach ( var data in vectors )
 			{
-				material.SetVector(data.name, data.value);
+				material.SetVector( data.name, data.value );
 			}
 		}
 
-		public void Apply(ComputeShader compute)
+		public void Apply( ComputeShader compute )
 		{
-			foreach (var data in floats)
+			foreach ( var data in floats )
 			{
-				compute.SetFloat(data.name, data.value);
+				compute.SetFloat( data.name, data.value );
 			}
 
-			foreach (var data in vectors)
+			foreach ( var data in vectors )
 			{
-				compute.SetVector(data.name, data.value);
+				compute.SetVector( data.name, data.value );
 			}
 		}
 
@@ -784,14 +784,14 @@ public class AtmosphereEffect : PostProcessingEffect
 		/// </summary>
 		public void ApplyGlobal()
 		{
-			foreach (var data in floats)
+			foreach ( var data in floats )
 			{
-				Shader.SetGlobalFloat(data.name, data.value);
+				Shader.SetGlobalFloat( data.name, data.value );
 			}
 
-			foreach (var data in vectors)
+			foreach ( var data in vectors )
 			{
-				Shader.SetGlobalVector(data.name, data.value);
+				Shader.SetGlobalVector( data.name, data.value );
 			}
 		}
 

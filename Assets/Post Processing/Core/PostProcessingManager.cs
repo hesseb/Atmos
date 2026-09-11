@@ -11,14 +11,14 @@ public class PostProcessingManager : MonoBehaviour
 	void OnEnable()
 	{
 		cam = GetComponent<Camera>();
-		if (effects != null)
+		if ( effects != null )
 		{
-			for (int i = 0; i < effects.Length; i++)
+			for ( int i = 0; i < effects.Length; i++ )
 			{
-				if (effects[i])
+				if ( effects[ i ] )
 				{
-					effects[i].OnEnable();
-					effects[i].SetCamera(cam);
+					effects[ i ].OnEnable();
+					effects[ i ].SetCamera( cam );
 				}
 			}
 		}
@@ -26,31 +26,31 @@ public class PostProcessingManager : MonoBehaviour
 	}
 
 
-	void OnRenderImage(RenderTexture source, RenderTexture target)
+	void OnRenderImage( RenderTexture source, RenderTexture target )
 	{
 		RenderTexture lastRenderedImage = source;
 
-		if (effects == null)
+		if ( effects == null )
 		{
-			effects = new PostProcessingEffect[0];
+			effects = new PostProcessingEffect[ 0 ];
 		}
 
-		for (int i = 0; i < effects.Length; i++)
+		for ( int i = 0; i < effects.Length; i++ )
 		{
-			if (effects[i] && effects[i].enabled)
+			if ( effects[ i ] && effects[ i ].enabled )
 			{
-				lastRenderedImage = effects[i].Render(lastRenderedImage);
+				lastRenderedImage = effects[ i ].Render( lastRenderedImage );
 			}
 		}
 
 
-		Graphics.Blit(lastRenderedImage, target);
+		Graphics.Blit( lastRenderedImage, target );
 
-		for (int i = 0; i < effects.Length; i++)
+		for ( int i = 0; i < effects.Length; i++ )
 		{
-			if (effects[i])
+			if ( effects[ i ] )
 			{
-				effects[i].OnFinishedDrawingFrame();
+				effects[ i ].OnFinishedDrawingFrame();
 			}
 		}
 	}
@@ -60,26 +60,26 @@ public class PostProcessingManager : MonoBehaviour
 		// Guarded like OnEnable and OnRenderImage. These two ran unguarded, and both are reachable
 		// with the array still null: gizmos draw before the first OnRenderImage assigns it, and
 		// OnDestroy can run on a component that never rendered at all.
-		if (effects == null) { return; }
+		if ( effects == null ) { return; }
 
-		for (int i = 0; i < effects.Length; i++)
+		for ( int i = 0; i < effects.Length; i++ )
 		{
-			if (effects[i])
+			if ( effects[ i ] )
 			{
-				effects[i].DrawGizmos();
+				effects[ i ].DrawGizmos();
 			}
 		}
 	}
 
 	void OnDestroy()
 	{
-		if (effects == null) { return; }
+		if ( effects == null ) { return; }
 
-		for (int i = 0; i < effects.Length; i++)
+		for ( int i = 0; i < effects.Length; i++ )
 		{
-			if (effects[i])
+			if ( effects[ i ] )
 			{
-				effects[i].OnDestroy();
+				effects[ i ].OnDestroy();
 			}
 		}
 	}

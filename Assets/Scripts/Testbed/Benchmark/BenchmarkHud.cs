@@ -20,15 +20,15 @@ public class BenchmarkHud : MonoBehaviour
 {
 	static readonly CultureInfo Ci = CultureInfo.InvariantCulture;
 
-	[Header("Wiring")]
+	[Header( "Wiring" )]
 	public BenchmarkRunner runner;
 
-	[Tooltip("Drawn by this overlay rather than its own. One panel and one hide key beat two " +
+	[Tooltip( "Drawn by this overlay rather than its own. One panel and one hide key beat two " +
 		"stacked in opposite corners, each with a separate toggle - which is how the UI ended up " +
-		"impossible to fully dismiss.")]
+		"impossible to fully dismiss." )]
 	public TimeController time;
 
-	[Header("Keys")]
+	[Header( "Keys" )]
 	// F1-F8, ordered by how often they are reached for rather than by which system owns them.
 	// The old layout grew one key at a time - cycle-benchmark on F2 because it was written first,
 	// hide split across F1 and F6 because two components each drew their own panel - and it read as
@@ -45,8 +45,8 @@ public class BenchmarkHud : MonoBehaviour
 	public KeyCode togglePerformanceKey = KeyCode.F10;
 	public KeyCode abortKey = KeyCode.Escape;
 
-	[Tooltip("Cycled by the resolution key. These drive the runner's targetResolution, so the " +
-		"resolution you looked at and the one a run pins are the same value.")]
+	[Tooltip( "Cycled by the resolution key. These drive the runner's targetResolution, so the " +
+		"resolution you looked at and the one a run pins are the same value." )]
 	public Vector2Int[] resolutions =
 	{
 		new Vector2Int(1920, 1080),
@@ -54,15 +54,15 @@ public class BenchmarkHud : MonoBehaviour
 		new Vector2Int(3840, 2160),
 	};
 
-	[Header("Overlay")]
+	[Header( "Overlay" )]
 	public bool showOverlay = true;
 	public int overlayFontSize = 17;
 	public Color overlayTextColour = Color.white;
-	public Color overlayBackgroundColour = new Color(0f, 0f, 0f, 0.72f);
+	public Color overlayBackgroundColour = new Color( 0f, 0f, 0f, 0.72f );
 
-	[Tooltip("Draw a progress line while a run is in progress. Off by default: IMGUI adds " +
+	[Tooltip( "Draw a progress line while a run is in progress. Off by default: IMGUI adds " +
 		"draw calls and CPU time to the frames being measured. Never drawn during a capture " +
-		"run regardless, since it would appear in the images.")]
+		"run regardless, since it would appear in the images." )]
 	public bool showProgressDuringRun;
 
 	/// <summary>Index into availableBenchmarks, or AllIndex for "run every one in turn".</summary>
@@ -97,8 +97,8 @@ public class BenchmarkHud : MonoBehaviour
 	//
 	// Off by default. It is a diagnostic, and IMGUI is not free - the same reason the main panel
 	// hides itself for the duration of a run.
-	[Tooltip("Live performance readout, top right. Off by default: IMGUI costs frame time, which " +
-		"is the thing it is reporting.")]
+	[Tooltip( "Live performance readout, top right. Off by default: IMGUI costs frame time, which " +
+		"is the thing it is reporting." )]
 	public bool showPerformance;
 
 	/// <summary>
@@ -128,11 +128,11 @@ public class BenchmarkHud : MonoBehaviour
 		get
 		{
 			available.Clear();
-			if (runner != null && runner.availableBenchmarks != null)
+			if ( runner != null && runner.availableBenchmarks != null )
 			{
-				foreach (BenchmarkDefinition definition in runner.availableBenchmarks)
+				foreach ( BenchmarkDefinition definition in runner.availableBenchmarks )
 				{
-					if (definition != null) { available.Add(definition); }
+					if ( definition != null ) { available.Add( definition ); }
 				}
 			}
 			return available;
@@ -143,10 +143,10 @@ public class BenchmarkHud : MonoBehaviour
 
 	void Awake()
 	{
-		if (runner == null) { runner = GetComponent<BenchmarkRunner>(); }
-		if (runner == null) { runner = FindFirstObjectByType<BenchmarkRunner>(); }
+		if ( runner == null ) { runner = GetComponent<BenchmarkRunner>(); }
+		if ( runner == null ) { runner = FindFirstObjectByType<BenchmarkRunner>(); }
 		// Found rather than wired, so merging the two overlays costs no scene edit.
-		if (time == null) { time = FindFirstObjectByType<TimeController>(); }
+		if ( time == null ) { time = FindFirstObjectByType<TimeController>(); }
 
 		// All, rather than whichever benchmark happens to sit first in the list. Running a single
 		// one is the deliberate act; running the set is the default thing to want - and a default
@@ -156,12 +156,12 @@ public class BenchmarkHud : MonoBehaviour
 
 	void OnEnable()
 	{
-		if (runner != null) { runner.onCompleted += HandleCompleted; }
+		if ( runner != null ) { runner.onCompleted += HandleCompleted; }
 	}
 
 	void OnDisable()
 	{
-		if (runner != null) { runner.onCompleted -= HandleCompleted; }
+		if ( runner != null ) { runner.onCompleted -= HandleCompleted; }
 
 		// Effect enabled flags are asset state. A preview left applied when play mode ends
 		// would be written to the project on the next save.
@@ -173,22 +173,22 @@ public class BenchmarkHud : MonoBehaviour
 
 	void Update()
 	{
-		if (runner == null) { return; }
+		if ( runner == null ) { return; }
 
 		// Hides everything, including the performance panel: that one draws only when both this and
 		// its own flag are set, so F7 hides all of it and restores whatever was showing.
-		if (Input.GetKeyDown(toggleOverlayKey)) { showOverlay = !showOverlay; }
+		if ( Input.GetKeyDown( toggleOverlayKey ) ) { showOverlay = !showOverlay; }
 
 		// Sampled outside the IsRunning early-out below, but not DURING a run - the panel is hidden
 		// then anyway, and its recorders would be reading frames the harness is measuring.
-		if (showOverlay && showPerformance && !runner.IsRunning) { SamplePerformance(); }
-		else if (!showPerformance) { ReleasePerformanceSampler(); }
+		if ( showOverlay && showPerformance && !runner.IsRunning ) { SamplePerformance(); }
+		else if ( !showPerformance ) { ReleasePerformanceSampler(); }
 
-		if (runner.IsRunning)
+		if ( runner.IsRunning )
 		{
 			// Abort is the only input accepted mid-run: everything else would change the
 			// configuration of a run already in progress.
-			if (Input.GetKeyDown(abortKey))
+			if ( Input.GetKeyDown( abortKey ) )
 			{
 				queue.Clear();
 				advanceQueue = false;
@@ -198,10 +198,10 @@ public class BenchmarkHud : MonoBehaviour
 				// aborted run wrote nothing, but earlier ones in the batch did - summarising
 				// those is better than discarding them, as long as it is clear the batch is
 				// short.
-				if (batchFolder != null && queueLengthAtStart > batchEntries.Count)
+				if ( batchFolder != null && queueLengthAtStart > batchEntries.Count )
 				{
-					Debug.LogWarning($"[Benchmark] batch aborted after {batchEntries.Count} of " +
-						$"{queueLengthAtStart} benchmark(s); the summary covers only those.", this);
+					Debug.LogWarning( $"[Benchmark] batch aborted after {batchEntries.Count} of " +
+						$"{queueLengthAtStart} benchmark(s); the summary covers only those.", this );
 				}
 				FinishBatch();
 			}
@@ -210,21 +210,21 @@ public class BenchmarkHud : MonoBehaviour
 
 		// Deferred to the frame after completion rather than started from the callback, so
 		// the finished run has fully released its environment scope before the next pins it.
-		if (advanceQueue)
+		if ( advanceQueue )
 		{
 			advanceQueue = false;
 			StartNextInQueue();
 			return;
 		}
 
-		if (Input.GetKeyDown(cycleBenchmarkKey)) { CycleBenchmark(); }
-		if (Input.GetKeyDown(cycleModeKey)) { CycleMode(); }
-		if (Input.GetKeyDown(cycleProfileKey)) { CyclePreviewProfile(); }
-		if (Input.GetKeyDown(cycleGenusKey)) { CycleGenus(); }
-		if (Input.GetKeyDown(runKey)) { Run(); }
-		if (Input.GetKeyDown(fullscreenKey)) { ToggleFullscreen(); }
-		if (Input.GetKeyDown(cycleResolutionKey)) { CycleResolution(); }
-		if (Input.GetKeyDown(togglePerformanceKey)) { showPerformance = !showPerformance; }
+		if ( Input.GetKeyDown( cycleBenchmarkKey ) ) { CycleBenchmark(); }
+		if ( Input.GetKeyDown( cycleModeKey ) ) { CycleMode(); }
+		if ( Input.GetKeyDown( cycleProfileKey ) ) { CyclePreviewProfile(); }
+		if ( Input.GetKeyDown( cycleGenusKey ) ) { CycleGenus(); }
+		if ( Input.GetKeyDown( runKey ) ) { Run(); }
+		if ( Input.GetKeyDown( fullscreenKey ) ) { ToggleFullscreen(); }
+		if ( Input.GetKeyDown( cycleResolutionKey ) ) { CycleResolution(); }
+		if ( Input.GetKeyDown( togglePerformanceKey ) ) { showPerformance = !showPerformance; }
 	}
 
 	// ------------------------------------------------------------------ live preview
@@ -237,16 +237,16 @@ public class BenchmarkHud : MonoBehaviour
 	void CyclePreviewProfile()
 	{
 		List<RendererProfile> profiles = LivePreviewProfiles();
-		if (profiles.Count == 0)
+		if ( profiles.Count == 0 )
 		{
-			Debug.LogWarning("[Benchmark] no renderer profiles on the runner - point its Profiles " +
-				"array at one of the generated sets.", this);
+			Debug.LogWarning( "[Benchmark] no renderer profiles on the runner - point its Profiles " +
+				"array at one of the generated sets.", this );
 			return;
 		}
 
-		if (!runner.sceneRefs.Resolve(out string error))
+		if ( !runner.sceneRefs.Resolve( out string error ) )
 		{
-			Debug.LogWarning($"[Benchmark] {error}", this);
+			Debug.LogWarning( $"[Benchmark] {error}", this );
 			return;
 		}
 
@@ -257,15 +257,15 @@ public class BenchmarkHud : MonoBehaviour
 		// One past the end returns to the scene's authored configuration, which is the only
 		// way to get back to it without restarting.
 		previewIndex++;
-		if (previewIndex >= profiles.Count)
+		if ( previewIndex >= profiles.Count )
 		{
 			previewIndex = -1;
 			return;
 		}
 
-		RendererProfile profile = profiles[previewIndex];
+		RendererProfile profile = profiles[ previewIndex ];
 		previewScope = new RestoreScope();
-		profile.Apply(runner.sceneRefs, previewScope);
+		profile.Apply( runner.sceneRefs, previewScope );
 	}
 
 	/// <summary>Undoes the live preview. Safe to call when nothing is previewed.</summary>
@@ -278,11 +278,11 @@ public class BenchmarkHud : MonoBehaviour
 	List<RendererProfile> LivePreviewProfiles()
 	{
 		previewProfiles.Clear();
-		if (runner.profiles != null)
+		if ( runner.profiles != null )
 		{
-			foreach (RendererProfile profile in runner.profiles)
+			foreach ( RendererProfile profile in runner.profiles )
 			{
-				if (profile != null) { previewProfiles.Add(profile); }
+				if ( profile != null ) { previewProfiles.Add( profile ); }
 			}
 		}
 		return previewProfiles;
@@ -290,7 +290,7 @@ public class BenchmarkHud : MonoBehaviour
 
 	readonly List<RendererProfile> previewProfiles = new List<RendererProfile>();
 
-/// <summary>
+	/// <summary>
 	/// Steps the volumetric's genus override through the ten of THESIS.md 3.5, plus Off.
 	///
 	/// RQ1 needs one image of each, and hunting for a region where the noise happened to produce
@@ -300,26 +300,26 @@ public class BenchmarkHud : MonoBehaviour
 	void CycleGenus()
 	{
 		Clouds.CloudEffect clouds = FindClouds();
-		if (clouds == null)
+		if ( clouds == null )
 		{
-			Debug.LogWarning("[Benchmark] no CloudEffect in the post-processing chain, so there is " +
-				"no genus override to cycle.", this);
+			Debug.LogWarning( "[Benchmark] no CloudEffect in the post-processing chain, so there is " +
+				"no genus override to cycle.", this );
 			return;
 		}
 
-		var values = (Clouds.CloudEffect.Genus[])System.Enum.GetValues(typeof(Clouds.CloudEffect.Genus));
-		int next = (System.Array.IndexOf(values, clouds.genusOverride) + 1) % values.Length;
-		clouds.genusOverride = values[next];
+		var values = (Clouds.CloudEffect.Genus[])System.Enum.GetValues( typeof( Clouds.CloudEffect.Genus ) );
+		int next = ( System.Array.IndexOf( values, clouds.genusOverride ) + 1 ) % values.Length;
+		clouds.genusOverride = values[ next ];
 	}
 
 	Clouds.CloudEffect FindClouds()
 	{
-		if (runner == null || !runner.sceneRefs.Resolve(out _)) { return null; }
-		if (runner.sceneRefs.postProcessing == null) { return null; }
+		if ( runner == null || !runner.sceneRefs.Resolve( out _ ) ) { return null; }
+		if ( runner.sceneRefs.postProcessing == null ) { return null; }
 
-		foreach (PostProcessingEffect effect in runner.sceneRefs.postProcessing.effects)
+		foreach ( PostProcessingEffect effect in runner.sceneRefs.postProcessing.effects )
 		{
-			if (effect is Clouds.CloudEffect clouds) { return clouds; }
+			if ( effect is Clouds.CloudEffect clouds ) { return clouds; }
 		}
 		return null;
 	}
@@ -345,26 +345,26 @@ public class BenchmarkHud : MonoBehaviour
 	/// </summary>
 	void CycleResolution()
 	{
-		if (resolutions == null || resolutions.Length == 0)
+		if ( resolutions == null || resolutions.Length == 0 )
 		{
-			Debug.LogWarning("[Benchmark] no resolutions configured to cycle.", this);
+			Debug.LogWarning( "[Benchmark] no resolutions configured to cycle.", this );
 			return;
 		}
 
-		int index = System.Array.IndexOf(resolutions, runner.targetResolution);
-		runner.targetResolution = resolutions[(index + 1) % resolutions.Length];
+		int index = System.Array.IndexOf( resolutions, runner.targetResolution );
+		runner.targetResolution = resolutions[ ( index + 1 ) % resolutions.Length ];
 
 		// The editor ignores Screen.SetResolution - the Game view size wins - which is the same
 		// reason BenchmarkEnvironment skips pinning there and warns instead.
-		if (Application.isEditor)
+		if ( Application.isEditor )
 		{
-			Debug.Log($"[Benchmark] target resolution {runner.targetResolution.x}x" +
+			Debug.Log( $"[Benchmark] target resolution {runner.targetResolution.x}x" +
 				$"{runner.targetResolution.y}. The editor ignores it; the Game view size wins, so " +
-				"this only takes effect in a player.", this);
+				"this only takes effect in a player.", this );
 			return;
 		}
 
-		Screen.SetResolution(runner.targetResolution.x, runner.targetResolution.y, Screen.fullScreenMode);
+		Screen.SetResolution( runner.targetResolution.x, runner.targetResolution.y, Screen.fullScreenMode );
 	}
 
 	// ------------------------------------------------------------------ performance panel
@@ -389,27 +389,27 @@ public class BenchmarkHud : MonoBehaviour
 
 		SampleProcessCpu();
 
-		if (Time.unscaledTime < perfNextRefresh) { return; }
+		if ( Time.unscaledTime < perfNextRefresh ) { return; }
 		perfNextRefresh = Time.unscaledTime + 0.25f;
 
-		if (perfSampleCount == 0) { return; }
+		if ( perfSampleCount == 0 ) { return; }
 
 		double wall = perfWallSum / perfSampleCount;
 		double gpu = perfGpuSum / perfSampleCount;
 
-		string fps = wall > 0 ? (1000.0 / wall).ToString("0", Ci) : "-";
+		string fps = wall > 0 ? ( 1000.0 / wall ).ToString( "0", Ci ) : "-";
 		string gpuLine = perfSampler.FrameTimingAvailable
-			? $"{gpu.ToString("0.00", Ci)} ms"
+			? $"{gpu.ToString( "0.00", Ci )} ms"
 			: "unavailable";
 
 		perfText =
-			$"fps         {fps}   ({wall.ToString("0.00", Ci)} ms)\n" +
-			$"cpu main    {(perfCpuMainSum / perfSampleCount).ToString("0.00", Ci)} ms\n" +
-			$"cpu render  {(perfCpuRenderSum / perfSampleCount).ToString("0.00", Ci)} ms\n" +
+			$"fps         {fps}   ({wall.ToString( "0.00", Ci )} ms)\n" +
+			$"cpu main    {( perfCpuMainSum / perfSampleCount ).ToString( "0.00", Ci )} ms\n" +
+			$"cpu render  {( perfCpuRenderSum / perfSampleCount ).ToString( "0.00", Ci )} ms\n" +
 			$"gpu         {gpuLine}\n" +
-			$"process cpu {(perfCpuPercent < 0 ? "n/a" : perfCpuPercent.ToString("0", Ci) + " %")}\n" +
-			$"memory      {Mb(sample.totalUsedBytes)}   gfx {Mb(sample.gfxUsedBytes)}\n" +
-			$"draw calls  {sample.drawCalls.ToString("N0", Ci)}";
+			$"process cpu {( perfCpuPercent < 0 ? "n/a" : perfCpuPercent.ToString( "0", Ci ) + " %" )}\n" +
+			$"memory      {Mb( sample.totalUsedBytes )}   gfx {Mb( sample.gfxUsedBytes )}\n" +
+			$"draw calls  {sample.drawCalls.ToString( "N0", Ci )}";
 
 		// Deliberately absent: CPU and GPU die temperature, and GPU utilisation. None is reachable
 		// from Unity - they come from vendor interfaces (NVML, ADL) or Windows performance
@@ -438,17 +438,17 @@ public class BenchmarkHud : MonoBehaviour
 			double cpuSeconds = perfProcess.TotalProcessorTime.TotalSeconds;
 			float now = Time.realtimeSinceStartup;
 
-			if (perfLastCpuSeconds >= 0 && now > perfLastCpuSampleTime)
+			if ( perfLastCpuSeconds >= 0 && now > perfLastCpuSampleTime )
 			{
 				double busy = cpuSeconds - perfLastCpuSeconds;
 				double elapsed = now - perfLastCpuSampleTime;
-				perfCpuPercent = (float)(100.0 * busy / (elapsed * Mathf.Max(1, SystemInfo.processorCount)));
+				perfCpuPercent = (float)( 100.0 * busy / ( elapsed * Mathf.Max( 1, SystemInfo.processorCount ) ) );
 			}
 
 			perfLastCpuSeconds = cpuSeconds;
 			perfLastCpuSampleTime = now;
 		}
-		catch (System.Exception)
+		catch ( System.Exception )
 		{
 			// Restricted on some platforms. Reported as n/a rather than as a wrong number.
 			perfCpuPercent = -1;
@@ -456,11 +456,11 @@ public class BenchmarkHud : MonoBehaviour
 		}
 	}
 
-	static string Mb(long bytes) => (bytes / (1024.0 * 1024.0)).ToString("N0", Ci) + " MB";
+	static string Mb( long bytes ) => ( bytes / ( 1024.0 * 1024.0 ) ).ToString( "N0", Ci ) + " MB";
 
 	void ReleasePerformanceSampler()
 	{
-		if (perfSampler == null) { return; }
+		if ( perfSampler == null ) { return; }
 		perfSampler.Dispose();
 		perfSampler = null;
 		perfText = "";
@@ -480,20 +480,20 @@ public class BenchmarkHud : MonoBehaviour
 
 		// Only the editor no-op is worth saying. Everything else this key does is visible in the
 		// window itself, which is why nothing is echoed to the overlay.
-		if (Application.isEditor)
+		if ( Application.isEditor )
 		{
-			Debug.Log("[Benchmark] fullscreen only takes effect in a player - the Game view " +
-				"is not a window Unity can take fullscreen.", this);
+			Debug.Log( "[Benchmark] fullscreen only takes effect in a player - the Game view " +
+				"is not a window Unity can take fullscreen.", this );
 		}
 	}
 
 	void CycleBenchmark()
 	{
 		int count = Available.Count;
-		if (count == 0) { Debug.LogWarning("[Benchmark] no benchmarks in availableBenchmarks.", this); return; }
+		if ( count == 0 ) { Debug.LogWarning( "[Benchmark] no benchmarks in availableBenchmarks.", this ); return; }
 
 		// One past the end is "All", so the list always offers it even with a single entry.
-		selected = (selected + 1) % (count + 1);
+		selected = ( selected + 1 ) % ( count + 1 );
 	}
 
 	void CycleMode()
@@ -509,7 +509,7 @@ public class BenchmarkHud : MonoBehaviour
 	void Run()
 	{
 		List<BenchmarkDefinition> definitions = Available;
-		if (definitions.Count == 0) { Debug.LogWarning("[Benchmark] no benchmarks in availableBenchmarks.", this); return; }
+		if ( definitions.Count == 0 ) { Debug.LogWarning( "[Benchmark] no benchmarks in availableBenchmarks.", this ); return; }
 
 		// Before anything else. A run pins the environment by snapshotting current values, so
 		// starting one with a preview applied would record the previewed state as the thing to
@@ -521,20 +521,20 @@ public class BenchmarkHud : MonoBehaviour
 		batchEntries.Clear();
 		batchFolder = null;
 
-		if (selected == AllIndex)
+		if ( selected == AllIndex )
 		{
 			// Not every available benchmark - only the ones that claim to produce a result. The
 			// smoke test exists to prove the harness runs end to end and says so itself; queuing it
 			// here would spend time on it and leave a row in the batch summary that reads like a
 			// measurement.
-			foreach (BenchmarkDefinition definition in definitions)
+			foreach ( BenchmarkDefinition definition in definitions )
 			{
-				if (definition.includeInAll) { queue.Add(definition); }
+				if ( definition.includeInAll ) { queue.Add( definition ); }
 			}
 
-			if (queue.Count == 0)
+			if ( queue.Count == 0 )
 			{
-				Debug.LogWarning("[Benchmark] every available benchmark is excluded from All.", this);
+				Debug.LogWarning( "[Benchmark] every available benchmark is excluded from All.", this );
 				return;
 			}
 
@@ -542,16 +542,16 @@ public class BenchmarkHud : MonoBehaviour
 			// what puts each run inside it; the override is restored when the batch ends so
 			// a later single run is unaffected.
 			savedOutputOverride = runner.outputRootOverride;
-			string root = string.IsNullOrEmpty(runner.outputRootOverride)
+			string root = string.IsNullOrEmpty( runner.outputRootOverride )
 				? BenchmarkWriter.DefaultOutputRoot()
 				: runner.outputRootOverride;
 
-			batchFolder = BenchmarkWriter.BeginBatch(root);
+			batchFolder = BenchmarkWriter.BeginBatch( root );
 			runner.outputRootOverride = batchFolder;
 		}
 		else
 		{
-			queue.Add(definitions[Mathf.Clamp(selected, 0, definitions.Count - 1)]);
+			queue.Add( definitions[ Mathf.Clamp( selected, 0, definitions.Count - 1 ) ] );
 		}
 
 		queueLengthAtStart = queue.Count;
@@ -562,40 +562,40 @@ public class BenchmarkHud : MonoBehaviour
 	{
 		// Each queued benchmark is its own run with its own output folder - they have
 		// different plans, so they could not share one.
-		while (queue.Count > 0)
+		while ( queue.Count > 0 )
 		{
-			BenchmarkDefinition next = queue[0];
-			queue.RemoveAt(0);
+			BenchmarkDefinition next = queue[ 0 ];
+			queue.RemoveAt( 0 );
 
 			runner.benchmark = next;
 			runner.StartRun();
 
-			if (runner.IsRunning) { return; }
+			if ( runner.IsRunning ) { return; }
 
 			// StartRun refuses in some configurations - most likely a capture run over a
 			// benchmark that marks no frames. Skip it and continue rather than stalling the
 			// whole queue on one bad entry.
-			Debug.LogWarning($"[Benchmark] '{next.id}' did not start; skipping to the next " +
-				"queued benchmark.", this);
-			Debug.LogWarning($"[Benchmark] skipped {next.id}.", this);
+			Debug.LogWarning( $"[Benchmark] '{next.id}' did not start; skipping to the next " +
+				"queued benchmark.", this );
+			Debug.LogWarning( $"[Benchmark] skipped {next.id}.", this );
 		}
 
 		// Queue drained without anything starting.
 		FinishBatch();
 	}
 
-	void HandleCompleted(BenchmarkRunner completed)
+	void HandleCompleted( BenchmarkRunner completed )
 	{
-		if (batchFolder != null) { RecordBatchEntry(completed); }
+		if ( batchFolder != null ) { RecordBatchEntry( completed ); }
 
-		if (queue.Count > 0) { advanceQueue = true; return; }
+		if ( queue.Count > 0 ) { advanceQueue = true; return; }
 
 		FinishBatch();
 	}
 
 	/// <summary>Copies the finished run's results - the runner clears them on its next
 	/// StartRun, which is the very next thing that happens in a batch.</summary>
-	void RecordBatchEntry(BenchmarkRunner completed)
+	void RecordBatchEntry( BenchmarkRunner completed )
 	{
 		var entry = new BenchmarkWriter.BatchEntry
 		{
@@ -604,19 +604,19 @@ public class BenchmarkHud : MonoBehaviour
 			mode = completed.mode
 		};
 
-		foreach (BenchmarkWriter.PassResult pass in completed.PassResults) { entry.passes.Add(pass); }
-		batchEntries.Add(entry);
+		foreach ( BenchmarkWriter.PassResult pass in completed.PassResults ) { entry.passes.Add( pass ); }
+		batchEntries.Add( entry );
 	}
 
 	void FinishBatch()
 	{
-		if (batchFolder == null) { return; }
+		if ( batchFolder == null ) { return; }
 
-		if (batchEntries.Count > 0)
+		if ( batchEntries.Count > 0 )
 		{
-			BenchmarkWriter.WriteBatchSummary(batchFolder, batchEntries, runner.machineLabel);
-			Debug.Log($"[Benchmark] batch complete: {batchEntries.Count} benchmark(s) " +
-				$"summarised in {batchFolder}", this);
+			BenchmarkWriter.WriteBatchSummary( batchFolder, batchEntries, runner.machineLabel );
+			Debug.Log( $"[Benchmark] batch complete: {batchEntries.Count} benchmark(s) " +
+				$"summarised in {batchFolder}", this );
 		}
 
 		// Restored even on abort, so a later single run does not silently write into the
@@ -630,57 +630,57 @@ public class BenchmarkHud : MonoBehaviour
 
 	void OnGUI()
 	{
-		if (!showOverlay || runner == null) { return; }
+		if ( !showOverlay || runner == null ) { return; }
 
 		// While running the overlay is suppressed: it would be captured into every
 		// screenshot and its draw calls would land in the counters being recorded.
-		if (runner.IsRunning && !(showProgressDuringRun && !runner.IsCaptureRun)) { return; }
+		if ( runner.IsRunning && !( showProgressDuringRun && !runner.IsCaptureRun ) ) { return; }
 
 		// Bare GUIStyle rather than GUI.skin.label - the editor skin's label is dark text
 		// meant for a light background, and a copied style can lose an overridden colour
 		// across a domain reload. Colour and size are re-applied every frame.
-		if (overlayStyle == null)
+		if ( overlayStyle == null )
 		{
 			overlayStyle = new GUIStyle { richText = false, wordWrap = false };
-			overlayStyle.padding = new RectOffset(12, 12, 10, 10);
+			overlayStyle.padding = new RectOffset( 12, 12, 10, 10 );
 		}
-		overlayStyle.fontSize = Mathf.Max(1, overlayFontSize);
+		overlayStyle.fontSize = Mathf.Max( 1, overlayFontSize );
 		overlayStyle.normal.textColor = overlayTextColour;
 
-		if (overlayBackground == null || appliedBackgroundColour != overlayBackgroundColour)
+		if ( overlayBackground == null || appliedBackgroundColour != overlayBackgroundColour )
 		{
-			if (overlayBackground == null)
+			if ( overlayBackground == null )
 			{
-				overlayBackground = new Texture2D(1, 1) { hideFlags = HideFlags.HideAndDontSave };
+				overlayBackground = new Texture2D( 1, 1 ) { hideFlags = HideFlags.HideAndDontSave };
 			}
-			overlayBackground.SetPixel(0, 0, overlayBackgroundColour);
+			overlayBackground.SetPixel( 0, 0, overlayBackgroundColour );
 			overlayBackground.Apply();
 			appliedBackgroundColour = overlayBackgroundColour;
 		}
 
-		var content = new GUIContent(runner.IsRunning ? ProgressText() : IdleText());
-		Vector2 size = overlayStyle.CalcSize(content);
+		var content = new GUIContent( runner.IsRunning ? ProgressText() : IdleText() );
+		Vector2 size = overlayStyle.CalcSize( content );
 
 		// Top left. It used to sit bottom-left to avoid fighting the time overlay, which this panel
 		// now contains.
-		var rect = new Rect(10f, 10f, size.x, size.y);
+		var rect = new Rect( 10f, 10f, size.x, size.y );
 
-		GUI.DrawTexture(rect, overlayBackground);
-		GUI.Label(rect, content, overlayStyle);
+		GUI.DrawTexture( rect, overlayBackground );
+		GUI.Label( rect, content, overlayStyle );
 
 		// Top right, opposite the control panel, so neither has to be moved to read the other.
-		if (showPerformance && !string.IsNullOrEmpty(perfText))
+		if ( showPerformance && !string.IsNullOrEmpty( perfText ) )
 		{
-			var perfContent = new GUIContent(perfText);
-			Vector2 perfSize = overlayStyle.CalcSize(perfContent);
-			var perfRect = new Rect(Screen.width - perfSize.x - 10f, 10f, perfSize.x, perfSize.y);
+			var perfContent = new GUIContent( perfText );
+			Vector2 perfSize = overlayStyle.CalcSize( perfContent );
+			var perfRect = new Rect( Screen.width - perfSize.x - 10f, 10f, perfSize.x, perfSize.y );
 
-			GUI.DrawTexture(perfRect, overlayBackground);
-			GUI.Label(perfRect, perfContent, overlayStyle);
+			GUI.DrawTexture( perfRect, overlayBackground );
+			GUI.Label( perfRect, perfContent, overlayStyle );
 		}
 	}
 
-/// <summary>
+	/// <summary>
 	/// The time half of the panel: what time it is and how fast it is moving.
 	///
 	/// Sun elevation, dayT and yearT were dropped. They are derived quantities that were useful
@@ -689,14 +689,14 @@ public class BenchmarkHud : MonoBehaviour
 	/// </summary>
 	string TimeText()
 	{
-		if (time == null || time.solarSystem == null) { return ""; }
+		if ( time == null || time.solarSystem == null ) { return ""; }
 
 		string speed = time.solarSystem.animate ? $"{time.CurrentSpeed:0.##}x" : "paused";
 
 		return
-			$"solar {SolarTime.FormatHours(time.CurrentLocalSolarHours)}   {speed}\n" +
+			$"solar {SolarTime.FormatHours( time.CurrentLocalSolarHours )}   {speed}\n" +
 			$"  1 sunrise  2 noon  3 sunset  4 midnight  5 golden\n" +
-			$"  {KeyName(time.slowerKey)}{KeyName(time.fasterKey)} speed   {KeyName(time.pauseKey)} pause\n" +
+			$"  {KeyName( time.slowerKey )}{KeyName( time.fasterKey )} speed   {KeyName( time.pauseKey )} pause\n" +
 			"\n";
 	}
 
@@ -708,7 +708,7 @@ public class BenchmarkHud : MonoBehaviour
 			? "(none - populate availableBenchmarks)"
 			: selected == AllIndex
 				? $"All ({definitions.Count})"
-				: definitions[Mathf.Clamp(selected, 0, definitions.Count - 1)].id;
+				: definitions[ Mathf.Clamp( selected, 0, definitions.Count - 1 ) ].id;
 
 		Clouds.CloudEffect clouds = FindClouds();
 
@@ -719,15 +719,15 @@ public class BenchmarkHud : MonoBehaviour
 			TimeText() +
 			$"profile     {PreviewName()}\n" +
 			$"scale       {WorldScaleName()}\n" +
-			(clouds == null ? "" : $"genus       {clouds.genusOverride}\n") +
+			( clouds == null ? "" : $"genus       {clouds.genusOverride}\n" ) +
 			$"mode        {runner.mode}\n" +
 			$"benchmark   {name}\n" +
 			$"resolution  {ResolutionName()}\n" +
-			$"  {KeyName(cycleProfileKey)} profile  {KeyName(WorldScaleKey())} scale  " +
-			$"{KeyName(cycleGenusKey)} genus  {KeyName(cycleModeKey)} mode\n" +
-			$"  {KeyName(runKey)} run  {KeyName(cycleBenchmarkKey)} benchmark  " +
-			$"{KeyName(toggleOverlayKey)} hide  {KeyName(fullscreenKey)} fullscreen  " +
-			$"{KeyName(cycleResolutionKey)} resolution  {KeyName(togglePerformanceKey)} perf\n" +
+			$"  {KeyName( cycleProfileKey )} profile  {KeyName( WorldScaleKey() )} scale  " +
+			$"{KeyName( cycleGenusKey )} genus  {KeyName( cycleModeKey )} mode\n" +
+			$"  {KeyName( runKey )} run  {KeyName( cycleBenchmarkKey )} benchmark  " +
+			$"{KeyName( toggleOverlayKey )} hide  {KeyName( fullscreenKey )} fullscreen  " +
+			$"{KeyName( cycleResolutionKey )} resolution  {KeyName( togglePerformanceKey )} perf\n" +
 			CameraKeyLine();
 	}
 
@@ -747,10 +747,10 @@ public class BenchmarkHud : MonoBehaviour
 	string CameraKeyLine()
 	{
 		TestbedCamera cam = runner != null ? runner.sceneRefs.testbedCamera : null;
-		if (cam == null) { return ""; }
+		if ( cam == null ) { return ""; }
 
-		return $"  {KeyName(cam.toggleModeKey)} {cam.mode}  {KeyName(cam.resetKey)} reset  " +
-			$"WASD/QE/RF move  {KeyName(abortKey)} abort run\n";
+		return $"  {KeyName( cam.toggleModeKey )} {cam.mode}  {KeyName( cam.resetKey )} reset  " +
+			$"WASD/QE/RF move  {KeyName( abortKey )} abort run\n";
 	}
 
 	/// <summary>
@@ -792,7 +792,7 @@ public class BenchmarkHud : MonoBehaviour
 	{
 		get
 		{
-			if (!worldScaleSearched)
+			if ( !worldScaleSearched )
 			{
 				worldScaleSearched = true;
 				worldScaleCached = FindFirstObjectByType<WorldScaleController>();
@@ -811,7 +811,7 @@ public class BenchmarkHud : MonoBehaviour
 		List<RendererProfile> profiles = LivePreviewProfiles();
 
 		string requested = previewIndex >= 0 && previewIndex < profiles.Count
-			? profiles[previewIndex].id
+			? profiles[ previewIndex ].id
 			: "scene as authored";
 
 		// The active sky mode used to be appended here. Every arm names its atmosphere, so it was
@@ -827,11 +827,11 @@ public class BenchmarkHud : MonoBehaviour
 
 		return
 			$"RUNNING  {runner.benchmark.id}  ({runner.mode})\n" +
-			$"  frame {runner.FrameCursor.ToString("N0", Ci)} / {total.ToString("N0", Ci)}  " +
-			$"{(fraction * 100f).ToString("F0", Ci)}%" +
-			(queue.Count > 0 ? $"   {queue.Count} queued" : "") +
-			$"\n  {KeyName(abortKey)} abort";
+			$"  frame {runner.FrameCursor.ToString( "N0", Ci )} / {total.ToString( "N0", Ci )}  " +
+			$"{( fraction * 100f ).ToString( "F0", Ci )}%" +
+			( queue.Count > 0 ? $"   {queue.Count} queued" : "" ) +
+			$"\n  {KeyName( abortKey )} abort";
 	}
 
-	static string KeyName(KeyCode key) => key == KeyCode.None ? "-" : key.ToString();
+	static string KeyName( KeyCode key ) => key == KeyCode.None ? "-" : key.ToString();
 }

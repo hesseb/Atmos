@@ -25,20 +25,20 @@ static class ExampleBenchmarks
 
 	// Alpine terrain: mountainous, so LOD transitions and the height-displaced border
 	// geometry are genuinely exercised rather than sitting over flat ocean.
-	static readonly CoordinateDegrees Alps = new CoordinateDegrees(8.0f, 46.5f);
+	static readonly CoordinateDegrees Alps = new CoordinateDegrees( 8.0f, 46.5f );
 	// Arid and low-relief, the contrasting terrain case. Also the safe choice for a very low
 	// camera, since nothing there rises far enough to intersect one.
-	static readonly CoordinateDegrees Sahara = new CoordinateDegrees(10.0f, 25.0f);
+	static readonly CoordinateDegrees Sahara = new CoordinateDegrees( 10.0f, 25.0f );
 
 	// Ligurian Sea, with the coast and the Alps to the north. Deliberately in the same region as
 	// the Alps view so terrain detail is comparable and the difference is the water rather than the
 	// dataset - and far enough offshore that a low, oblique framing is mostly ocean.
-	static readonly CoordinateDegrees Ligurian = new CoordinateDegrees(8.5f, 43.4f);
+	static readonly CoordinateDegrees Ligurian = new CoordinateDegrees( 8.5f, 43.4f );
 
-	[MenuItem("Testbed/Benchmark/Create Example Benchmarks")]
+	[MenuItem( "Testbed/Benchmark/Create Example Benchmarks" )]
 	static void Create()
 	{
-		System.IO.Directory.CreateDirectory(Folder);
+		System.IO.Directory.CreateDirectory( Folder );
 
 		CreateSmoke();
 		CreateCoast();
@@ -50,7 +50,7 @@ static class ExampleBenchmarks
 
 		AssetDatabase.SaveAssets();
 		AssetDatabase.Refresh();
-		Debug.Log($"[Benchmark] wrote 5 example benchmarks to {Folder}");
+		Debug.Log( $"[Benchmark] wrote 5 example benchmarks to {Folder}" );
 	}
 
 	// ------------------------------------------------------------------ the set
@@ -58,8 +58,8 @@ static class ExampleBenchmarks
 	/// <summary>Short, for iterating on the harness itself. Not for results.</summary>
 	static void CreateSmoke()
 	{
-		var def = New("smoke", "Two short holds. For checking the harness runs end to end; " +
-			"too few frames for a trustworthy 1% low.");
+		var def = New( "smoke", "Two short holds. For checking the harness runs end to end; " +
+			"too few frames for a trustworthy 1% low." );
 		// Its own description disqualifies it as a result, so All skips it. Still reachable from
 		// the cycle key, which is the only thing it is for.
 		def.includeInAll = false;
@@ -72,7 +72,7 @@ static class ExampleBenchmarks
 			Hold("tilted", View(Alps, altitude: 25, pitch: 55), 200, Noon()),
 			Hold("nadir", View(Alps, altitude: 25, pitch: 90), 200, Noon())
 		};
-		Save(def);
+		Save( def );
 	}
 
 	/// <summary>
@@ -90,10 +90,10 @@ static class ExampleBenchmarks
 	/// </summary>
 	static void CreateCoast()
 	{
-		var def = New("coast", "Three holds over the Ligurian Sea with the coast in frame. The " +
+		var def = New( "coast", "Three holds over the Ligurian Sea with the coast in frame. The " +
 			"only benchmark that samples water - the ocean's sky reflection, the cloud deck seen " +
 			"in it, and the sun glint. Two at low sun, where the Fresnel term dominates, one at " +
-			"noon for contrast.");
+			"noon for contrast." );
 
 		// heading 0 puts the coast and the Alps in the upper half of the frame with open water
 		// below, so both surfaces are present in every shot rather than alternating.
@@ -104,11 +104,11 @@ static class ExampleBenchmarks
 			Hold("oblique-noon", View(Ligurian, altitude: 12, pitch: 30), 500, Noon())
 		};
 
-		def.segments[0].screenshotFrames = new[] { 250 };
-		def.segments[1].screenshotFrames = new[] { 250 };
-		def.segments[2].screenshotFrames = new[] { 250 };
+		def.segments[ 0 ].screenshotFrames = new[] { 250 };
+		def.segments[ 1 ].screenshotFrames = new[] { 250 };
+		def.segments[ 2 ].screenshotFrames = new[] { 250 };
 
-		Save(def);
+		Save( def );
 	}
 
 	/// <summary>
@@ -129,9 +129,9 @@ static class ExampleBenchmarks
 	/// </summary>
 	static void CreateUnderdeck()
 	{
-		var def = New("underdeck", "Three holds beneath the cloud base over low-relief terrain, " +
+		var def = New( "underdeck", "Three holds beneath the cloud base over low-relief terrain, " +
 			"looking up and along. Samples the deck's underside, its shadows on the ground and " +
-			"the shafts through its gaps - none of which any other benchmark frames.");
+			"the shafts through its gaps - none of which any other benchmark frames." );
 
 		def.segments = new[]
 		{
@@ -142,11 +142,11 @@ static class ExampleBenchmarks
 			Hold("along-golden", View(Sahara, altitude: 0.3f, pitch: 2), 500, Elevation(4f))
 		};
 
-		def.segments[0].screenshotFrames = new[] { 250 };
-		def.segments[1].screenshotFrames = new[] { 250 };
-		def.segments[2].screenshotFrames = new[] { 250 };
+		def.segments[ 0 ].screenshotFrames = new[] { 250 };
+		def.segments[ 1 ].screenshotFrames = new[] { 250 };
+		def.segments[ 2 ].screenshotFrames = new[] { 250 };
 
-		Save(def);
+		Save( def );
 	}
 
 	/// <summary>
@@ -155,9 +155,9 @@ static class ExampleBenchmarks
 	/// </summary>
 	static void CreateFraming()
 	{
-		var def = New("framing", "Four holds from one position, varying only pitch. Isolates " +
+		var def = New( "framing", "Four holds from one position, varying only pitch. Isolates " +
 			"the effect of sky-to-terrain ratio on atmosphere cost with everything else held " +
-			"fixed. Sky fraction runs roughly 0.0 at nadir to 0.9 at the horizon.");
+			"fixed. Sky fraction runs roughly 0.0 at nadir to 0.9 at the horizon." );
 
 		def.segments = new[]
 		{
@@ -169,11 +169,11 @@ static class ExampleBenchmarks
 
 		// One image per framing, from the middle of each hold. Not first-and-last: a hold's
 		// endpoints are the same pose, so that would capture the same picture twice.
-		for (int i = 0; i < def.segments.Length; i++)
+		for ( int i = 0; i < def.segments.Length; i++ )
 		{
-			def.segments[i].screenshotFrames = new[] { def.segments[i].frames / 2 };
+			def.segments[ i ].screenshotFrames = new[] { def.segments[ i ].frames / 2 };
 		}
-		Save(def);
+		Save( def );
 	}
 
 	/// <summary>
@@ -183,9 +183,9 @@ static class ExampleBenchmarks
 	/// </summary>
 	static void CreateAltitude()
 	{
-		var def = New("altitude", "Continuous climb from altitude 4 to 220 at a fixed nadir-ish " +
+		var def = New( "altitude", "Continuous climb from altitude 4 to 220 at a fixed nadir-ish " +
 			"pitch. Sweeps sky fraction and exercises the whole LOD range. Altitude " +
-			"interpolates logarithmically, so the apparent zoom rate is constant.");
+			"interpolates logarithmically, so the apparent zoom rate is constant." );
 
 		def.segments = new[]
 		{
@@ -198,7 +198,7 @@ static class ExampleBenchmarks
 				View(Alps, altitude: 4, pitch: 75),
 				900, Noon())
 		};
-		Save(def);
+		Save( def );
 	}
 
 	/// <summary>
@@ -207,9 +207,9 @@ static class ExampleBenchmarks
 	/// </summary>
 	static void CreateOrbit()
 	{
-		var def = New("orbit", "360 degree heading sweep at a typical strategy-game framing, " +
+		var def = New( "orbit", "360 degree heading sweep at a typical strategy-game framing, " +
 			"over two different terrain types. The nearest thing here to a representative " +
-			"workload rather than an isolated condition.");
+			"workload rather than an isolated condition." );
 
 		def.segments = new[]
 		{
@@ -219,15 +219,15 @@ static class ExampleBenchmarks
 
 		// Every 90 degrees of the sweep: four sun-relative framings per terrain type, which
 		// is where the Mie forward lobe shows up as a visible difference.
-		for (int i = 0; i < def.segments.Length; i++)
+		for ( int i = 0; i < def.segments.Length; i++ )
 		{
-			int frames = def.segments[i].frames;
-			def.segments[i].screenshotFrames = new[]
+			int frames = def.segments[ i ].frames;
+			def.segments[ i ].screenshotFrames = new[]
 			{
 				0, frames / 4, frames / 2, (frames * 3) / 4
 			};
 		}
-		Save(def);
+		Save( def );
 	}
 
 	/// <summary>
@@ -238,12 +238,12 @@ static class ExampleBenchmarks
 	/// </summary>
 	static void CreateDayCycle()
 	{
-		var def = New("daycycle", "Fixed camera near the horizon while the sun sets from +30 " +
+		var def = New( "daycycle", "Fixed camera near the horizon while the sun sets from +30 " +
 			"degrees elevation through to -12 (civil twilight). Isolates sun angle with the " +
 			"view held constant. Screenshots at the ends of each segment give paired images " +
-			"for the visual comparison.");
+			"for the visual comparison." );
 
-		TestbedCamera.CameraView view = View(Alps, altitude: 12, pitch: 8);
+		TestbedCamera.CameraView view = View( Alps, altitude: 12, pitch: 8 );
 
 		def.segments = new[]
 		{
@@ -252,16 +252,16 @@ static class ExampleBenchmarks
 			SunSweep("twilight", view, Elevation(0f), Elevation(-12f), 600)
 		};
 
-		for (int i = 0; i < def.segments.Length; i++)
+		for ( int i = 0; i < def.segments.Length; i++ )
 		{
-			def.segments[i].screenshotFirstAndLast = true;
+			def.segments[ i ].screenshotFirstAndLast = true;
 		}
-		Save(def);
+		Save( def );
 	}
 
 	// ------------------------------------------------------------------ helpers
 
-	static BenchmarkDefinition New(string id, string description)
+	static BenchmarkDefinition New( string id, string description )
 	{
 		var def = ScriptableObject.CreateInstance<BenchmarkDefinition>();
 		def.id = id;
@@ -286,7 +286,7 @@ static class ExampleBenchmarks
 	/// the whole point of the generator is to be re-run as the set evolves, that would break
 	/// the scene on almost every invocation.
 	/// </summary>
-	static void Save(BenchmarkDefinition def)
+	static void Save( BenchmarkDefinition def )
 	{
 		string path = $"{Folder}/{def.id}.asset";
 
@@ -294,20 +294,20 @@ static class ExampleBenchmarks
 		// would blank the asset's name. Match what CreateAsset would have set.
 		def.name = def.id;
 
-		var existing = AssetDatabase.LoadAssetAtPath<BenchmarkDefinition>(path);
-		if (existing != null)
+		var existing = AssetDatabase.LoadAssetAtPath<BenchmarkDefinition>( path );
+		if ( existing != null )
 		{
-			EditorUtility.CopySerialized(def, existing);
-			EditorUtility.SetDirty(existing);
-			Object.DestroyImmediate(def);   // the temporary instance, never persisted
+			EditorUtility.CopySerialized( def, existing );
+			EditorUtility.SetDirty( existing );
+			Object.DestroyImmediate( def );   // the temporary instance, never persisted
 			return;
 		}
 
-		AssetDatabase.CreateAsset(def, path);
+		AssetDatabase.CreateAsset( def, path );
 	}
 
-	static TestbedCamera.CameraView View(CoordinateDegrees coordinate, float altitude, float pitch,
-		float heading = 0f, float fov = 60f)
+	static TestbedCamera.CameraView View( CoordinateDegrees coordinate, float altitude, float pitch,
+		float heading = 0f, float fov = 60f )
 	{
 		return new TestbedCamera.CameraView
 		{
@@ -320,7 +320,7 @@ static class ExampleBenchmarks
 		};
 	}
 
-	static ViewRef Inline(TestbedCamera.CameraView view)
+	static ViewRef Inline( TestbedCamera.CameraView view )
 	{
 		// Inline rather than a bookmark reference: a benchmark that resolves through a live
 		// bookmark stops being reproducible the moment someone re-captures that slot.
@@ -331,14 +331,14 @@ static class ExampleBenchmarks
 	// so the sun is in the same place regardless of where the camera is.
 	static SunKey Noon() => new SunKey { mode = SunKey.ModeKind.Extreme, highest = true };
 
-	static SunKey Elevation(float degrees) => new SunKey
+	static SunKey Elevation( float degrees ) => new SunKey
 	{
 		mode = SunKey.ModeKind.Elevation,
 		elevationDegrees = degrees,
 		rising = false
 	};
 
-	static BenchmarkSegment Base(string label, SegmentKind kind, int frames, SunKey sun)
+	static BenchmarkSegment Base( string label, SegmentKind kind, int frames, SunKey sun )
 	{
 		return new BenchmarkSegment
 		{
@@ -349,44 +349,44 @@ static class ExampleBenchmarks
 			ease = EaseMode.Linear,     // constant rate, so frames sample poses evenly
 			sunFrom = sun,
 			sunTo = sun,
-			screenshotFrames = new int[0]
+			screenshotFrames = new int[ 0 ]
 		};
 	}
 
-	static BenchmarkSegment Hold(string label, TestbedCamera.CameraView view, int frames, SunKey sun)
+	static BenchmarkSegment Hold( string label, TestbedCamera.CameraView view, int frames, SunKey sun )
 	{
-		BenchmarkSegment s = Base(label, SegmentKind.Hold, frames, sun);
-		s.from = Inline(view);
-		s.to = Inline(view);
+		BenchmarkSegment s = Base( label, SegmentKind.Hold, frames, sun );
+		s.from = Inline( view );
+		s.to = Inline( view );
 		return s;
 	}
 
-	static BenchmarkSegment Interpolate(string label, TestbedCamera.CameraView from,
-		TestbedCamera.CameraView to, int frames, SunKey sun)
+	static BenchmarkSegment Interpolate( string label, TestbedCamera.CameraView from,
+		TestbedCamera.CameraView to, int frames, SunKey sun )
 	{
-		BenchmarkSegment s = Base(label, SegmentKind.Interpolate, frames, sun);
-		s.from = Inline(from);
-		s.to = Inline(to);
+		BenchmarkSegment s = Base( label, SegmentKind.Interpolate, frames, sun );
+		s.from = Inline( from );
+		s.to = Inline( to );
 		return s;
 	}
 
-	static BenchmarkSegment Orbit(string label, TestbedCamera.CameraView from, float sweepDegrees,
-		int frames, SunKey sun)
+	static BenchmarkSegment Orbit( string label, TestbedCamera.CameraView from, float sweepDegrees,
+		int frames, SunKey sun )
 	{
-		BenchmarkSegment s = Base(label, SegmentKind.Orbit, frames, sun);
-		s.from = Inline(from);
-		s.to = Inline(from);   // endpoint is derived from the sweep at plan time
+		BenchmarkSegment s = Base( label, SegmentKind.Orbit, frames, sun );
+		s.from = Inline( from );
+		s.to = Inline( from );   // endpoint is derived from the sweep at plan time
 		s.sweepDegrees = sweepDegrees;
 		s.sweepAxis = OrbitAxis.Heading;
 		return s;
 	}
 
-	static BenchmarkSegment SunSweep(string label, TestbedCamera.CameraView view, SunKey from,
-		SunKey to, int frames)
+	static BenchmarkSegment SunSweep( string label, TestbedCamera.CameraView view, SunKey from,
+		SunKey to, int frames )
 	{
-		BenchmarkSegment s = Base(label, SegmentKind.TimeOfDay, frames, from);
-		s.from = Inline(view);
-		s.to = Inline(view);
+		BenchmarkSegment s = Base( label, SegmentKind.TimeOfDay, frames, from );
+		s.from = Inline( view );
+		s.to = Inline( view );
 		s.sunFrom = from;
 		s.sunTo = to;
 		return s;

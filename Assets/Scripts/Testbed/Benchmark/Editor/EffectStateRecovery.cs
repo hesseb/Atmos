@@ -16,21 +16,21 @@ static class EffectStateRecovery
 		EditorApplication.playModeStateChanged += OnPlayModeChanged;
 	}
 
-	static void OnPlayModeChanged(PlayModeStateChange change)
+	static void OnPlayModeChanged( PlayModeStateChange change )
 	{
-		if (change == PlayModeStateChange.EnteredEditMode) { RecoverIfArmed(); }
+		if ( change == PlayModeStateChange.EnteredEditMode ) { RecoverIfArmed(); }
 	}
 
 	static void RecoverIfArmed()
 	{
 		int restored = EffectStateGuard.Recover();
-		if (restored < 0) { return; }
+		if ( restored < 0 ) { return; }
 
-		if (restored > 0)
+		if ( restored > 0 )
 		{
-			Debug.LogWarning($"[Benchmark] a run did not shut down cleanly; restored {restored} " +
+			Debug.LogWarning( $"[Benchmark] a run did not shut down cleanly; restored {restored} " +
 				"post-processing effect state(s) to their authored values. Check that no " +
-				"effect asset shows as modified in version control.");
+				"effect asset shows as modified in version control." );
 		}
 	}
 }

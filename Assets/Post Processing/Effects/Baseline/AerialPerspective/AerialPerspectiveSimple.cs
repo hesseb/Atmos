@@ -17,24 +17,24 @@ using UnityEngine;
 /// baseline credible rather than a strawman. A Gradient is also about the most artist-facing
 /// authoring surface Unity has, which is itself a data point for the authoring comparison.
 /// </summary>
-[CreateAssetMenu(menuName = "PostProcessing/Aerial Perspective")]
+[CreateAssetMenu( menuName = "PostProcessing/Aerial Perspective" )]
 public class AerialPerspectiveSimple : PostProcessingEffect
 {
-	[Tooltip("Scene depth, in world units, over which the fog ramps from none to full.")]
+	[Tooltip( "Scene depth, in world units, over which the fog ramps from none to full." )]
 	public Vector2 depthMinMax;
 	public float strength;
 
-	[Header("Haze colour")]
-	[Tooltip("Off: use the fixed colour below. On: sample the ramp by sun elevation, so the " +
-		"haze tracks time of day and matches the horizon it fades into.")]
+	[Header( "Haze colour" )]
+	[Tooltip( "Off: use the fixed colour below. On: sample the ramp by sun elevation, so the " +
+		"haze tracks time of day and matches the horizon it fades into." )]
 	public bool driveColourFromSunElevation = true;
 
-	[Tooltip("Used when the ramp is off.")]
+	[Tooltip( "Used when the ramp is off." )]
 	public Color atmoCol;
 
-	[Tooltip("Haze colour across sun elevation: t=0 is the sun 90 degrees below the horizon, " +
+	[Tooltip( "Haze colour across sun elevation: t=0 is the sun 90 degrees below the horizon, " +
 		"t=0.5 exactly on it, t=1 at the zenith. Author these to match the sky gradient's " +
-		"horizon colours or the haze will not blend into the sky.")]
+		"horizon colours or the haze will not blend into the sky." )]
 	public Gradient hazeColour;
 
 	// Resolved lazily and cached: this is a ScriptableObject, so it cannot serialize scene
@@ -42,27 +42,27 @@ public class AerialPerspectiveSimple : PostProcessingEffect
 	Transform planet;
 	Light sun;
 
-	protected override void RenderEffectToTarget(RenderTexture source, RenderTexture target)
+	protected override void RenderEffectToTarget( RenderTexture source, RenderTexture target )
 	{
-		material.SetVector("depthMinMax", depthMinMax);
-		material.SetFloat("strength", strength);
-		material.SetColor("atmoCol", CurrentHazeColour());
+		material.SetVector( "depthMinMax", depthMinMax );
+		material.SetFloat( "strength", strength );
+		material.SetColor( "atmoCol", CurrentHazeColour() );
 
-		Graphics.Blit(source, target, material);
+		Graphics.Blit( source, target, material );
 	}
 
 	Color CurrentHazeColour()
 	{
-		if (!driveColourFromSunElevation || cam == null) { return atmoCol; }
+		if ( !driveColourFromSunElevation || cam == null ) { return atmoCol; }
 
 		EnsureGradient();
 
-		Vector3 planetCentre = ObserverGeometry.PlanetCentre(ref planet);
-		Vector3 dirToSun = ObserverGeometry.DirectionToSun(ref sun);
+		Vector3 planetCentre = ObserverGeometry.PlanetCentre( ref planet );
+		Vector3 dirToSun = ObserverGeometry.DirectionToSun( ref sun );
 		float sunElevation01 = ObserverGeometry.SunElevation01(
-			cam.transform.position, planetCentre, dirToSun);
+			cam.transform.position, planetCentre, dirToSun );
 
-		return hazeColour.Evaluate(sunElevation01);
+		return hazeColour.Evaluate( sunElevation01 );
 	}
 
 	/// <summary>
@@ -75,7 +75,7 @@ public class AerialPerspectiveSimple : PostProcessingEffect
 	/// </summary>
 	void EnsureGradient()
 	{
-		if (hazeColour != null && hazeColour.colorKeys != null && hazeColour.colorKeys.Length > 1)
+		if ( hazeColour != null && hazeColour.colorKeys != null && hazeColour.colorKeys.Length > 1 )
 		{
 			return;
 		}
@@ -92,6 +92,6 @@ public class AerialPerspectiveSimple : PostProcessingEffect
 				new GradientColorKey(new Color(0.720f, 0.820f, 0.940f), 0.667f),   //  30
 				new GradientColorKey(new Color(0.700f, 0.810f, 0.950f), 1.000f)    //  90
 			},
-			new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(1f, 1f) });
+			new[] { new GradientAlphaKey( 1f, 0f ), new GradientAlphaKey( 1f, 1f ) } );
 	}
 }

@@ -40,12 +40,12 @@ public class BenchmarkPlan
 	public List<string> warnings = new List<string>();
 
 	public int Length => frames != null ? frames.Length : 0;
-	public float CaptureDeltaTime => 1f / Mathf.Max(1f, definition.simulatedFps);
+	public float CaptureDeltaTime => 1f / Mathf.Max( 1f, definition.simulatedFps );
 
 	// ------------------------------------------------------------------ building
 
-	public static BenchmarkPlan Build(BenchmarkDefinition definition, EarthOrbit earth,
-		float surfaceRadius, float aspect, CameraBookmarks fallbackBookmarks)
+	public static BenchmarkPlan Build( BenchmarkDefinition definition, EarthOrbit earth,
+		float surfaceRadius, float aspect, CameraBookmarks fallbackBookmarks )
 	{
 		var plan = new BenchmarkPlan
 		{
@@ -54,11 +54,11 @@ public class BenchmarkPlan
 			aspect = aspect
 		};
 
-		if (definition == null || definition.segments == null || definition.segments.Length == 0)
+		if ( definition == null || definition.segments == null || definition.segments.Length == 0 )
 		{
-			plan.warnings.Add("EMPTY_BENCHMARK");
-			plan.frames = new PlannedFrame[0];
-			plan.segmentLabels = new string[0];
+			plan.warnings.Add( "EMPTY_BENCHMARK" );
+			plan.frames = new PlannedFrame[ 0 ];
+			plan.segmentLabels = new string[ 0 ];
 			return plan;
 		}
 
@@ -66,50 +66,50 @@ public class BenchmarkPlan
 		var content = new List<PlannedFrame>();
 		var labels = new List<string>();
 
-		for (int s = 0; s < definition.segments.Length; s++)
+		for ( int s = 0; s < definition.segments.Length; s++ )
 		{
-			BenchmarkSegment segment = definition.segments[s];
-			labels.Add(string.IsNullOrEmpty(segment.label) ? $"segment{s}" : segment.label);
+			BenchmarkSegment segment = definition.segments[ s ];
+			labels.Add( string.IsNullOrEmpty( segment.label ) ? $"segment{s}" : segment.label );
 
-			TestbedCamera.CameraView fromView = plan.ResolveView(segment.from, fallbackBookmarks);
-			TestbedCamera.CameraView toView = DeriveEndpoint(segment, fromView);
+			TestbedCamera.CameraView fromView = plan.ResolveView( segment.from, fallbackBookmarks );
+			TestbedCamera.CameraView toView = DeriveEndpoint( segment, fromView );
 
-			float fromDay = plan.ResolveSun(segment.sunFrom, fromView, earth, definition);
+			float fromDay = plan.ResolveSun( segment.sunFrom, fromView, earth, definition );
 			float toDay = segment.kind == SegmentKind.TimeOfDay
-				? plan.ResolveSun(segment.sunTo, toView, earth, definition)
+				? plan.ResolveSun( segment.sunTo, toView, earth, definition )
 				: fromDay;
 
-			int settle = Mathf.Max(0, definition.SettleFramesFor(segment));
-			int measure = Mathf.Max(1, segment.frames);
+			int settle = Mathf.Max( 0, definition.SettleFramesFor( segment ) );
+			int measure = Mathf.Max( 1, segment.frames );
 			bool sweep = segment.kind == SegmentKind.Orbit;
 
 			// Settle frames sit at the segment's starting state. They are recorded but not
 			// measured, so a pose discontinuity at a boundary never lands in the statistics.
-			for (int f = 0; f < settle; f++)
+			for ( int f = 0; f < settle; f++ )
 			{
-				content.Add(plan.MakeFrame(BenchmarkPhase.Settle, s, f, fromView, fromDay, definition, false));
+				content.Add( plan.MakeFrame( BenchmarkPhase.Settle, s, f, fromView, fromDay, definition, false ) );
 			}
 
-			for (int f = 0; f < measure; f++)
+			for ( int f = 0; f < measure; f++ )
 			{
-				float t = measure == 1 ? 0f : (float)f / (measure - 1);
-				t = Ease(t, segment.ease);
+				float t = measure == 1 ? 0f : (float)f / ( measure - 1 );
+				t = Ease( t, segment.ease );
 
-				TestbedCamera.CameraView view = LerpView(fromView, toView, t, sweep);
-				float dayT = LerpDayT(fromDay, toDay, t);
-				bool shot = IsScreenshotFrame(segment, f, measure);
+				TestbedCamera.CameraView view = LerpView( fromView, toView, t, sweep );
+				float dayT = LerpDayT( fromDay, toDay, t );
+				bool shot = IsScreenshotFrame( segment, f, measure );
 
-				content.Add(plan.MakeFrame(BenchmarkPhase.Measure, s, f, view, dayT, definition, shot));
+				content.Add( plan.MakeFrame( BenchmarkPhase.Measure, s, f, view, dayT, definition, shot ) );
 			}
 		}
 
 		// --- assemble: boot + prewarm + warmup + content + flush ---
 		var all = new List<PlannedFrame>();
 
-		PlannedFrame first = content[0];
-		PlannedFrame last = content[content.Count - 1];
+		PlannedFrame first = content[ 0 ];
+		PlannedFrame last = content[ content.Count - 1 ];
 
-		AddRepeated(all, first, BenchmarkPhase.Boot, Mathf.Max(0, definition.bootFrames));
+		AddRepeated( all, first, BenchmarkPhase.Boot, Mathf.Max( 0, definition.bootFrames ) );
 
 		// Prewarm walks a decimated set of the run's own poses so every terrain tile
 		// variant and both extremes of the raymarch create their pipeline states before
@@ -118,20 +118,20 @@ public class BenchmarkPlan
 		//
 		// 0 means off, and must not fall through to a stride of 1 - that would prewarm
 		// every single pose, i.e. render the entire run twice.
-		if (definition.prewarmPosesEvery > 0)
+		if ( definition.prewarmPosesEvery > 0 )
 		{
-			for (int i = 0; i < content.Count; i += definition.prewarmPosesEvery)
+			for ( int i = 0; i < content.Count; i += definition.prewarmPosesEvery )
 			{
-				PlannedFrame f = content[i];
+				PlannedFrame f = content[ i ];
 				f.phase = BenchmarkPhase.Prewarm;
 				f.screenshot = false;
-				all.Add(f);
+				all.Add( f );
 			}
 		}
 
-		AddRepeated(all, first, BenchmarkPhase.Warmup, Mathf.Max(0, definition.warmupFrames));
-		all.AddRange(content);
-		AddRepeated(all, last, BenchmarkPhase.Flush, Mathf.Max(0, definition.flushFrames));
+		AddRepeated( all, first, BenchmarkPhase.Warmup, Mathf.Max( 0, definition.warmupFrames ) );
+		all.AddRange( content );
+		AddRepeated( all, last, BenchmarkPhase.Flush, Mathf.Max( 0, definition.flushFrames ) );
 
 		plan.frames = all.ToArray();
 		plan.segmentLabels = labels.ToArray();
@@ -139,15 +139,15 @@ public class BenchmarkPlan
 		return plan;
 	}
 
-	static void AddRepeated(List<PlannedFrame> into, PlannedFrame template, BenchmarkPhase phase, int count)
+	static void AddRepeated( List<PlannedFrame> into, PlannedFrame template, BenchmarkPhase phase, int count )
 	{
 		template.phase = phase;
 		template.screenshot = false;
-		for (int i = 0; i < count; i++) { into.Add(template); }
+		for ( int i = 0; i < count; i++ ) { into.Add( template ); }
 	}
 
-	PlannedFrame MakeFrame(BenchmarkPhase phase, int segmentIndex, int segmentFrame,
-		TestbedCamera.CameraView view, float dayT, BenchmarkDefinition definition, bool screenshot)
+	PlannedFrame MakeFrame( BenchmarkPhase phase, int segmentIndex, int segmentFrame,
+		TestbedCamera.CameraView view, float dayT, BenchmarkDefinition definition, bool screenshot )
 	{
 		return new PlannedFrame
 		{
@@ -159,7 +159,7 @@ public class BenchmarkPlan
 			monthT = definition.monthT,
 			yearT = definition.yearT,
 			screenshot = screenshot,
-			skyFraction = EstimateSkyFraction(view, surfaceRadius, aspect)
+			skyFraction = EstimateSkyFraction( view, surfaceRadius, aspect )
 		};
 	}
 
@@ -169,27 +169,27 @@ public class BenchmarkPlan
 	/// Where segment B comes from. This is the only place the four kinds differ; after
 	/// this they all take the same interpolation path.
 	/// </summary>
-	static TestbedCamera.CameraView DeriveEndpoint(BenchmarkSegment segment, TestbedCamera.CameraView from)
+	static TestbedCamera.CameraView DeriveEndpoint( BenchmarkSegment segment, TestbedCamera.CameraView from )
 	{
-		switch (segment.kind)
+		switch ( segment.kind )
 		{
 			case SegmentKind.Hold:
 			case SegmentKind.TimeOfDay:
 				return from;
 
 			case SegmentKind.Orbit:
-			{
-				TestbedCamera.CameraView to = from;
-				if (segment.sweepAxis == OrbitAxis.Heading)
 				{
-					to.heading = from.heading + segment.sweepDegrees;
+					TestbedCamera.CameraView to = from;
+					if ( segment.sweepAxis == OrbitAxis.Heading )
+					{
+						to.heading = from.heading + segment.sweepDegrees;
+					}
+					else
+					{
+						to.coordinate.longitude = from.coordinate.longitude + segment.sweepDegrees;
+					}
+					return to;
 				}
-				else
-				{
-					to.coordinate.longitude = from.coordinate.longitude + segment.sweepDegrees;
-				}
-				return to;
-			}
 
 			default:
 				return from;
@@ -198,10 +198,10 @@ public class BenchmarkPlan
 
 	// ------------------------------------------------------------ interpolation
 
-	static float Ease(float t, EaseMode mode)
+	static float Ease( float t, EaseMode mode )
 	{
-		t = Mathf.Clamp01(t);
-		return mode == EaseMode.SmoothStep ? t * t * (3f - 2f * t) : t;
+		t = Mathf.Clamp01( t );
+		return mode == EaseMode.SmoothStep ? t * t * ( 3f - 2f * t ) : t;
 	}
 
 	/// <summary>
@@ -214,43 +214,43 @@ public class BenchmarkPlan
 	/// nowhere to go and the camera would stand still for the whole segment. Sweeps
 	/// therefore interpolate the raw angle; everything else takes the short way round.
 	/// </summary>
-	public static TestbedCamera.CameraView LerpView(TestbedCamera.CameraView a,
-		TestbedCamera.CameraView b, float t, bool sweep)
+	public static TestbedCamera.CameraView LerpView( TestbedCamera.CameraView a,
+		TestbedCamera.CameraView b, float t, bool sweep )
 	{
-		if (t <= 0f) { return a; }
-		if (t >= 1f && !sweep) { return b; }
+		if ( t <= 0f ) { return a; }
+		if ( t >= 1f && !sweep ) { return b; }
 
 		CoordinateDegrees coordinate;
-		if (sweep)
+		if ( sweep )
 		{
 			coordinate = new CoordinateDegrees(
-				a.coordinate.longitude + (b.coordinate.longitude - a.coordinate.longitude) * t,
-				Mathf.Lerp(a.coordinate.latitude, b.coordinate.latitude, t));
+				a.coordinate.longitude + ( b.coordinate.longitude - a.coordinate.longitude ) * t,
+				Mathf.Lerp( a.coordinate.latitude, b.coordinate.latitude, t ) );
 		}
 		else
 		{
 			// Great circle, matching how the camera's own panning moves.
-			Vector3 pa = GeoMaths.CoordinateToPoint(a.coordinate.ConvertToRadians(), 1f);
-			Vector3 pb = GeoMaths.CoordinateToPoint(b.coordinate.ConvertToRadians(), 1f);
-			Vector3 p = Vector3.Slerp(pa, pb, t).normalized;
-			coordinate = GeoMaths.PointToCoordinate(p).ConvertToDegrees();
+			Vector3 pa = GeoMaths.CoordinateToPoint( a.coordinate.ConvertToRadians(), 1f );
+			Vector3 pb = GeoMaths.CoordinateToPoint( b.coordinate.ConvertToRadians(), 1f );
+			Vector3 p = Vector3.Slerp( pa, pb, t ).normalized;
+			coordinate = GeoMaths.PointToCoordinate( p ).ConvertToDegrees();
 		}
 
-		float altitudeA = Mathf.Max(a.altitude, 0.001f);
-		float altitudeB = Mathf.Max(b.altitude, 0.001f);
+		float altitudeA = Mathf.Max( a.altitude, 0.001f );
+		float altitudeB = Mathf.Max( b.altitude, 0.001f );
 
 		float heading = sweep
-			? a.heading + (b.heading - a.heading) * t
-			: a.heading + Mathf.DeltaAngle(a.heading, b.heading) * t;
+			? a.heading + ( b.heading - a.heading ) * t
+			: a.heading + Mathf.DeltaAngle( a.heading, b.heading ) * t;
 
 		return new TestbedCamera.CameraView
 		{
 			coordinate = coordinate,
-			altitude = Mathf.Exp(Mathf.Lerp(Mathf.Log(altitudeA), Mathf.Log(altitudeB), t)),
-			pitch = Mathf.Lerp(a.pitch, b.pitch, t),
+			altitude = Mathf.Exp( Mathf.Lerp( Mathf.Log( altitudeA ), Mathf.Log( altitudeB ), t ) ),
+			pitch = Mathf.Lerp( a.pitch, b.pitch, t ),
 			heading = heading,
-			roll = a.roll + Mathf.DeltaAngle(a.roll, b.roll) * t,
-			fieldOfView = Mathf.Lerp(a.fieldOfView, b.fieldOfView, t)
+			roll = a.roll + Mathf.DeltaAngle( a.roll, b.roll ) * t,
+			fieldOfView = Mathf.Lerp( a.fieldOfView, b.fieldOfView, t )
 		};
 	}
 
@@ -258,10 +258,10 @@ public class BenchmarkPlan
 	/// Interpolates time of day forward. A sweep from evening to morning must advance
 	/// through midnight rather than run backwards to reach a nearer value.
 	/// </summary>
-	public static float LerpDayT(float from, float to, float t)
+	public static float LerpDayT( float from, float to, float t )
 	{
-		float delta = Mathf.Repeat(to - from, 1f);
-		return Mathf.Repeat(from + delta * t, 1f);
+		float delta = Mathf.Repeat( to - from, 1f );
+		return Mathf.Repeat( from + delta * t, 1f );
 	}
 
 	// ------------------------------------------------------------- sky fraction
@@ -273,71 +273,71 @@ public class BenchmarkPlan
 	/// above the true horizon by acos(R/(R+altitude)) - about 20 degrees at altitude 10 -
 	/// so a pitch-0 view is mostly sky.
 	/// </summary>
-	public static float EstimateSkyFraction(TestbedCamera.CameraView view, float surfaceRadius,
-		float aspect, int grid = 32)
+	public static float EstimateSkyFraction( TestbedCamera.CameraView view, float surfaceRadius,
+		float aspect, int grid = 32 )
 	{
-		TestbedCamera.ComputePose(view, surfaceRadius, out Vector3 position, out Quaternion rotation);
+		TestbedCamera.ComputePose( view, surfaceRadius, out Vector3 position, out Quaternion rotation );
 
 		Vector3 forward = rotation * Vector3.forward;
 		Vector3 up = rotation * Vector3.up;
 		Vector3 right = rotation * Vector3.right;
 
-		float tanHalf = Mathf.Tan(view.fieldOfView * 0.5f * Mathf.Deg2Rad);
+		float tanHalf = Mathf.Tan( view.fieldOfView * 0.5f * Mathf.Deg2Rad );
 		int misses = 0;
 		int total = grid * grid;
 
-		for (int y = 0; y < grid; y++)
+		for ( int y = 0; y < grid; y++ )
 		{
-			float ndcY = ((y + 0.5f) / grid) * 2f - 1f;
-			for (int x = 0; x < grid; x++)
+			float ndcY = ( ( y + 0.5f ) / grid ) * 2f - 1f;
+			for ( int x = 0; x < grid; x++ )
 			{
-				float ndcX = ((x + 0.5f) / grid) * 2f - 1f;
-				Vector3 dir = (forward + right * (ndcX * tanHalf * aspect) + up * (ndcY * tanHalf)).normalized;
-				if (!RayHitsSphere(position, dir, surfaceRadius)) { misses++; }
+				float ndcX = ( ( x + 0.5f ) / grid ) * 2f - 1f;
+				Vector3 dir = ( forward + right * ( ndcX * tanHalf * aspect ) + up * ( ndcY * tanHalf ) ).normalized;
+				if ( !RayHitsSphere( position, dir, surfaceRadius ) ) { misses++; }
 			}
 		}
 
 		return (float)misses / total;
 	}
 
-	static bool RayHitsSphere(Vector3 origin, Vector3 direction, float radius)
+	static bool RayHitsSphere( Vector3 origin, Vector3 direction, float radius )
 	{
-		float b = Vector3.Dot(origin, direction);
-		float c = Vector3.Dot(origin, origin) - radius * radius;
+		float b = Vector3.Dot( origin, direction );
+		float c = Vector3.Dot( origin, origin ) - radius * radius;
 		float discriminant = b * b - c;
-		if (discriminant < 0f) { return false; }
+		if ( discriminant < 0f ) { return false; }
 
-		float sqrtDisc = Mathf.Sqrt(discriminant);
+		float sqrtDisc = Mathf.Sqrt( discriminant );
 		float t = -b - sqrtDisc;
-		if (t < 0f) { t = -b + sqrtDisc; }
+		if ( t < 0f ) { t = -b + sqrtDisc; }
 		return t >= 0f;
 	}
 
 	// --------------------------------------------------------------- resolution
 
-	TestbedCamera.CameraView ResolveView(ViewRef reference, CameraBookmarks fallback)
+	TestbedCamera.CameraView ResolveView( ViewRef reference, CameraBookmarks fallback )
 	{
-		if (reference.source == ViewRef.SourceKind.Inline) { return reference.inlineView; }
+		if ( reference.source == ViewRef.SourceKind.Inline ) { return reference.inlineView; }
 
 		CameraBookmarks bookmarks = reference.bookmarkAsset != null ? reference.bookmarkAsset : fallback;
-		if (bookmarks == null)
+		if ( bookmarks == null )
 		{
-			warnings.Add("BOOKMARK_ASSET_MISSING");
+			warnings.Add( "BOOKMARK_ASSET_MISSING" );
 			return reference.inlineView;
 		}
 
 		int index = reference.bookmarkIndex;
-		if (!string.IsNullOrEmpty(reference.bookmarkLabel))
+		if ( !string.IsNullOrEmpty( reference.bookmarkLabel ) )
 		{
-			for (int i = 0; i < bookmarks.Count; i++)
+			for ( int i = 0; i < bookmarks.Count; i++ )
 			{
-				if (bookmarks.LabelAt(i) == reference.bookmarkLabel) { index = i; break; }
+				if ( bookmarks.LabelAt( i ) == reference.bookmarkLabel ) { index = i; break; }
 			}
 		}
 
-		if (!bookmarks.TryGetView(index, out TestbedCamera.CameraView view))
+		if ( !bookmarks.TryGetView( index, out TestbedCamera.CameraView view ) )
 		{
-			warnings.Add($"BOOKMARK_UNASSIGNED:{reference.bookmarkLabel}:{index}");
+			warnings.Add( $"BOOKMARK_UNASSIGNED:{reference.bookmarkLabel}:{index}" );
 			return reference.inlineView;
 		}
 
@@ -347,36 +347,36 @@ public class BenchmarkPlan
 		return view;
 	}
 
-	float ResolveSun(SunKey key, TestbedCamera.CameraView view, EarthOrbit earth, BenchmarkDefinition definition)
+	float ResolveSun( SunKey key, TestbedCamera.CameraView view, EarthOrbit earth, BenchmarkDefinition definition )
 	{
-		if (earth == null || key.mode == SunKey.ModeKind.DayT) { return Mathf.Repeat(key.dayT, 1f); }
+		if ( earth == null || key.mode == SunKey.ModeKind.DayT ) { return Mathf.Repeat( key.dayT, 1f ); }
 
-		Vector3 observerUp = GeoMaths.CoordinateToPoint(view.coordinate.ConvertToRadians(), 1f);
+		Vector3 observerUp = GeoMaths.CoordinateToPoint( view.coordinate.ConvertToRadians(), 1f );
 
-		if (key.mode == SunKey.ModeKind.Extreme)
+		if ( key.mode == SunKey.ModeKind.Extreme )
 		{
-			return SolarTime.SolveDayTForExtreme(earth, observerUp, definition.yearT, key.highest);
+			return SolarTime.SolveDayTForExtreme( earth, observerUp, definition.yearT, key.highest );
 		}
 
-		if (SolarTime.TrySolveDayT(earth, observerUp, definition.yearT,
-				key.elevationDegrees, key.rising, out float dayT))
+		if ( SolarTime.TrySolveDayT( earth, observerUp, definition.yearT,
+				key.elevationDegrees, key.rising, out float dayT ) )
 		{
 			return dayT;
 		}
 
 		// Unreachable at this latitude and time of year, or the observer is at a pole.
-		warnings.Add($"SUN_ELEVATION_UNREACHABLE:{key.elevationDegrees}");
-		return Mathf.Repeat(key.dayT, 1f);
+		warnings.Add( $"SUN_ELEVATION_UNREACHABLE:{key.elevationDegrees}" );
+		return Mathf.Repeat( key.dayT, 1f );
 	}
 
-	static bool IsScreenshotFrame(BenchmarkSegment segment, int frame, int total)
+	static bool IsScreenshotFrame( BenchmarkSegment segment, int frame, int total )
 	{
-		if (segment.screenshotFirstAndLast && (frame == 0 || frame == total - 1)) { return true; }
-		if (segment.screenshotFrames == null) { return false; }
+		if ( segment.screenshotFirstAndLast && ( frame == 0 || frame == total - 1 ) ) { return true; }
+		if ( segment.screenshotFrames == null ) { return false; }
 
-		for (int i = 0; i < segment.screenshotFrames.Length; i++)
+		for ( int i = 0; i < segment.screenshotFrames.Length; i++ )
 		{
-			if (segment.screenshotFrames[i] == frame) { return true; }
+			if ( segment.screenshotFrames[ i ] == frame ) { return true; }
 		}
 		return false;
 	}
@@ -392,37 +392,37 @@ public class BenchmarkPlan
 	{
 		ulong hash = 0xcbf29ce484222325UL;
 
-		Mix(ref hash, (ulong)frames.Length);
-		for (int i = 0; i < frames.Length; i++)
+		Mix( ref hash, (ulong)frames.Length );
+		for ( int i = 0; i < frames.Length; i++ )
 		{
-			PlannedFrame f = frames[i];
-			Mix(ref hash, (ulong)(int)f.phase);
-			Mix(ref hash, (ulong)(f.segmentIndex + 1));
-			MixQuantized(ref hash, f.view.coordinate.longitude, 1000f);
-			MixQuantized(ref hash, f.view.coordinate.latitude, 1000f);
-			MixQuantized(ref hash, f.view.altitude, 10000f);
-			MixQuantized(ref hash, f.view.pitch, 1000f);
-			MixQuantized(ref hash, f.view.heading, 1000f);
-			MixQuantized(ref hash, f.view.roll, 1000f);
-			MixQuantized(ref hash, f.view.fieldOfView, 1000f);
-			MixQuantized(ref hash, f.dayT, 100000f);
-			MixQuantized(ref hash, f.monthT, 100000f);
-			MixQuantized(ref hash, f.yearT, 100000f);
-			Mix(ref hash, f.screenshot ? 1UL : 0UL);
+			PlannedFrame f = frames[ i ];
+			Mix( ref hash, (ulong)(int)f.phase );
+			Mix( ref hash, (ulong)( f.segmentIndex + 1 ) );
+			MixQuantized( ref hash, f.view.coordinate.longitude, 1000f );
+			MixQuantized( ref hash, f.view.coordinate.latitude, 1000f );
+			MixQuantized( ref hash, f.view.altitude, 10000f );
+			MixQuantized( ref hash, f.view.pitch, 1000f );
+			MixQuantized( ref hash, f.view.heading, 1000f );
+			MixQuantized( ref hash, f.view.roll, 1000f );
+			MixQuantized( ref hash, f.view.fieldOfView, 1000f );
+			MixQuantized( ref hash, f.dayT, 100000f );
+			MixQuantized( ref hash, f.monthT, 100000f );
+			MixQuantized( ref hash, f.yearT, 100000f );
+			Mix( ref hash, f.screenshot ? 1UL : 0UL );
 		}
 		return hash;
 	}
 
-	static void MixQuantized(ref ulong hash, float value, float scale)
+	static void MixQuantized( ref ulong hash, float value, float scale )
 	{
-		Mix(ref hash, unchecked((ulong)(long)Mathf.Round(value * scale)));
+		Mix( ref hash, unchecked((ulong)(long)Mathf.Round( value * scale )) );
 	}
 
-	static void Mix(ref ulong hash, ulong value)
+	static void Mix( ref ulong hash, ulong value )
 	{
-		for (int shift = 0; shift < 64; shift += 8)
+		for ( int shift = 0; shift < 64; shift += 8 )
 		{
-			hash ^= (value >> shift) & 0xFF;
+			hash ^= ( value >> shift ) & 0xFF;
 			hash *= 0x100000001b3UL;
 		}
 	}
@@ -431,35 +431,35 @@ public class BenchmarkPlan
 
 	public string ToCsv()
 	{
-		var sb = new StringBuilder(frames.Length * 140);
-		sb.Append("frame_index,phase,segment_index,segment_label,segment_frame,")
-		  .Append("cam_lon,cam_lat,cam_alt,cam_pitch,cam_heading,cam_roll,cam_fov,")
-		  .Append("sun_dayT,sun_monthT,sun_yearT,sky_fraction,screenshot\n");
+		var sb = new StringBuilder( frames.Length * 140 );
+		sb.Append( "frame_index,phase,segment_index,segment_label,segment_frame," )
+		  .Append( "cam_lon,cam_lat,cam_alt,cam_pitch,cam_heading,cam_roll,cam_fov," )
+		  .Append( "sun_dayT,sun_monthT,sun_yearT,sky_fraction,screenshot\n" );
 
 		var ci = CultureInfo.InvariantCulture;
-		for (int i = 0; i < frames.Length; i++)
+		for ( int i = 0; i < frames.Length; i++ )
 		{
-			PlannedFrame f = frames[i];
+			PlannedFrame f = frames[ i ];
 			string label = f.segmentIndex >= 0 && f.segmentIndex < segmentLabels.Length
-				? segmentLabels[f.segmentIndex] : "";
+				? segmentLabels[ f.segmentIndex ] : "";
 
-			sb.Append(i.ToString(ci)).Append(',')
-			  .Append(f.phase).Append(',')
-			  .Append(f.segmentIndex.ToString(ci)).Append(',')
-			  .Append(label).Append(',')
-			  .Append(f.segmentFrame.ToString(ci)).Append(',')
-			  .Append(f.view.coordinate.longitude.ToString("G9", ci)).Append(',')
-			  .Append(f.view.coordinate.latitude.ToString("G9", ci)).Append(',')
-			  .Append(f.view.altitude.ToString("G9", ci)).Append(',')
-			  .Append(f.view.pitch.ToString("G9", ci)).Append(',')
-			  .Append(f.view.heading.ToString("G9", ci)).Append(',')
-			  .Append(f.view.roll.ToString("G9", ci)).Append(',')
-			  .Append(f.view.fieldOfView.ToString("G9", ci)).Append(',')
-			  .Append(f.dayT.ToString("G9", ci)).Append(',')
-			  .Append(f.monthT.ToString("G9", ci)).Append(',')
-			  .Append(f.yearT.ToString("G9", ci)).Append(',')
-			  .Append(f.skyFraction.ToString("G9", ci)).Append(',')
-			  .Append(f.screenshot ? '1' : '0').Append('\n');
+			sb.Append( i.ToString( ci ) ).Append( ',' )
+			  .Append( f.phase ).Append( ',' )
+			  .Append( f.segmentIndex.ToString( ci ) ).Append( ',' )
+			  .Append( label ).Append( ',' )
+			  .Append( f.segmentFrame.ToString( ci ) ).Append( ',' )
+			  .Append( f.view.coordinate.longitude.ToString( "G9", ci ) ).Append( ',' )
+			  .Append( f.view.coordinate.latitude.ToString( "G9", ci ) ).Append( ',' )
+			  .Append( f.view.altitude.ToString( "G9", ci ) ).Append( ',' )
+			  .Append( f.view.pitch.ToString( "G9", ci ) ).Append( ',' )
+			  .Append( f.view.heading.ToString( "G9", ci ) ).Append( ',' )
+			  .Append( f.view.roll.ToString( "G9", ci ) ).Append( ',' )
+			  .Append( f.view.fieldOfView.ToString( "G9", ci ) ).Append( ',' )
+			  .Append( f.dayT.ToString( "G9", ci ) ).Append( ',' )
+			  .Append( f.monthT.ToString( "G9", ci ) ).Append( ',' )
+			  .Append( f.yearT.ToString( "G9", ci ) ).Append( ',' )
+			  .Append( f.skyFraction.ToString( "G9", ci ) ).Append( ',' )
+			  .Append( f.screenshot ? '1' : '0' ).Append( '\n' );
 		}
 		return sb.ToString();
 	}
@@ -471,27 +471,27 @@ public class BenchmarkPlan
 	/// For UI that wants to show the size of a run before committing to it. Must mirror the
 	/// assembly in Build - if the two ever disagree, this is the one that is wrong.
 	/// </summary>
-	public static int EstimateLength(BenchmarkDefinition definition)
+	public static int EstimateLength( BenchmarkDefinition definition )
 	{
-		if (definition == null || definition.segments == null) { return 0; }
+		if ( definition == null || definition.segments == null ) { return 0; }
 
 		int content = 0;
-		foreach (BenchmarkSegment segment in definition.segments)
+		foreach ( BenchmarkSegment segment in definition.segments )
 		{
-			content += Mathf.Max(0, definition.SettleFramesFor(segment)) + Mathf.Max(1, segment.frames);
+			content += Mathf.Max( 0, definition.SettleFramesFor( segment ) ) + Mathf.Max( 1, segment.frames );
 		}
 
-		if (content == 0) { return 0; }
+		if ( content == 0 ) { return 0; }
 
 		int prewarm = definition.prewarmPosesEvery > 0
-			? (content + definition.prewarmPosesEvery - 1) / definition.prewarmPosesEvery
+			? ( content + definition.prewarmPosesEvery - 1 ) / definition.prewarmPosesEvery
 			: 0;
 
-		return Mathf.Max(0, definition.bootFrames)
+		return Mathf.Max( 0, definition.bootFrames )
 			+ prewarm
-			+ Mathf.Max(0, definition.warmupFrames)
+			+ Mathf.Max( 0, definition.warmupFrames )
 			+ content
-			+ Mathf.Max(0, definition.flushFrames);
+			+ Mathf.Max( 0, definition.flushFrames );
 	}
 
 	/// <summary>Frames marked for capture. A capture run with none of these is pointless, so
@@ -501,7 +501,7 @@ public class BenchmarkPlan
 		get
 		{
 			int count = 0;
-			foreach (PlannedFrame f in frames) { if (f.screenshot) { count++; } }
+			foreach ( PlannedFrame f in frames ) { if ( f.screenshot ) { count++; } }
 			return count;
 		}
 	}
@@ -509,30 +509,30 @@ public class BenchmarkPlan
 	public string Describe()
 	{
 		int measured = 0, screenshots = 0;
-		var byPhase = new int[System.Enum.GetValues(typeof(BenchmarkPhase)).Length];
-		foreach (PlannedFrame f in frames)
+		var byPhase = new int[ System.Enum.GetValues( typeof( BenchmarkPhase ) ).Length ];
+		foreach ( PlannedFrame f in frames )
 		{
-			byPhase[(int)f.phase]++;
-			if (f.phase == BenchmarkPhase.Measure) { measured++; }
-			if (f.screenshot) { screenshots++; }
+			byPhase[ (int)f.phase ]++;
+			if ( f.phase == BenchmarkPhase.Measure ) { measured++; }
+			if ( f.screenshot ) { screenshots++; }
 		}
 
 		// Spelled out because prewarm is visually alarming - the camera teleports through
 		// the whole route - and the first question anyone asks is whether that is a bug.
 		var phases = new System.Text.StringBuilder();
-		foreach (BenchmarkPhase phase in System.Enum.GetValues(typeof(BenchmarkPhase)))
+		foreach ( BenchmarkPhase phase in System.Enum.GetValues( typeof( BenchmarkPhase ) ) )
 		{
-			if (byPhase[(int)phase] == 0) { continue; }
-			if (phases.Length > 0) { phases.Append(" -> "); }
-			phases.Append(phase).Append(' ').Append(byPhase[(int)phase]);
+			if ( byPhase[ (int)phase ] == 0 ) { continue; }
+			if ( phases.Length > 0 ) { phases.Append( " -> " ); }
+			phases.Append( phase ).Append( ' ' ).Append( byPhase[ (int)phase ] );
 		}
 
 		var ci = CultureInfo.InvariantCulture;
 		return $"plan '{definition.id}': {frames.Length} frames total, {measured} measured, " +
 			$"{screenshots} screenshots, {segmentLabels.Length} segments\n" +
 			$"  phases: {phases}\n" +
-			$"  plan_hash 0x{planHash:x16}   captureDeltaTime {CaptureDeltaTime.ToString("F5", ci)}" +
-			(usedLiveBookmarks ? "\n  WARNING: resolved through live bookmarks - bake before publishing" : "") +
-			(warnings.Count > 0 ? "\n  warnings: " + string.Join(", ", warnings) : "");
+			$"  plan_hash 0x{planHash:x16}   captureDeltaTime {CaptureDeltaTime.ToString( "F5", ci )}" +
+			( usedLiveBookmarks ? "\n  WARNING: resolved through live bookmarks - bake before publishing" : "" ) +
+			( warnings.Count > 0 ? "\n  warnings: " + string.Join( ", ", warnings ) : "" );
 	}
 }

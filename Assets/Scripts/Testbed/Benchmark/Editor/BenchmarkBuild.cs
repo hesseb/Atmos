@@ -29,8 +29,8 @@ static class BenchmarkBuild
 	/// and memory - which feed scene_hash and the self-check's geometry comparison, the thing
 	/// that distinguishes a one-frame stall from a systematic difference.
 	/// </summary>
-	[MenuItem("Testbed/Benchmark/Build Standalone Player (Development)")]
-	static void BuildDevelopment() { Build(development: true); }
+	[MenuItem( "Testbed/Benchmark/Build Standalone Player (Development)" )]
+	static void BuildDevelopment() { Build( development: true ); }
 
 	/// <summary>
 	/// No profiler overhead, and the closest thing to shipping conditions.
@@ -44,33 +44,33 @@ static class BenchmarkBuild
 	/// question into a measured fact, and the frame-time difference between them is the cost
 	/// of the development flag.
 	/// </summary>
-	[MenuItem("Testbed/Benchmark/Build Standalone Player (Release)")]
-	static void BuildRelease() { Build(development: false); }
+	[MenuItem( "Testbed/Benchmark/Build Standalone Player (Release)" )]
+	static void BuildRelease() { Build( development: false ); }
 
-	static void Build(bool development)
+	static void Build( bool development )
 	{
 		string kind = development ? "development" : "release";
 
 		string directory = EditorUtility.SaveFolderPanel(
-			$"Build {kind} benchmark player to", "", "");
-		if (string.IsNullOrEmpty(directory)) { return; }
+			$"Build {kind} benchmark player to", "", "" );
+		if ( string.IsNullOrEmpty( directory ) ) { return; }
 
 		BuildStamp stamp = WriteStamp();
-		if (stamp.dirty)
+		if ( stamp.dirty )
 		{
-			bool proceed = EditorUtility.DisplayDialog("Uncommitted changes",
+			bool proceed = EditorUtility.DisplayDialog( "Uncommitted changes",
 				"The working tree is dirty, so results from this build cannot be reproduced " +
 				"from its commit alone. run.json will record the dirty flag and summary.md " +
-				"will carry a banner.\n\nBuild anyway?", "Build", "Cancel");
-			if (!proceed) { return; }
+				"will carry a banner.\n\nBuild anyway?", "Build", "Cancel" );
+			if ( !proceed ) { return; }
 		}
 
 		// Each kind gets its own subfolder. A player is an exe plus a _Data folder and
 		// several DLLs, so building both into one directory would have the second silently
 		// overwrite the first - and results live beside the exe, so they would mix too.
 		string product = SanitiseProduct();
-		string target = IOPath.Combine(directory, $"{product}-{kind}");
-		string exe = IOPath.Combine(target, $"{product}.exe");
+		string target = IOPath.Combine( directory, $"{product}-{kind}" );
+		string exe = IOPath.Combine( target, $"{product}.exe" );
 
 		var options = new BuildPlayerOptions
 		{
@@ -82,38 +82,38 @@ static class BenchmarkBuild
 			options = development ? BuildOptions.Development : BuildOptions.None
 		};
 
-		if (options.scenes.Length == 0)
+		if ( options.scenes.Length == 0 )
 		{
-			Debug.LogError("[Benchmark] no enabled scenes in Build Settings.");
+			Debug.LogError( "[Benchmark] no enabled scenes in Build Settings." );
 			return;
 		}
 
-		BuildReport report = BuildPipeline.BuildPlayer(options);
+		BuildReport report = BuildPipeline.BuildPlayer( options );
 		BuildSummary summary = report.summary;
 
-		if (summary.result != BuildResult.Succeeded)
+		if ( summary.result != BuildResult.Succeeded )
 		{
-			Debug.LogError($"[Benchmark] {kind} build {summary.result}: " +
-				$"{summary.totalErrors} error(s).");
+			Debug.LogError( $"[Benchmark] {kind} build {summary.result}: " +
+				$"{summary.totalErrors} error(s)." );
 			return;
 		}
 
-		Debug.Log($"[Benchmark] built {kind} player: {exe}\n" +
-			$"  commit  {stamp.commit}{(stamp.dirty ? " (dirty)" : "")} on {stamp.branch}\n" +
-			$"  size    {summary.totalSize / (1024 * 1024)} MB\n" +
-			$"  results {IOPath.Combine(target, "BenchmarkResults")}\n" +
-			(development
+		Debug.Log( $"[Benchmark] built {kind} player: {exe}\n" +
+			$"  commit  {stamp.commit}{( stamp.dirty ? " (dirty)" : "" )} on {stamp.branch}\n" +
+			$"  size    {summary.totalSize / ( 1024 * 1024 )} MB\n" +
+			$"  results {IOPath.Combine( target, "BenchmarkResults" )}\n" +
+			( development
 				? "  profiler counters expected available\n"
-				: "  profiler counters likely stripped - check counters_available in run.json\n") +
+				: "  profiler counters likely stripped - check counters_available in run.json\n" ) +
 			"\nRun it windowed - NOT with -batchmode, where WaitForEndOfFrame never resumes " +
 			"and the harness would hang. Example:\n" +
-			$"  \"{exe}\" -benchmark framing -mode selfcheck -machine \"desktop\" -quitWhenDone");
+			$"  \"{exe}\" -benchmark framing -mode selfcheck -machine \"desktop\" -quitWhenDone" );
 
-		EditorUtility.RevealInFinder(exe);
+		EditorUtility.RevealInFinder( exe );
 	}
 
 	// Unity requires a menu item to return void, so the reusable form is separate.
-	[MenuItem("Testbed/Benchmark/Refresh Build Stamp")]
+	[MenuItem( "Testbed/Benchmark/Refresh Build Stamp" )]
 	static void RefreshBuildStamp() { WriteStamp(); }
 
 	/// <summary>
@@ -126,37 +126,37 @@ static class BenchmarkBuild
 	/// </summary>
 	static BuildStamp WriteStamp()
 	{
-		System.IO.Directory.CreateDirectory(StampFolder);
+		System.IO.Directory.CreateDirectory( StampFolder );
 
-		GitInfo.TryGet(out string commit, out string branch, out bool dirty);
+		GitInfo.TryGet( out string commit, out string branch, out bool dirty );
 
-		BuildStamp stamp = AssetDatabase.LoadAssetAtPath<BuildStamp>(StampPath);
+		BuildStamp stamp = AssetDatabase.LoadAssetAtPath<BuildStamp>( StampPath );
 		bool created = stamp == null;
-		if (created) { stamp = ScriptableObject.CreateInstance<BuildStamp>(); }
+		if ( created ) { stamp = ScriptableObject.CreateInstance<BuildStamp>(); }
 
 		stamp.commit = commit;
 		stamp.branch = branch;
 		stamp.dirty = dirty;
-		stamp.builtUtc = System.DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture);
+		stamp.builtUtc = System.DateTime.UtcNow.ToString( "o", CultureInfo.InvariantCulture );
 		stamp.unityVersion = Application.unityVersion;
 
 		// Overwrite in place when it exists: CreateAsset would mint a new GUID on every
 		// build, churning the asset and any reference to it.
-		if (created) { AssetDatabase.CreateAsset(stamp, StampPath); }
-		else { EditorUtility.SetDirty(stamp); }
+		if ( created ) { AssetDatabase.CreateAsset( stamp, StampPath ); }
+		else { EditorUtility.SetDirty( stamp ); }
 
 		AssetDatabase.SaveAssets();
 
-		Debug.Log($"[Benchmark] build stamp: {commit}{(dirty ? " (dirty)" : "")} on {branch}");
+		Debug.Log( $"[Benchmark] build stamp: {commit}{( dirty ? " (dirty)" : "" )} on {branch}" );
 		return stamp;
 	}
 
 	static string[] EnabledScenes()
 	{
 		var scenes = new List<string>();
-		foreach (EditorBuildSettingsScene scene in EditorBuildSettings.scenes)
+		foreach ( EditorBuildSettingsScene scene in EditorBuildSettings.scenes )
 		{
-			if (scene.enabled) { scenes.Add(scene.path); }
+			if ( scene.enabled ) { scenes.Add( scene.path ); }
 		}
 		return scenes.ToArray();
 	}
@@ -164,9 +164,9 @@ static class BenchmarkBuild
 	static string SanitiseProduct()
 	{
 		string name = Application.productName;
-		if (string.IsNullOrEmpty(name)) { return "Benchmark"; }
+		if ( string.IsNullOrEmpty( name ) ) { return "Benchmark"; }
 
-		foreach (char c in IOPath.GetInvalidFileNameChars()) { name = name.Replace(c, '-'); }
-		return name.Replace(' ', '-');
+		foreach ( char c in IOPath.GetInvalidFileNameChars() ) { name = name.Replace( c, '-' ); }
+		return name.Replace( ' ', '-' );
 	}
 }
