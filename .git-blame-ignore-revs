@@ -1,0 +1,5 @@
+# Mechanical reformats. Enable with:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# Apply editorconfig formatting
+cda093693533dcde27d53cb74555f57be96d4afb
