@@ -13,7 +13,7 @@ using UnityEngine;
 /// quadrature. If the two ever disagree, the mirror is stale and every other check is
 /// suspect.
 ///
-/// Mirrors `getScatteringValues`, `getRayleighPhase`, `getMiePhase` and `toneMap` in
+/// Mirrors `calcScatteringValues`, `getRayleighPhase`, `getMiePhase` and `toneMap` in
 /// `AtmosphereCommon.hlsl` / `DrawAtmosphereCommon.hlsl`. Keep it in step with them.
 /// </summary>
 static class AtmosphereReference
@@ -36,7 +36,7 @@ static class AtmosphereReference
 	}
 
 	/// <summary>
-	/// Extinction per world unit at an altitude in world units. Mirrors `getScatteringValues`.
+	/// Extinction per world unit at an altitude in world units. Mirrors `calcScatteringValues`.
 	///
 	/// The shader takes scale heights and coefficients already converted to world units, so
 	/// this applies the same conversion the effect does on the way to the GPU.
@@ -239,7 +239,7 @@ static class AtmosphereReference
 	}
 
 	/// <summary>
-	/// The same integral as `getSunTransmittance` actually computes it: 40 steps, sampling
+	/// The same integral as `marchTransmittance` actually computes it: 40 steps, sampling
 	/// *after* advancing rather than at the midpoint, which is a right-Riemann sum and
 	/// systematically underestimates optical depth for a decreasing density profile.
 	/// </summary>
@@ -260,7 +260,7 @@ static class AtmosphereReference
 	}
 
 	/// <summary>
-	/// The integral as `raymarch` computed it before midpoint sampling: sampling at the *start*
+	/// The integral as `marchScattering` computed it before midpoint sampling: sampling at the *start*
 	/// of each segment, which is a left-Riemann sum and systematically OVERestimates optical
 	/// depth for a decreasing profile - the exact mirror of the right-Riemann bias above.
 	///

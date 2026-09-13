@@ -7,7 +7,6 @@ namespace SolarSystem
 	[ExecuteInEditMode]
 	public class SolarSystemManager : MonoBehaviour
 	{
-
 		public bool animate;
 
 		[Header( "Durations" )]
@@ -15,8 +14,6 @@ namespace SolarSystem
 		public float dayDurationMinutes;
 		public float monthDurationMinutes;
 		public float yearDurationMinutes;
-		// Scales all three cycles at once, so their relative rates stay correct.
-		// Driven by TimeController; negative values run time backwards.
 		public float timeMultiplier = 1f;
 
 		[Header( "References" )]
@@ -39,7 +36,6 @@ namespace SolarSystem
 
 		void Update()
 		{
-
 			if ( animate && Application.isPlaying )
 			{
 				float step = timeMultiplier * Time.deltaTime;
@@ -48,7 +44,6 @@ namespace SolarSystem
 				yearT += 1 / ( yearDurationMinutes * 60 ) * step;
 
 				// Repeat rather than %, so a negative timeMultiplier wraps correctly
-				// instead of driving the values negative.
 				dayT = Mathf.Repeat( dayT, 1 );
 				monthT = Mathf.Repeat( monthT, 1 );
 				yearT = Mathf.Repeat( yearT, 1 );
@@ -61,18 +56,11 @@ namespace SolarSystem
 
 		}
 
-		/// <summary>
-		/// Sets the time of day/month/year directly. Combined with `animate = false` this
-		/// is how the measurement harness pins the sun to an exact, repeatable position.
-		/// </summary>
 		public void SetTimes( float dayT, float monthT, float yearT )
 		{
 			this.dayT = dayT;
 			this.monthT = monthT;
 			this.yearT = yearT;
 		}
-
 	}
-
-
 }

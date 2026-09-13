@@ -7,9 +7,6 @@
 
 #include "Assets/Post Processing/Effects/PBR/Clouds/Shader Common/CloudCommon.hlsl"
 
-/// Own constant since UnityCG's UNITY_PI isn't visible to a compute shader including this file.
-static const float CLOUD_PI = 3.14159265359;
-
 float cloudLightMarchLength;
 float cloudLightAbsorption;
 float cloudConeSpread;
@@ -39,7 +36,7 @@ static const float3 cloudConeKernel[6] =
 float cloudHg(float cosAngle, float g)
 {
 	float g2 = g * g;
-	return (1 - g2) / (4 * CLOUD_PI * pow(max(1e-3, 1 + g2 - 2 * g * cosAngle), 1.5));
+	return (1 - g2) / (4 * PI * pow(max(1e-3, 1 + g2 - 2 * g * cosAngle), 1.5));
 }
 
 /// Two-lobe Henyey-Greenstein (forward + backward), scaled by 4*pi so isotropic evaluates to 1, plus
@@ -50,7 +47,7 @@ float cloudPhase(float cosAngle, float silverIntensity)
 {
 	float forward = cloudHg(cosAngle, cloudPhaseForward);
 	float backward = cloudHg(cosAngle, -cloudPhaseBackward);
-	float base = lerp(forward, backward, cloudPhaseBlend) * 4 * CLOUD_PI;
+	float base = lerp(forward, backward, cloudPhaseBlend) * 4 * PI;
 
 	float silverG = 0.99 - cloudSilverSpread;
 	float silver = silverIntensity * cloudHg(cosAngle, silverG) / max(1e-4, cloudHg(1, silverG));

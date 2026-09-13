@@ -38,14 +38,14 @@ void RenderSkyViewLUT(uint3 id : SV_DispatchThreadID)
 
 	float3 luminance = 0;
 
-	float2 hitInfo = raySphere(0, atmosphereRadius, origin, viewDir);
-	if (hitInfo.y > 0)
+	SphereChord hitInfo = raySphereChordAtOrigin(atmosphereRadius, origin, viewDir);
+	if (hitInfo.dstThrough > 0)
 	{
 		// Same calling convention as SkyRender.compute: start at the atmosphere boundary, march the
 		// chord, and let raymarch clip at the ground. planetRadius as the earth-shadow radius
 		// matches the sky pass, since the shadowed band belongs here for the same reason.
-		float3 inPoint = origin + viewDir * hitInfo.x;
-		luminance = raymarch(inPoint, viewDir, hitInfo.y, numSkyViewSteps, TransmittanceLUT, planetRadius).luminance;
+		float3 inPoint = origin + viewDir * hitInfo.dstTo;
+		luminance = marchScattering(inPoint, viewDir, hitInfo.dstThrough, numSkyViewSteps, TransmittanceLUT, planetRadius).luminance;
 	}
 
 	// No sun disc - the ocean draws its own glint analytically, and the disc is below this LUT's

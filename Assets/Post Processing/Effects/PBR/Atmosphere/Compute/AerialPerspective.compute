@@ -32,17 +32,17 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 
 	// camPos, not the camera's near plane - must match the origin the composite shader uses for its
 	// own ray-sphere test, since the depth axis is defined relative to that intersection.
-	float2 atmosphereHitInfo = raySphere(0, atmosphereRadius, camPos, rayDir);
-	float dstToAtmosphere = atmosphereHitInfo.x;
-	float dstThroughAtmosphere = atmosphereHitInfo.y;
+	SphereChord atmosphereHit = raySphereChordAtOrigin(atmosphereRadius, camPos, rayDir);
+	float dstToAtmosphere = atmosphereHit.dstTo;
+	float dstThroughAtmosphere = atmosphereHit.dstThrough;
 
 	float3 inPoint = camPos + rayDir * dstToAtmosphere;
 
-	// Clip at the ground once, up front, rather than inside each slice's march: raymarchSegment()
-	// (unlike raymarch()) doesn't reclip internally, since a later segment would otherwise re-derive
+	// Clip at the ground once, up front, rather than inside each slice's march: marchScatteringSegment()
+	// (unlike marchScattering()) doesn't reclip internally, since a later segment would otherwise re-derive
 	// ground distance relative to its own origin.
 	float maxLength = dstThroughAtmosphere;
-	float dstToGround = rayIntersectSphere(inPoint, rayDir, planetRadius);
+	float dstToGround = rayIntersectSphereAtOrigin(inPoint, rayDir, planetRadius);
 	if (dstToGround > 0) { maxLength = min(maxLength, dstToGround); }
 
 	// Cap the span at the tangent-point distance so the depth axis stays CONTINUOUS across the
@@ -71,7 +71,7 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 
 		if (dstThroughAtmosphere > 0 && target > marched) {
 			// dont include earth shadow (causes issues due to low texture size)
-			raymarchSegment(state, inPoint + rayDir * marched, rayDir, target - marched,
+			marchScatteringSegment(state, inPoint + rayDir * marched, rayDir, target - marched,
 				stepsPerSlice, TransmittanceLUT, 0);
 			marched = target;
 		}

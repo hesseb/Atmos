@@ -39,7 +39,7 @@ SamplerState samplerCloudWeatherMapHighTex;
 float cloudInnerRadius;
 float cloudOuterRadius;
 
-/// Local copy of AtmosphereCommon's raySphere, not an include - that header's `dirToSun` global
+/// Local copy of AtmosphereCommon's raySphereChord, not an include - that header's `dirToSun` global
 /// would shadow this shader's own sun direction.
 ///
 /// Returns (distance to the sphere, distance through it). x is 0 when already inside; y is 0 on a miss.

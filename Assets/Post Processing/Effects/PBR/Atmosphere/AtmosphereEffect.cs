@@ -376,7 +376,7 @@ public class AtmosphereEffect : PostProcessingEffect
 		SetProperties();
 		GetShaderValues().Apply( compute );
 
-		// The bakers call raymarch() too, so they need the multiple-scattering LUT bound like
+		// The bakers call marchScattering() too, so they need the multiple-scattering LUT bound like
 		// every other consumer - otherwise the bake would omit a term the runtime has, measuring
 		// the bake rather than the technique.
 		if ( multipleScatteringLUT != null ) { compute.SetTexture( 0, "MultipleScatteringLUT", multipleScatteringLUT ); }
@@ -400,7 +400,7 @@ public class AtmosphereEffect : PostProcessingEffect
 
 		// Rayleigh values
 		// Floored like ozoneHalfWidth below: both scale heights are inspector fractions that can
-		// hit exactly zero, and getScatteringValues divides by them inside exp() - producing a NaN
+		// hit exactly zero, and calcScatteringValues divides by them inside exp() - producing a NaN
 		// that survives every downstream saturate/clamp rather than a harmless infinity.
 		values.floats.Add( ("rayleighScaleHeight", Mathf.Max( 1e-4f, rayleighDensityAvg * thickness )) );
 		// Arbitrary scale to give nicer range of reasonable values for the scattering constant
@@ -574,7 +574,7 @@ public class AtmosphereEffect : PostProcessingEffect
 	/// </summary>
 	void BindComputeResources()
 	{
-		// Every raymarch() consumer needs the multiple-scattering LUT bound, including via
+		// Every marchScattering() consumer needs the multiple-scattering LUT bound, including via
 		// ApplyAtmosphereValuesTo - an unbound compute texture fails silently rather than loudly.
 		if ( multipleScatteringLUT != null )
 		{
@@ -583,13 +583,16 @@ public class AtmosphereEffect : PostProcessingEffect
 			if ( aerialPerspectiveLUTCompute != null ) { aerialPerspectiveLUTCompute.SetTexture( 0, "MultipleScatteringLUT", multipleScatteringLUT ); }
 		}
 
-		// The cloud deck, for light shafts in raymarchSegment. Bound explicitly since computes
+		// The cloud deck, for light shafts in marchScatteringSegment. Bound explicitly since computes
 		// don't receive Shader.SetGlobalTexture - every kernel referencing CloudShadowMap needs
 		// an explicit bind or the dispatch fails outright. Rebound every frame since the owning
 		// renderer can change between profiles.
 		CloudShadowGlobals.BindTo( skyViewLUTCompute, 0 );
 		CloudShadowGlobals.BindTo( skyRenderCompute, 0 );
 		CloudShadowGlobals.BindTo( aerialPerspectiveLUTCompute, 0 );
+		// Reaches raymarch too, so it compiles a CloudShadowMap reference. Nothing samples it
+		// today only because the branch dead-strips; binding white keeps the bake unchanged.
+		CloudShadowGlobals.BindTo( multipleScatteringLUTCompute, 0 );
 
 		if ( skyViewLUTCompute != null && skyViewLUT != null )
 		{

@@ -435,8 +435,8 @@ static class AtmosphereValidation
 	/// <summary>
 	/// How well the view march's step count resolves each species.
 	///
-	/// `raymarch` sampled at the start of each segment - a left-Riemann sum, which overestimates
-	/// a decaying profile, and the mirror of the right-Riemann bias `getSunTransmittance` had.
+	/// `marchScattering` sampled at the start of each segment - a left-Riemann sum, which overestimates
+	/// a decaying profile, and the mirror of the right-Riemann bias `marchTransmittance` had.
 	/// Both are now midpoint. This reports what that was worth, at the configured step counts,
 	/// so the step counts themselves are justified on the record rather than by assertion.
 	///
@@ -588,7 +588,7 @@ static class AtmosphereValidation
 	///
 	/// It is compared against *two* references, and the gap between them is the point. The
 	/// closed form is the true optical depth; the right-Riemann sum is what
-	/// `getSunTransmittance` actually computes, because it advances the sample position before
+	/// `marchTransmittance` actually computes, because it advances the sample position before
 	/// sampling rather than at the midpoint. If the LUT matches the Riemann value the shader
 	/// implements what this file's mirror says it does, and the distance to the closed form is
 	/// the sampling bias waiting to be fixed.

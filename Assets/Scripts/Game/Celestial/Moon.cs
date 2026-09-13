@@ -15,19 +15,14 @@ namespace SolarSystem
 		public float size;
 		public int resolution;
 
-
-
 		public Renderer moonRenderer;
 
 		[Header( "Lighting" )]
-		[Tooltip( "Colour of moonlight for shaders that sample it. Moonlight is reflected sunlight " +
-			"off a grey body, so it is close to neutral - the familiar blue cast is the eye, not " +
-			"the light." )]
+		[Tooltip( "Colour of moonlight for shaders that sample it." )]
 		public Color moonLightColour = new Color( 0.85f, 0.89f, 1f );
-		[Tooltip( "Scales moonLightColour. Real moonlight is about a 400,000th of sunlight, which " +
-			"no display transform here would survive, so this is an authored level." )]
+		[Tooltip( "Scales moonLightColour." )]
 		public float moonLightIntensity = 0.06f;
-		[Tooltip( "Needed for the moon's phase. Without it the moon reads as always full." )]
+		[Tooltip( "For the moon's phase." )]
 		public Light sunLight;
 
 		static readonly int MoonPositionId = Shader.PropertyToID( "moonPosition" );
@@ -39,12 +34,8 @@ namespace SolarSystem
 		public float debug_dst;
 		public bool freezeOrbit;
 
-
-
-
 		public void UpdateOrbit( float monthT, EarthOrbit earth, bool geocentric )
 		{
-
 			transform.localScale = Vector3.one * size * ( ( Application.isPlaying ) ? 1 : 2 );
 
 			if ( freezeOrbit )
@@ -81,25 +72,10 @@ namespace SolarSystem
 			}
 		}
 
-		/// <summary>
-		/// Publishes the moon's position and light colour for shaders that want to be lit by it.
-		///
-		/// The ocean is the first: it gives the moon a specular glint on the water the same way it
-		/// does the sun. Position rather than direction, because at 811 world units against a
-		/// 150-unit planet the moon is NOT far enough away to be directional - the direction to it
-		/// swings by about ten degrees across the visible globe, which is exactly the scale a glint
-		/// path is drawn at.
-		///
-		/// Worth knowing: the moon itself is not currently drawn. It orbits beyond the camera's
-		/// 600-unit far plane, and its rendering is unfinished - so this lights the water without
-		/// anything visible in the sky to justify it. Making the moon presentable is separate work.
-		/// </summary>
 		void PublishMoonLighting()
 		{
 			Shader.SetGlobalVector( MoonPositionId, transform.position );
 
-			// Illuminated fraction as seen from the planet. The moon is opposite the sun at full,
-			// so the dot is -1 there and +1 at new.
 			Vector3 toMoon = transform.position.sqrMagnitude > 1e-6f
 				? transform.position.normalized
 				: Vector3.up;

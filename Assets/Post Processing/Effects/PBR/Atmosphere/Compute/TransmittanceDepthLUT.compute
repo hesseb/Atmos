@@ -33,7 +33,7 @@ void CreateTransmittanceLUT (uint2 id : SV_DispatchThreadID)
 	float sinZenith = sqrt(saturate(1 - cosZenith * cosZenith));
 	float3 dir = float3(sinZenith, cosZenith, 0);
 
-	float3 transmittance = getSunTransmittance(inPoint, dir);
+	float3 transmittance = marchTransmittance(inPoint, dir);
 
 	TransmittanceLUT[id.xy] = transmittance;
 }

@@ -26,6 +26,7 @@ Shader "Hidden/DrawSkyBaseline"
 
 			#include "UnityCG.cginc"
 			#include "Assets/Scripts/Shader Common/DrawAtmosphereCommon.hlsl"
+			#include "Assets/Scripts/Shader Common/MathInternal.hlsl"
 
 			struct appdata
 			{
@@ -79,7 +80,6 @@ Shader "Hidden/DrawSkyBaseline"
 			// Thanks to https://www.shadertoy.com/view/slSXRW
 			float3 sunDiscWithBloom(float3 rayDir, float3 sunDir)
 			{
-				static const float PI = 3.1415;
 				const float sunSolidAngle = sunDiscSize * PI / 180.0;
 				const float minSunCosTheta = cos(sunSolidAngle);
 

@@ -56,11 +56,11 @@
 			/// the aerial perspective LUT covers, rather than reproducing the geometry - a diagnostic
 			/// that restates what it is checking can agree with itself while both are wrong.
 			float shaftVisibilityAlong(float3 rayOrigin, float3 rayDir, float sceneDepth) {
-				float2 hitInfo = raySphere(0, atmosphereRadius, rayOrigin, rayDir);
-				float3 inPoint = rayOrigin + rayDir * hitInfo.x;
+				SphereChord hitInfo = raySphereChordAtOrigin(atmosphereRadius, rayOrigin, rayDir);
+				float3 inPoint = rayOrigin + rayDir * hitInfo.dstTo;
 
-				float span = min(hitInfo.y, sceneDepth - hitInfo.x);
-				float dstToGround = rayIntersectSphere(inPoint, rayDir, planetRadius);
+				float span = min(hitInfo.dstThrough, sceneDepth - hitInfo.dstTo);
+				float dstToGround = rayIntersectSphereAtOrigin(inPoint, rayDir, planetRadius);
 				if (dstToGround > 0) { span = min(span, dstToGround); }
 				if (span <= 0) { return 1; }
 
@@ -96,9 +96,9 @@
 				float3 rayDir = viewDir;
 
 
-				float2 hitInfo = raySphere(0, atmosphereRadius, rayOrigin, rayDir);
-				float dstToAtmosphere = hitInfo.x;
-				float dstThroughAtmosphere = hitInfo.y;
+				SphereChord hitInfo = raySphereChordAtOrigin(atmosphereRadius, rayOrigin, rayDir);
+				float dstToAtmosphere = hitInfo.dstTo;
+				float dstThroughAtmosphere = hitInfo.dstThrough;
 
 				// Sky is decided on eye depth, not on the radial distance, and with a tolerance.
 				//
@@ -138,7 +138,7 @@
 					// always the air actually between the camera and what it is looking at, so
 					// every slice is used at every altitude, whatever the slice count happens to
 					// be. The compute derives the same span from the same two intersections.
-					float dstToGround = rayIntersectSphere(inPoint, rayDir, planetRadius);
+					float dstToGround = rayIntersectSphereAtOrigin(inPoint, rayDir, planetRadius);
 					float span = dstToGround > 0 ? min(dstThroughAtmosphere, dstToGround) : dstThroughAtmosphere;
 
 					// Capped at the tangent distance, identically to the compute, so the depth axis

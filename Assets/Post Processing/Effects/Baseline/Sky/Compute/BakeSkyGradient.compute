@@ -1,6 +1,6 @@
 // Header revision this file was last rebuilt against: 750 km planet + densityMultiplier.
 
-// Bakes the physically based sky into the baseline's 2D gradient LUT, reusing raymarch()
+// Bakes the physically based sky into the baseline's 2D gradient LUT, reusing marchScattering()
 // directly so the baseline and PBR sky can never silently diverge. One dispatch per row.
 #pragma kernel BakeSkyGradientRow
 
@@ -62,13 +62,13 @@ void BakeSkyGradientRow (uint3 id : SV_DispatchThreadID)
 	viewDir = clampToHorizon(viewDir, observerUp, observerEast);
 
 	float3 col = 0;
-	float2 hitInfo = raySphere(0, atmosphereRadius, pos, viewDir);
-	float rayLength = hitInfo.y;
+	SphereChord hitInfo = raySphereChordAtOrigin(atmosphereRadius, pos, viewDir);
+	float rayLength = hitInfo.dstThrough;
 
 	if (rayLength > 0)
 	{
-		float3 inPoint = pos + viewDir * hitInfo.x;
-		ScatteringResult result = raymarch(inPoint, viewDir, rayLength,
+		float3 inPoint = pos + viewDir * hitInfo.dstTo;
+		ScatteringState result = marchScattering(inPoint, viewDir, rayLength,
 			numScatteringSteps, TransmittanceLUT, planetRadius);
 		col = result.luminance;
 	}

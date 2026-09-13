@@ -25,7 +25,7 @@ struct MultipleScatteringSample {
 };
 
 /// One march from `origin` along `rayDir`, accumulating both quantities at once. Separate from
-/// raymarch() since this needs an isotropic phase, two accumulators, and must NOT itself read the
+/// marchScattering() since this needs an isotropic phase, two accumulators, and must NOT itself read the
 /// multiple-scattering LUT (which raymarch does) - that would make the LUT depend on itself.
 MultipleScatteringSample marchForMultipleScattering(float3 origin, float3 rayDir, float3 sunDir)
 {
@@ -33,12 +33,11 @@ MultipleScatteringSample marchForMultipleScattering(float3 origin, float3 rayDir
 	result.L = 0;
 	result.fms = 0;
 
-	float2 atmosphereHit = raySphere(0, atmosphereRadius, origin, rayDir);
-	float rayLength = atmosphereHit.y;
+	float rayLength = raySphereChordAtOrigin(atmosphereRadius, origin, rayDir).dstThrough;
 	if (rayLength <= 0) { return result; }
 
 	// Stop at the ground, and remember whether we did - the surface bounce below needs it.
-	float dstToGround = rayIntersectSphere(origin, rayDir, planetRadius);
+	float dstToGround = rayIntersectSphereAtOrigin(origin, rayDir, planetRadius);
 	bool hitGround = dstToGround > 0;
 	if (hitGround) { rayLength = min(rayLength, dstToGround); }
 
@@ -51,9 +50,9 @@ MultipleScatteringSample marchForMultipleScattering(float3 origin, float3 rayDir
 	float3 transmittance = 1;
 
 	for (int i = 0; i < numSteps; i++) {
-		// Midpoint, for the same reason raymarch and getSunTransmittance are.
+		// Midpoint, for the same reason raymarch and marchTransmittance are.
 		float3 samplePos = origin + rayDir * ((i + 0.5) * stepSize);
-		ScatteringParameters scattering = getScatteringValues(samplePos);
+		ScatteringParameters scattering = calcScatteringValues(samplePos);
 
 		float3 opticalDepth = scattering.extinction * stepSize;
 		float3 sampleTransmittance = exp(-opticalDepth);
@@ -70,7 +69,7 @@ MultipleScatteringSample marchForMultipleScattering(float3 origin, float3 rayDir
 		// L2: single-scattered sunlight. The transmittance LUT ignores the planet by convention,
 		// so the occlusion test has to be done here by the caller.
 		float3 sunTransmittance = sampleTransmittanceLUT(TransmittanceLUT, samplePos, sunDir);
-		if (rayIntersectSphere(samplePos, sunDir, planetRadius) > 0) { sunTransmittance = 0; }
+		if (rayIntersectSphereAtOrigin(samplePos, sunDir, planetRadius) > 0) { sunTransmittance = 0; }
 
 		result.L += weight * isotropicPhase * sunTransmittance;
 

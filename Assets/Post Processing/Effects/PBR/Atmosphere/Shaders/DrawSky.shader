@@ -20,6 +20,7 @@ Shader "Hidden/DrawSky"
 			// Brings planetRadius / atmosphereThickness / atmosphereRadius and the one
 			// definition of the transmittance LUT's parameterisation.
 			#include "../Shader Common/TransmittanceCommon.hlsl"
+			#include "Assets/Scripts/Shader Common/MathInternal.hlsl"
 
 			struct appdata
 			{
@@ -58,7 +59,6 @@ Shader "Hidden/DrawSky"
 
 			// Thanks to https://www.shadertoy.com/view/slSXRW
 			float3 sunDiscWithBloom(float3 rayDir, float3 sunDir) {
-				static const float PI = 3.1415;
 				const float sunSolidAngle = sunDiscSize*PI/180.0;
 				const float minSunCosTheta = cos(sunSolidAngle);
 
