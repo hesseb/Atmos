@@ -2489,3 +2489,64 @@ read and is not.
 - **`ApplyAtmosphereValuesTo` builds `ShaderValues` twice when the settings are dirty** - real,
   but it is the offline bake path, and reusing `sharedAtmosphereValues` would silently change
   behaviour for a caller that wrote fields without marking the settings dirty.
+
+## Findings moved out of AtmosphereCommon.hlsl
+
+Recorded here when `raymarchSegment`'s comments were trimmed — the code carried a 3:1
+comment-to-code ratio and these are history and evidence, not explanation.
+
+### Midpoint sampling, measured
+
+The loop evaluated density at `rayPos` and only then advanced: a left-Riemann sum, which
+OVERestimates on a decaying profile. The mirror of the right-Riemann bias fixed earlier in
+`getSunTransmittance`, which underestimated. Error scales with step/H, and the Mie scale height
+is 1.32 world units:
+
+```
+sky, 256 steps      Rayleigh +5.7%    Mie  +41.5%   ->  midpoint -0.1% / -2.2%
+aerial persp, 20    Rayleigh +48.6%   Mie +470.1%   ->  midpoint -3.0% / -66.7%
+```
+
+Mie is concentrated in the lowest few units, so the overstated term is precisely the horizon
+haze. The aerial figures stay poor after the fix: 20 steps over a 150-unit clip distance cannot
+resolve a 1.32-unit layer. That is a step-count problem, and the incremental single-pass march
+is what buys the steps back (O(N^2) -> O(N) per slice).
+
+### `rayleighPhaseValue = 1` — why the sky appeared to need unphysical constants
+
+A normalised phase averages 1/(4*PI) over the sphere, so substituting 1 inflated Rayleigh
+in-scatter by 4*PI = 12.57x. Every other constant was bent to absorb it: coefficients ~3x
+Earth's, and a negative red ozone absorption that adds energy.
+
+It could not be corrected in sigma. In-scatter is *linear* in sigma_s but transmittance is
+*exponential* in sigma_t, so scaling sigma by 4*PI would take blue vertical optical depth from
+0.27 to 3.3 and bury the planet in haze. The missing quantity was illuminance, which multiplies
+in-scatter without touching transmittance.
+
+With E = 4*PI the restored phase's 1/(4*PI) cancels exactly, so Rayleigh's *average* is
+unchanged — what changes is that it has angular structure at all, including the dark band ~90
+degrees from the sun. Mie is what actually moves: it already had its correct phase, so it had
+been out-weighted by 4*PI, and it now rises by 12.57x relative to the forward glow that a warm
+sunset is mostly made of. E and `intensity` cancel at that instant, so E adds no physics by
+itself; what it adds is a named slot, so the phase can be normalised and sigma made physical
+without either being absorbed into an art constant.
+
+### Why cloud occludes the multiply-scattered term but the earth shadow does not
+
+The earth-shadow argument is right about the planet: the night side is lit by light that
+multiply-scattered in from an enormous adjacent daylit region, so zeroing it there is what makes
+the shadowed band black — and black is wrong. A point under a broad overcast has no such
+neighbour; the cloud blocks sunlight BEFORE it enters the air below, so the multiply-scattered
+field down there really is reduced.
+
+It matters more than it sounds: this atmosphere is optically thick (zenith transmittance 0.45
+against Earth's 0.77), so multiple scattering is a large share of in-scatter. Left unoccluded it
+fills the shadowed air back in and washes the shafts out — which is what happened, with the
+single-scattering term correctly shadowed and the beams still invisible. Partial rather than
+full, since some multiply-scattered light genuinely arrives from the sides.
+
+### Shaft visibility is resolution-bound
+
+How visible shafts are depends on what each consumer marches at. The sky is 128x256; the aerial
+LUT is 64 texels across the SCREEN unless raised, about 40 pixels at 1440p — and a shaft
+narrower than one texel does not exist in the data.
