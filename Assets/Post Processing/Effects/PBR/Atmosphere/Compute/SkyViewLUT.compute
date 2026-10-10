@@ -2,53 +2,38 @@
 #include "Assets/Scripts/Shader Common/AtmosphereCommon.hlsl"
 #include "../Shader Common/SkyViewCommon.hlsl"
 
-// Header revision this file was last rebuilt against: sky view LUT, initial.
+// Sky radiance as a function of direction: The atmosphere's spherical symmetry means the sky only depends on local sun elevation and direction relative to (up, sun)
+// meaning the LUT changes only with the sun, never with the camera.
 
-// Unity does not reliably rebuild a .compute when an included .hlsl changes. If the atmosphere's
-// output looks stale after editing anything under Shader Common, reimport this file.
-
-// Sky radiance as a function of direction, for consumers other than the sky pass - the ocean's
-// reflection is the first. Built in a CANONICAL FRAME (up = +Y, sun in the +X/+Y half-plane)
-// fabricated here on the CPU, since raymarch reads the global dirToSun and HLSL globals are
-// read-only in-shader (MultipleScattering.compute does the same). Exact, not approximate: the
-// atmosphere's spherical symmetry means the sky only depends on local sun elevation and direction
-// relative to (up, sun) - so the LUT moves only with the sun, never with the camera.
-
-RWTexture2D<float4> SkyViewResult;
+RWTexture2D<float4> SkyViewOutputLUT;
 sampler2D TransmittanceLUT;
-
 int numSkyViewSteps;
 
 [numthreads(8, 8, 1)]
 void RenderSkyViewLUT(uint3 id : SV_DispatchThreadID)
 {
 	uint2 size = (uint2)skyViewLutSize;
-	if (id.x >= size.x || id.y >= size.y) { return; }
+	
+	if (id.x >= size.x || id.y >= size.y)
+	{
+		return;
+	}
 
 	float cosViewZenith, cosAzimuth;
-	skyViewLutParams((id.xy + 0.5) / skyViewLutSize, skyViewLutRadius, cosViewZenith, cosAzimuth);
+	skyViewLutParams( ( id.xy + 0.5 ) / skyViewLutSize, skyViewLutRadius, cosViewZenith, cosAzimuth );
 
 	float3 origin = float3(0, skyViewLutRadius, 0);
-
-	// Rebuild the direction in the canonical frame. sin is taken from the cosines rather than
-	// carried through an angle, which keeps this exactly consistent with the inverse mapping.
 	float sinZenith = sqrt(saturate(1 - cosViewZenith * cosViewZenith));
 	float sinAzimuth = sqrt(saturate(1 - cosAzimuth * cosAzimuth));
 	float3 viewDir = float3(sinZenith * cosAzimuth, cosViewZenith, sinZenith * sinAzimuth);
 
 	float3 luminance = 0;
-
 	SphereChord hitInfo = raySphereChordAtOrigin(atmosphereRadius, origin, viewDir);
 	if (hitInfo.dstThrough > 0)
 	{
-		// Same calling convention as SkyRender.compute: start at the atmosphere boundary, march the
-		// chord, and let raymarch clip at the ground. planetRadius as the earth-shadow radius
-		// matches the sky pass, since the shadowed band belongs here for the same reason.
 		float3 inPoint = origin + viewDir * hitInfo.dstTo;
 		luminance = marchScattering(inPoint, viewDir, hitInfo.dstThrough, numSkyViewSteps, TransmittanceLUT, planetRadius).luminance;
 	}
 
-	// No sun disc - the ocean draws its own glint analytically, and the disc is below this LUT's
-	// angular resolution across most of the sky anyway.
-	SkyViewResult[id.xy] = float4(luminance, 1);
+	SkyViewOutputLUT[id.xy] = float4(luminance, 1);
 }

@@ -18,7 +18,7 @@ using TerrainGeneration;
 /// reproducible measurements than the extra polish would.
 ///
 /// HARNESS NOTE: AtmosphereEffect rebuilds its sky and aerial-perspective LUTs during
-/// Camera.onPreCull using the camera position (AtmosphereEffect.SetRaymarchParams). The
+/// Camera.onPreCull using the camera position (AtmosphereEffect.SetFrustumCorners). The
 /// first frame after a large SetView jump therefore renders with LUTs built for the OLD
 /// position. Always capture via SnapAndSettle(), never immediately after SetView.
 /// </summary>

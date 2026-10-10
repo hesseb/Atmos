@@ -1,14 +1,9 @@
 #pragma kernel RenderSkyLUT
 
 #include "Assets/Scripts/Shader Common/AtmosphereCommon.hlsl"
-#include "../Shader Common/RaymarchCommon.hlsl"
+#include "../Shader Common/ViewRayCommon.hlsl"
 
-// Header revision this file was last rebuilt against: horizon lift + texel-centre sampling.
-
-// Unity does not reliably rebuild a .compute when an included .hlsl changes. If the atmosphere's
-// output looks stale after editing anything under Shader Common, reimport this file.
-
-RWTexture2D<float4> Sky;
+RWTexture2D<float4> SkyLUT;
 sampler2D TransmittanceLUT;
 
 uint2 size;
@@ -17,35 +12,30 @@ int numScatteringSteps;
 [numthreads(8,8,1)]
 void RenderSkyLUT (uint3 id : SV_DispatchThreadID)
 {
+	if (id.x >= size.x || id.y >= size.y)
+	{
+		return;
+	}
 
-	if (id.x >= size.x || id.y >= size.y) { return; }
-
-	// Texel centres, not id/(size-1) - matches DrawSky's bilinear sample of this texture at raw
-	// screen uv. Same fix as LutMapping.hlsl applies to the other LUTs.
 	float2 texCoord = (id.xy + 0.5) / float2(size);
 	float3 viewDir = calculateViewDir(texCoord);
 
-	// Lift directions below the horizon back up onto it. raymarch clips at the ground, so a
-	// below-horizon ray returns a short, dark march that bleeds upward past the geometry horizon
-	// once bilinearly upscaled. These texels are always covered by terrain or ocean, so holding the
-	// horizon-grazing value there is free and keeps the texture continuous where it's sampled most
-	// steeply. Same reasoning as skyViewHorizonV = 1 in the sky view LUT.
 	float camRadius = length(camPos);
-	if (camRadius > 1e-4) {
+	if (camRadius > 1e-4)
+	{
 		float3 up = camPos / camRadius;
 		float cosHorizon = -sqrt(saturate(1 - (planetRadius * planetRadius) / (camRadius * camRadius)));
 		float cosView = dot(up, viewDir);
 
-		// A hair PAST the horizon, not onto it - a ray exactly on the horizon still grazes the
-		// planet and gets clipped by raymarch at the tangent point, leaving a visible step at the
-		// skyline. Clearing it makes the ray miss instead, so these texels match the sky just above.
+		// A little after the horizon, not exactly on it as otherwise it leaves a visible seam at the skyling
 		cosHorizon = min(1, cosHorizon + 2e-3);
 
-		if (cosView < cosHorizon) {
-			// Rotate onto that cone, keeping the azimuth.
+		if (cosView < cosHorizon)
+		{
 			float3 tangent = viewDir - up * cosView;
 			float tangentLen = length(tangent);
-			if (tangentLen > 1e-4) {
+			if (tangentLen > 1e-4)
+			{
 				float sinHorizon = sqrt(saturate(1 - cosHorizon * cosHorizon));
 				viewDir = normalize((tangent / tangentLen) * sinHorizon + up * cosHorizon);
 			}
@@ -63,5 +53,5 @@ void RenderSkyLUT (uint3 id : SV_DispatchThreadID)
 		ScatteringState result = marchScattering(inPoint, viewDir, dstThroughAtmosphere, numScatteringSteps, TransmittanceLUT, planetRadius);
 		col = result.luminance;
 	}
-	Sky[id.xy] = float4(col, 1);
+	SkyLUT[id.xy] = float4(col, 1);
 }

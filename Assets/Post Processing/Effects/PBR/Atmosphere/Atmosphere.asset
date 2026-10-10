@@ -68,6 +68,6 @@ MonoBehaviour:
   transmittanceLUT: {fileID: 0}
   multipleScatteringLUT: {fileID: 0}
   skyViewLUT: {fileID: 0}
-  aerialPerspectiveLuminance: {fileID: 0}
-  aerialPerspectiveTransmittance: {fileID: 0}
-  sky: {fileID: 0}
+  aerialLuminanceLUT: {fileID: 0}
+  aerialTransmittanceLUT: {fileID: 0}
+  skyLUT: {fileID: 0}

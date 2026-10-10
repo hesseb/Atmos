@@ -17,15 +17,13 @@ Shader "Hidden/DrawSky"
 
 			#include "UnityCG.cginc"
 			#include "Assets/Scripts/Shader Common/DrawAtmosphereCommon.hlsl"
-			// Brings planetRadius / atmosphereThickness / atmosphereRadius and the one
-			// definition of the transmittance LUT's parameterisation.
 			#include "../Shader Common/TransmittanceCommon.hlsl"
 			#include "Assets/Scripts/Shader Common/MathInternal.hlsl"
 
 			struct appdata
 			{
 				float4 vertex : POSITION;
-				float2 uv : TEXCOORD0;//
+				float2 uv : TEXCOORD0;
 			};
 
 			struct v2f
@@ -47,7 +45,7 @@ Shader "Hidden/DrawSky"
 
 			// Sky tex
 			sampler2D _MainTex;
-			sampler2D Sky;
+			sampler2D SkyLUT;
 
 			sampler2D TransmittanceLUT;
 			float skyTransmittanceWeight;
@@ -78,9 +76,9 @@ Shader "Hidden/DrawSky"
 
 // Account for flipped y on some platforms
 #if UNITY_UV_STARTS_AT_TOP
-				float3 skyLum = tex2D(Sky, i.uv).rgb;
+				float3 skyLum = tex2D(SkyLUT, i.uv).rgb;
 #else
-				float3 skyLum = tex2D(Sky, float2(i.uv.x, 1-i.uv.y)).rgb;
+				float3 skyLum = tex2D(SkyLUT, float2(i.uv.x, 1-i.uv.y)).rgb;
 #endif
 				float3 sunDisc = sunDiscWithBloom(viewDir, dirToSun);
 				float3 transmittance = sampleTransmittanceLUT(TransmittanceLUT, _WorldSpaceCameraPos, viewDir);
