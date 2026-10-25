@@ -7,6 +7,8 @@ The project is being done as part of a master's thesis in computer science at KT
 
 The project currently features a globe with country labels and borders as a base. It then renders the atmosphere, sky, clouds on top of that. There are multiple settings to control this, including time controls, render flags, benchmarking tools, etc.
 
+![Example screenshot](docs/images/example.png)
+
 #### Status
 The project is a work in progress.
 
