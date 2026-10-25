@@ -862,6 +862,15 @@ namespace Clouds
 			return h.ToHashCode();
 		}
 
+		static int ContentsHash( Texture3D texture )
+		{
+#if UNITY_EDITOR
+			return texture != null ? texture.imageContentsHash.GetHashCode() : 0;
+#else
+			return 0;
+#endif
+		}
+
 		/// <summary>
 		/// Everything the DENSITY MODEL reads, as one comparable value - the weather map's signature
 		/// discipline extended to the two dispatches that march through it. The weather map's own
@@ -879,10 +888,10 @@ namespace Clouds
 			// neither of those and would otherwise read as "nothing changed" to this signature.
 			h.Add( shapeNoise != null ? shapeNoise.GetInstanceID() : 0 );
 			h.Add( shapeNoise != null ? shapeNoise.width : 0 );
-			h.Add( shapeNoise != null ? shapeNoise.imageContentsHash.GetHashCode() : 0 );
+			h.Add( ContentsHash( shapeNoise ) );
 			h.Add( detailNoise != null ? detailNoise.GetInstanceID() : 0 );
 			h.Add( detailNoise != null ? detailNoise.width : 0 );
-			h.Add( detailNoise != null ? detailNoise.imageContentsHash.GetHashCode() : 0 );
+			h.Add( ContentsHash( detailNoise ) );
 			h.Add( InnerRadius ); h.Add( OuterRadius );
 			h.Add( shapeScale ); h.Add( detailScale ); h.Add( detailWeight );
 			h.Add( densityMultiplier ); h.Add( coverageMultiplier ); h.Add( typeOffset );
