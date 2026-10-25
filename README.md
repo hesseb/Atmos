@@ -16,6 +16,9 @@ To assist in porting the techniques described by Hillaire, Bruneton, Schneider t
 ### Requirements
 The project uses Unity v6000.3.21f1.
 
+### License
+MIT. See LICENSE. Based on work by Sebastian Lague.
+
 ## Main References
 - Hillaire, S. (2020). [A Scalable and Production Ready Sky and Atmosphere Rendering Technique](https://onlinelibrary.wiley.com/doi/10.1111/cgf.14050). *Computer Graphics Forum* 39(4), 13–22.
 - Hillaire, S. (2016). [Physically Based Sky, Atmosphere and Cloud Rendering in Frostbite](https://media.contentapi.ea.com/content/dam/eacom/frostbite/files/s2016-pbs-frostbite-sky-clouds-new.pdf). SIGGRAPH.
