@@ -392,7 +392,6 @@ namespace Clouds
 			shadowCompute.SetFloat( "baselineBodyRadius", bodyRadius );
 
 			shadowCompute.SetTexture( kernel, "Result", shadowMap );
-			shadowCompute.SetVector( "shadowMapSize", new Vector2( width, height ) );
 			shadowCompute.SetVector( "shadowSunDir", dirToSun );
 			shadowCompute.SetFloat( "shadowDetailScale", shadowDetailScale );
 

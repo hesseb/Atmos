@@ -4,77 +4,47 @@
 #include "Assets/Post Processing/Effects/PBR/Clouds/Shader Common/CloudCommon.hlsl"
 
 // How much sunlight reaches each point on the globe after passing through the cloud shell.
-//
-// Equirectangular and indexed by pointToUV, like the weather map and city light field: view-
-// independent (no frustum or cascade), scale-invariant, and costs consumers one tap.
-//
-// Uses the same CloudCommon density model as the march, so the shadow can never disagree with the cloud casting it.
-
 RWTexture2D<float4> Result;
-
-float2 shadowMapSize;
 float3 shadowSunDir;
+float shadowGroundRadius;
 int shadowSteps;
 float shadowAbsorption;
-
-/// Widens the footprint each sample is read at, beyond what the map itself can represent. 1 matches
-/// the map exactly; higher softens the shadows further.
 float shadowDetailScale;
+
+///////// External entry points /////////////////
 
 [numthreads(8, 8, 1)]
 void CSCloudShadow(uint3 id : SV_DispatchThreadID)
 {
-	uint2 size = (uint2)shadowMapSize;
-	if (id.x >= size.x || id.y >= size.y) { return; }
+	uint width, height;
+	Result.GetDimensions(width, height);
+	if (id.x >= width || id.y >= height) { return; }
 
-	float2 uv = (id.xy + 0.5) / shadowMapSize;
+	float2 uv = (id.xy + 0.5) / float2(width, height);
 	float3 sphereNormal = uvToPointOnSphere(uv);
 
-	// Nothing to shadow once the sun is below the local horizon, and marching anyway would send the
-	// ray down through the planet and pick up cloud on the far side.
 	if (dot(sphereNormal, shadowSunDir) <= 0)
 	{
 		Result[id.xy] = 1;
 		return;
 	}
 
-	// Starts at the cloud base rather than sea level (no cloud below it, so that segment is wasted
-	// steps), lifted clear of the inner sphere rather than placed exactly on it - exactly on the
-	// boundary, dot(origin, origin) - radius^2 rounds to either sign per-texel, which either misses
-	// the near span entirely or marches the whole shell, producing a fixed speckle of unshadowed texels.
-	float3 origin = sphereNormal * (cloudInnerRadius + 1e-2);
+	float3 origin = sphereNormal * shadowGroundRadius;
 
-	float2 nearSpan, farSpan;
-	if (!cloudShellSegments(origin, shadowSunDir, nearSpan, farSpan))
-	{
-		Result[id.xy] = 1;
-		return;
-	}
-
-	// Both spans, not just the near one: with the sun low the ray can graze back out through the
-	// base and the cloud beyond it is real, the same two-crossing geometry the view ray has.
-	float start = nearSpan.x;
-	float end = max(nearSpan.y, farSpan.y);
-	if (end <= start)
-	{
-		Result[id.xy] = 1;
-		return;
-	}
-
+	float start = cloudRaySphere(cloudInnerRadius, origin, shadowSunDir).y;
+	float end = cloudRaySphere(cloudOuterRadius, origin, shadowSunDir).y;
 	float stepSize = (end - start) / max(1, shadowSteps);
 
-	// Density is read at the footprint of a shadow map texel, not the march step: this fixed global
-	// grid can't represent anything finer, so reading at step resolution just aliases into flicker as wind drifts it.
-	float texelWorldSize = 6.28318530718 * cloudInnerRadius / max(1, shadowMapSize.x);
+	float texelWorldSize = 2 * PI * cloudInnerRadius / max(1, width);
 	float sampleFootprint = max(stepSize, texelWorldSize * shadowDetailScale);
 
 	float opticalDepth = 0;
-
 	for (int i = 0; i < shadowSteps; i++)
 	{
 		float3 pos = origin + shadowSunDir * (start + (i + 0.5) * stepSize);
-		// `cheap`: no detail erosion, invisible at this distance and the more expensive half of the density function.
-		opticalDepth += max(0, sampleCloudDensity(pos, true, sampleFootprint)) * stepSize;
+		// `cheap` skips detail erosion, which is invisible at this footprint
+		const bool cheap = true;
+		opticalDepth += max(0, sampleCloudDensity(pos, cheap, sampleFootprint)) * stepSize;
 	}
 
 	Result[id.xy] = exp(-opticalDepth * shadowAbsorption);

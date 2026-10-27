@@ -1,91 +1,162 @@
-// The cloud's optical model - phase function, Beer-Powder, cone-sampled light march - shared by the
-// view-ray march and the downward-radiance bake so both agree on the same physics. Each consumer
-// still assembles its own radiance from sun/sky/moon terms; that assembly lives elsewhere. Compute-safe.
+// The cloud's optical model - phase function, Beer-Powder, cone-sampled light march, ambient and step integration
 
 #ifndef CLOUD_LIGHTING_COMMON_INCLUDED
 #define CLOUD_LIGHTING_COMMON_INCLUDED
 
 #include "Assets/Post Processing/Effects/PBR/Clouds/Shader Common/CloudCommon.hlsl"
+#include "Assets/Scripts/Shader Common/SurfaceLighting.hlsl"
+
+float3 cloudSunDir;
+float3 cloudSunColour;
+float cloudSunIntensity;
+float cloudSilverIntensity;
+float cloudAmbientIntensity;
+float cloudAmbientHorizon;
+float3 cloudAmbientFallback;
+float3 cloudNightAmbient;
+float cloudExtinction;
+
+float4 moonPosition;
+float4 moonLightColour;
+float cloudMoonIntensity;
+float cloudMoonSilverIntensity;
 
 float cloudLightMarchLength;
 float cloudLightAbsorption;
 float cloudConeSpread;
-
-/// Mip-selection length for the light march, kept separate from its (much longer) step length so
-/// self-shadowing detail doesn't get blurred away.
+float cloudLightFarDistance;
 float cloudLightMarchDetail;
 float cloudPowderStrength;
-
 float cloudPhaseForward;
 float cloudPhaseBackward;
 float cloudPhaseBlend;
 float cloudSilverSpread;
+float cloudLightTransmittanceWeight;
 
-/// Schneider's cone kernel: six directions the light march spreads into (scaled by step index) so
-/// light can wrap around a billow instead of self-shadowing like a flat slab.
-static const float3 cloudConeKernel[6] =
-{
-	float3( 0.38,  0.35,  0.86),
-	float3( 0.16, -0.32,  0.94),
-	float3(-0.66, -0.57,  0.49),
-	float3(-0.75,  0.61,  0.26),
-	float3( 0.71,  0.65, -0.26),
-	float3( 0.00,  0.00,  0.00)
-};
+///////// Internal helpers /////////////
 
-float cloudHg(float cosAngle, float g)
+float cloudHenyeyGreenstein(float cosAngle, float g)
 {
 	float g2 = g * g;
 	return (1 - g2) / (4 * PI * pow(max(1e-3, 1 + g2 - 2 * g * cosAngle), 1.5));
 }
 
-/// Two-lobe Henyey-Greenstein (forward + backward), scaled by 4*pi so isotropic evaluates to 1, plus
-/// Schneider's silver lining as a third, tighter forward lobe combined via max() rather than blended -
-/// so it adds a bright rim near the sun without washing out or lifting the general phase. Silver
-/// intensity is normalised by its own peak and passed per-caller since sun/moon/underside each differ.
+///////// External entry points /////////////////
+
+// Two-lobe Henyey-Greenstein (forward + backward), scaled by 4*pi so isotropic evaluates to 1, plus Schneider's silver lining
 float cloudPhase(float cosAngle, float silverIntensity)
 {
-	float forward = cloudHg(cosAngle, cloudPhaseForward);
-	float backward = cloudHg(cosAngle, -cloudPhaseBackward);
+	float forward = cloudHenyeyGreenstein(cosAngle, cloudPhaseForward);
+	float backward = cloudHenyeyGreenstein(cosAngle, -cloudPhaseBackward);
 	float base = lerp(forward, backward, cloudPhaseBlend) * 4 * PI;
 
 	float silverG = 0.99 - cloudSilverSpread;
-	float silver = silverIntensity * cloudHg(cosAngle, silverG) / max(1e-4, cloudHg(1, silverG));
+	float silver = silverIntensity * cloudHenyeyGreenstein(cosAngle, silverG) / max(1e-4, cloudHenyeyGreenstein(1, silverG));
 
 	return max(base, silver);
 }
 
-/// Optical depth to the sun, cone-sampled over a fixed, unrolled 6 steps (Schneider's count) so each
-/// index into cloudConeKernel stays a compile-time constant.
+// Schneider's light samples (SIGGRAPH 2015)
+// The cone layout is new, being evenly spaced
 float cloudLightMarch(float3 pos, float3 lightDir)
 {
-	const int lightSteps = 6;
-	float stepSize = cloudLightMarchLength / lightSteps;
+	const int coneSteps = 5;
+	// `cheap` skips detail erosion
+	const bool cheap = true;
+	float stepSize = cloudLightMarchLength / coneSteps;
+
+	float3 tangent = normalize(cross(lightDir, abs(lightDir.y) < 0.99 ? float3(0, 1, 0) : float3(1, 0, 0)));
+	float3 bitangent = cross(lightDir, tangent);
+
 	float totalDensity = 0;
 
 	[unroll]
-	for (int i = 0; i < lightSteps; i++)
+	for (int i = 0; i < coneSteps; i++)
 	{
-		float3 samplePos = pos + lightDir * ((i + 0.5) * stepSize);
-		samplePos += cloudConeKernel[i] * (cloudConeSpread * stepSize * (i + 1));
-		// `cheap` skips detail erosion (invisible here, the expensive half of density); mip comes
-		// from cloudLightMarchDetail, not stepSize, so self-shadowing isn't blurred away.
-		totalDensity += max(0, sampleCloudDensity(samplePos, true, cloudLightMarchDetail)) * stepSize;
+		float along = (i + 0.5) * stepSize;
+		float angle = i * (2 * PI / coneSteps);
+		float3 offset = (tangent * cos(angle) + bitangent * sin(angle)) * (cloudConeSpread * along);
+		float3 samplePos = pos + lightDir * along + offset;
+		totalDensity += max(0, sampleCloudDensity(samplePos, cheap, cloudLightMarchDetail)) * stepSize;
 	}
+
+	float3 farPos = pos + lightDir * (cloudLightMarchLength * cloudLightFarDistance);
+	totalDensity += max(0, sampleCloudDensity(farPos, cheap, cloudLightMarchDetail)) * stepSize;
 
 	return totalDensity;
 }
 
-/// Beer-Lambert with a powder term for the dark edge of a thin volume; the reference project omits
-/// this and uses a darkness threshold instead. Powder is non-monotonic in optical depth, so its
-/// strength is kept low enough that Beer still dominates the top-to-base gradient. Only correct with
-/// the sun behind the viewer, so it's faded out toward the sun to avoid fighting the silver lining.
+/// A light's colour at a sample, desaturated toward its own luminance by cloudLightTransmittanceWeight.
+float3 cloudLightColour(float3 transmittance, float3 colour)
+{
+	// Rec. 709 luminance weights.
+	float grey = dot(transmittance, float3(0.2126, 0.7152, 0.0722));
+	return lerp(grey.xxx, transmittance, cloudLightTransmittanceWeight) * colour;
+}
+
+/// Beer-Lambert with a powder term for the dark edge of a thin volume
 float cloudBeerPowder(float opticalDepth, float towardSun)
 {
 	float beer = exp(-opticalDepth * cloudLightAbsorption);
 	float powder = 1 - exp(-opticalDepth * cloudLightAbsorption * 2);
 	float strength = cloudPowderStrength * saturate(0.5 - 0.5 * towardSun);
 	return beer * lerp(1.0, powder, strength);
+}
+
+/// Direct sunlight scattered toward the viewer at a sample
+float3 cloudSunInScatter(float3 pos, float cosViewSun, float phase)
+{
+	float3 sunColour = cloudLightColour(sampleLightColourAt(pos, cloudSunDir), cloudSunColour);
+	float sunEnergy = cloudBeerPowder(cloudLightMarch(pos, cloudSunDir), cosViewSun);
+	return sunColour * sunEnergy * phase * cloudSunIntensity;
+}
+
+/// moonLightColour arrives scaled by the moon's phase, so a new moon is inactive
+bool cloudMoonActive()
+{
+	return dot(moonLightColour.rgb, 1) > 1e-4;
+}
+
+/// Moonlight scattered toward the viewer at a sample, with the sun's model
+float3 cloudMoonInScatter(float3 pos, float3 viewDir)
+{
+	float3 moonDir = normalize(moonPosition.xyz - pos);
+	float cosViewMoon = dot(viewDir, moonDir);
+
+	float3 moonColour = cloudLightColour(sampleLightColourAt(pos, moonDir), moonLightColour.rgb);
+	float moonEnergy = cloudBeerPowder(cloudLightMarch(pos, moonDir), cosViewMoon);
+	float moonPhase = cloudPhase(cosViewMoon, cloudMoonSilverIntensity);
+
+	return moonColour * moonEnergy * moonPhase * cloudMoonIntensity;
+}
+
+/// Skylight on a cloud, from the zenith and from the horizon under the sun, so a sunset's orange carries onto it
+float3 cloudSkyAmbient(float3 up)
+{
+	float3 sunTangent = cloudSunDir - up * dot(cloudSunDir, up);
+	float tangentLength = length(sunTangent);
+	float3 horizonDir = tangentLength > 1e-3 ? sunTangent / tangentLength : up;
+
+	float3 skyZenith = sampleSkyViewSafe(up, up, cloudSunDir);
+	float3 skyHorizon = sampleSkyViewSafe(up, horizonDir, cloudSunDir);
+
+	float3 ambient = lerp(skyZenith, skyHorizon, cloudAmbientHorizon) * cloudAmbientIntensity;
+	return ambient + cloudAmbientFallback * (hasPhysicalAtmosphere() ? 0.0 : 1.0);
+}
+
+/// Authored floor for the night side, faded in just past sunset
+float3 cloudNightAmbientAt(float3 up)
+{
+	float nightFactor = saturate(dot(up, -cloudSunDir));
+	return cloudNightAmbient * smoothstep(0.0, 0.15, nightFactor);
+}
+
+/// Analytic per-step integration: for a purely scattering medium the scattering and extinction cancel, leaving 1 - stepTransmittance
+void cloudIntegrateStep(float3 inScatter, float density, float stepSize, inout float transmittance, inout float3 luminance)
+{
+	float stepTransmittance = exp(-density * stepSize * cloudExtinction);
+	luminance += inScatter * (1 - stepTransmittance) * transmittance;
+	transmittance *= stepTransmittance;
 }
 
 #endif

@@ -1,30 +1,13 @@
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
+using UnityEngine.Serialization;
 
 namespace Clouds
 {
-	/// <summary>
-	/// Volumetric clouds on a spherical shell, following Schneider (Guerrilla).
-	///
-	/// A post-process rather than a CommandBuffer pass: RenderingManager.Setup calls
-	/// cam.RemoveAllCommandBuffers, so a buffer added from anywhere else is silently wiped on the
-	/// next enable, and SkyPass.Record is asserted to be the only sky-pass shape. The post-process
-	/// chain is the sanctioned extension point and already has the depth texture.
-	///
-	/// Sits AFTER the atmosphere composite in the chain, so the clouds do not inherit its aerial
-	/// perspective and apply their own instead - see cloudAerialStrength and aerialTransmittance in
-	/// SurfaceLighting.hlsl. They cannot inherit it: that pass reads a screen-space LUT whose depth
-	/// axis is capped at the planet's tangent distance, and the clouds that most need haze are the
-	/// ones past that cap.
-	/// </summary>
+	// Volumetric clouds on a spherical shell, following Schneider (Guerrilla).
 	[CreateAssetMenu( menuName = "PostProcessing/Clouds" )]
 	public class CloudEffect : PostProcessingEffect
 	{
-		/// <summary>
-		/// What the march costs, as a switchable mode over one kernel rather than as separate
-		/// renderers - so RQ2 gets a curve across a technique instead of a single number, and the
-		/// comparison between the points on it is not confounded by two implementations.
-		/// </summary>
 		public enum CostMode
 		{
 			Full,
@@ -32,13 +15,6 @@ namespace Clouds
 			Temporal,
 		}
 
-		/// <summary>
-		/// The ten genera of THESIS.md 3.5, which is RQ1's scoring rubric.
-		///
-		/// Ordered by altitude band - low, mid, high - because "are they recognisable at the altitude
-		/// band they belong to" is half of what the rubric asks, and reading the list in band order
-		/// makes a wrong placement obvious.
-		/// </summary>
 		public enum Genus
 		{
 			Off = 0,
@@ -80,71 +56,67 @@ namespace Clouds
 		[Range( 1, 8 )] public int weatherOctaves = 5;
 		[Range( 1.2f, 4f )] public float weatherLacunarity = 2f;
 		[Range( 0.1f, 0.9f )] public float weatherGain = 0.5f;
+		[Tooltip( "Shifts all weather fields. A different seed gives different weather." )]
+		[Range( 0, 100 )] public int weatherSeed = 0;
 
-		[Tooltip( "Feature size of the coverage field. Lower means larger weather systems." )]
+		[Tooltip( "Feature size of the coverage field. Lower values give larger weather systems." )]
 		[Range( 0.2f, 12f )] public float coverageScale = 2.2f;
-		[Tooltip( "The main how-cloudy-is-it dial." )]
+		[Tooltip( "The main control for how cloudy the sky is." )]
 		[Range( -0.5f, 0.5f )] public float coverageBias = 0f;
-		[Tooltip( "Broken versus overcast: higher pushes coverage toward all-or-nothing." )]
+		[Tooltip( "Higher values push coverage toward clear sky or overcast." )]
 		[Range( 0.2f, 4f )] public float coverageContrast = 1.3f;
 
-		[Tooltip( "Stretches every weather field to fill its range before it is folded to 0-1. An FBM " +
-			"normalised by the sum of its amplitudes never reaches that sum, so without this each " +
-			"field sat in the middle third of its range and the whole globe had nearly the same " +
-			"weather - cumulus almost everywhere, with stratus and cumulonimbus unreachable. The " +
-			"default is measured against the current octave counts; re-check it if those change." )]
+		[Tooltip( "Stretches each weather field to fill the 0-1 range, which an FBM does not reach on " +
+			"its own. Check the value again if the octave count changes." )]
 		[Range( 1f, 4f )] public float weatherRangeGain = 2.3f;
 
-		[Tooltip( "Cloud type varies on its own, much larger scale - a region can be solidly covered " +
-			"in flat stratus or lightly dotted with cumulus, and tying type to coverage would " +
-			"collapse the genera axis RQ1 scores." )]
+		[Tooltip( "Feature size of the cloud-type field. Type changes on its own scale, larger than " +
+			"the coverage scale." )]
 		[Range( 0.1f, 6f )] public float typeScale = 1.1f;
 		[Range( -0.5f, 0.5f )] public float typeBias = 0f;
-		[Tooltip( "Pushes cloud type toward the extremes, the same way coverage contrast does. This " +
-			"is what makes stratus and cumulonimbus regions reachable rather than everything " +
-			"tending to cumulus - which RQ1 scores directly." )]
+		[Tooltip( "Pushes cloud type toward stratus or cumulonimbus. Without it, most regions show cumulus." )]
 		[Range( 0.2f, 4f )] public float typeContrast = 1.6f;
+		[Tooltip( "Drift speed relative to the coverage field." )]
+		[Range( 0f, 3f )] public float typeWindFactor = 0.35f;
 
 		[Range( 0.2f, 12f )] public float precipitationScale = 3.5f;
 		[Range( -0.5f, 0.5f )] public float precipitationBias = -0.1f;
+		[Range( 0f, 3f )] public float precipitationWindFactor = 0.6f;
 
-		[Tooltip( "Feature size of the height field that lifts and lowers the cloud band. Low values " +
-			"vary it continentally, which reads as no variation at all when looking at one group of " +
-			"clouds; around 12-20 varies it across a few clouds, which is the scale the eye reads as " +
-			"some being taller than others. Past about 30 it falls below what a 512-wide map can " +
-			"resolve and turns to mush." )]
+		[Tooltip( "Feature size of the field that lifts and lowers the cloud band. At 12-20, some " +
+			"clouds are taller than their neighbours. Above about 30, a 512-wide map cannot resolve it." )]
 		[Range( 0.2f, 30f )] public float baseHeightScale = 16f;
 		[Range( -0.5f, 0.5f )] public float baseHeightBias = 0f;
+		[Range( 0f, 3f )] public float baseHeightWindFactor = 0.5f;
 
-		[Tooltip( "Speed the weather field drifts, in the sphere's own space rather than as a UV " +
-			"scroll - a scroll would slide features along latitude lines and tear them at the poles." )]
+		[Tooltip( "Drift speed of the weather fields. They drift through the sphere, not the UV, so " +
+			"features do not tear at the poles." )]
 		public float weatherWindSpeed = 0.004f;
 
 		[Header( "High cloud weather" )]
-		[Tooltip( "The ice layer's own coverage field. Its own scales because high cloud arrives on " +
-			"its own weather - a cirrus shield runs ahead of a front and has nothing to do with the " +
-			"cumulus underneath it. Tying them would collapse the band axis RQ1 scores." )]
+		[Tooltip( "Feature size of the ice layer's coverage. High cloud has its own weather, separate " +
+			"from the cloud below it." )]
 		[Range( 0.2f, 12f )] public float highCoverageScale = 1.6f;
 
-		[Tooltip( "Cirrus is usually sparse, so this sits negative by default." )]
+		[Tooltip( "Cirrus is usually sparse, so the default is negative." )]
 		[Range( -0.5f, 0.5f )] public float highCoverageBias = -0.15f;
 
 		[Range( 0.2f, 4f )] public float highCoverageContrast = 1.4f;
+		[Tooltip( "Drift speed relative to the low coverage field." )]
+		[Range( 0f, 3f )] public float highCoverageWindFactor = 1.4f;
 
-		[Tooltip( "Which of the three ice genera this region tends toward: fibrous Cirrus, granular " +
-			"Cirrocumulus, or a Cirrostratus veil." )]
+		[Tooltip( "Feature size of the field that selects the ice genus: fibrous Cirrus, granular " +
+			"Cirrocumulus or a Cirrostratus veil." )]
 		[Range( 0.1f, 6f )] public float highFormScale = 0.9f;
 		[Range( -0.5f, 0.5f )] public float highFormBias = 0f;
+		[Range( 0f, 3f )] public float highFormWindFactor = 1.1f;
 
 		[Header( "Shell" )]
-		[Tooltip( "Sea level, in world units. Its own field rather than the atmosphere's planetRadius " +
-			"global, which is zero whenever the atmosphere is off - and the clouds have to keep " +
-			"working in the baseline and ablation profiles." )]
+		[Tooltip( "Sea level, in world units. The clouds have their own value, because the " +
+			"atmosphere's planetRadius is zero when the atmosphere is off." )]
 		public float bodyRadius = 150f;
 
-		[Tooltip( "Cloud base above sea level, world units. At the scene's scale one unit is about " +
-			"0.91 km, so the low cloud band that THESIS.md makes RQ1's rubric - below 2000 m - is " +
-			"under 2.2 units." )]
+		[Tooltip( "Cloud base above sea level, in world units. One unit is about 0.91 km." )]
 		public float cloudBottomAltitude = 1f;
 		public float cloudTopAltitude = 10f;
 
@@ -156,60 +128,61 @@ namespace Clouds
 		[Range( 0f, 3f )] public float coverageMultiplier = 1f;
 		[Range( -0.5f, 0.5f )] public float typeOffset = 0f;
 
-		[Tooltip( "How far the cloud band is lifted and lowered across the globe, as a fraction of " +
-			"the shell. This is what makes some clouds reach higher than others." )]
+		[Tooltip( "How far the cloud band moves up and down across the globe, as a fraction of the shell." )]
 		[Range( 0f, 0.6f )] public float baseVariation = 0.3f;
 
-		[Tooltip( "Thickness of the cloud band, as a fraction of the shell. The band moves up and " +
-			"down within the shell rather than stretching to fill it - stretching is what pinned " +
-			"every cloud top to the same height. Base variation plus this should stay under 1." )]
+		[Tooltip( "Thickness of the cloud band, as a fraction of the shell. Keep base variation plus " +
+			"this value below 1." )]
 		[Range( 0.1f, 1f )] public float bandThickness = 0.65f;
 
-		[Tooltip( "How much of the height gradient acts on coverage rather than density. 0 is " +
-			"Schneider's arrangement, where the layer stops at a flat plane once the gradient falls " +
-			"below 1 - coverage - halfway down the ramp at coverage 0.5. Higher thins the top and " +
-			"bottom into scattered cloud instead of ending them at a surface." )]
+		[Tooltip( "How much of the height gradient acts on coverage instead of density. At 0 the layer " +
+			"ends at a flat surface, as in Schneider. Higher values thin the top and bottom into " +
+			"scattered cloud." )]
 		[Range( 0f, 1f )] public float edgeSoftness = 0.7f;
 
+		[Tooltip( "Vertical profile per cloud type, as fractions of the band: rise start, rise end, " +
+			"fall start, fall end. After Schneider's height gradients, with authored values." )]
+		public Vector4 stratusProfile = new Vector4( 0f, 0.05f, 0.12f, 0.22f );
+		public Vector4 cumulusProfile = new Vector4( 0f, 0.18f, 0.55f, 0.85f );
+		public Vector4 cumulonimbusProfile = new Vector4( 0f, 0.10f, 0.85f, 1f );
+
 		[Header( "High band - the ice layer" )]
-		[Tooltip( "Cirrus, Cirrocumulus and Cirrostratus - three of the ten genera THESIS.md makes " +
-			"RQ1's rubric, and the three the single low layer could never reach. 0 removes the layer " +
-			"exactly, so its cost and its contribution can both be priced against one build." )]
+		[Tooltip( "Strength of the ice layer: Cirrus, Cirrocumulus and Cirrostratus. 0 removes the layer." )]
 		[Range( 0f, 1f )] public float highStrength = 1f;
 
-		[Tooltip( "Where the ice layer's floor sits, as a fraction of the shell. The high band starts " +
-			"at 6000 m; at 0.91 km per world unit and a shell running 0.91 to 9.1 km, that is 0.64 - " +
-			"so the default puts it in the band the taxonomy names rather than merely near the top." )]
+		[Tooltip( "Floor of the ice layer, as a fraction of the shell. The default puts it at about " +
+			"6000 m, where high cloud starts." )]
 		[Range( 0f, 0.95f )] public float highBase = 0.64f;
 
-		[Tooltip( "Thin, because cirrus is. A thick ice layer reads as high fog rather than as cirrus." )]
+		[Tooltip( "Thickness of the ice layer, as a fraction of the shell. A thick layer looks like high fog." )]
 		[Range( 0.02f, 0.4f )] public float highThickness = 0.22f;
+
+		[Tooltip( "Vertical profile of the ice layer, as fractions of its thickness: rise start, rise " +
+			"end, fall start, fall end." )]
+		public Vector4 highProfile = new Vector4( 0f, 0.35f, 0.55f, 1f );
 
 		[Range( 0.001f, 0.5f )] public float highScale = 0.05f;
 
-		[Tooltip( "Far lower than the low layer's. Cirrus is optically thin - the sun is visible " +
-			"through it, and that translucency is most of what identifies it." )]
+		[Tooltip( "Much lower than the low layer's value, because cirrus is thin enough to show the sun " +
+			"through it." )]
 		[Range( 0f, 2f )] public float highDensityMultiplier = 0.28f;
 
 		[Range( 0f, 3f )] public float highCoverageMultiplier = 1f;
 
-		[Tooltip( "How far the sample coordinate is stretched along the wind for the fibrous form. " +
-			"This is what makes cirrus read as ice rather than as thin cumulus - the streaks are the " +
-			"visual signature of the genus, and an unstretched sample gives faint puffs instead." )]
+		[Tooltip( "How far the fibrous form stretches the sample along the wind. The streaks make " +
+			"cirrus look like ice, not like thin cumulus." )]
 		[Range( 1f, 16f )] public float highStretch = 7f;
 
-		[Tooltip( "How far the granular form leans on the volume's cellular channels. Cirrocumulus is " +
-			"a field of small cells, which is what the Worley FBM already describes." )]
+		[Tooltip( "How much the granular form uses the cellular noise channels. Cirrocumulus is a " +
+			"field of small cells." )]
 		[Range( 0f, 1f )] public float highGranularity = 0.8f;
 
-		[Tooltip( "Direction the fibres run, and the direction the ice layer drifts. High cloud sits " +
-			"in a different wind from the deck below it, so this is its own." )]
+		[Tooltip( "Direction of the fibres and of the ice layer's drift. High cloud has its own wind." )]
 		public Vector3 highWindDirection = new Vector3( 1f, 0f, 0.35f );
 		public float highWindSpeed = 0.05f;
 
 		[Header( "Precipitation" )]
-		[Tooltip( "Rain-bearing cloud is thicker, taller and hangs lower. One field drives all three, " +
-			"so a storm region reads as a storm rather than as three unrelated patterns." )]
+		[Tooltip( "Cloud with rain is thicker, taller and lower. One field controls all three." )]
 		[Range( 0f, 3f )] public float precipDensity = 1.2f;
 		[Range( 0f, 1f )] public float precipTypePush = 0.45f;
 		[Range( 0f, 0.6f )] public float precipBaseDrop = 0.2f;
@@ -220,229 +193,202 @@ namespace Clouds
 		public float detailWindSpeed = 0.05f;
 
 		[Header( "March" )]
-		[Tooltip( "Target world-unit length of one step. The step COUNT follows from the segment, so " +
-			"a vertical ray through the shell and a grazing ray through a long chord are both " +
-			"sampled properly. The reference project instead hardcodes a step of 11 world units, " +
-			"which here would step over the whole layer six times over in one step." )]
+		[Tooltip( "Target length of one march step, in world units. The step count follows from the " +
+			"length of the segment." )]
 		[Range( 0.005f, 1f )] public float stepSize = 0.05f;
 
 		[Range( 16, 512 )] public int maxSteps = 192;
 
-		[Tooltip( "Diagnostic overlay for the march itself, drawn instead of the clouds. Step Size " +
-			"and Step Count show how the sampling rate varies across the frame; Segment shows the " +
-			"length of shell each ray crosses; Density shows accumulated density before any " +
-			"lighting. If an artefact tracks one of these, that is where it comes from." )]
+		[Tooltip( "Diagnostic view in place of the clouds. Coverage to Base Height show the weather map " +
+			"where the ray enters the shell. Camera Region keeps the clouds and shows where the camera " +
+			"is relative to the shell, in a corner." )]
 		public DebugMode debugMode = DebugMode.Off;
 		[Range( 0f, 2f )] public float jitterStrength = 1f;
 		[Range( 0.1f, 20f )] public float extinction = 4f;
 
 		[Header( "Lighting" )]
-		[Tooltip( "Scales the direct sun term. The sun's COLOUR is physical - it comes from the " +
-			"atmosphere's transmittance LUT at each sample's own altitude - but its absolute level " +
-			"is authored, because the march works in display space alongside an already tone-mapped " +
-			"background rather than in radiance." )]
+		[Tooltip( "Scales the direct sunlight. The colour comes from the transmittance LUT. The level " +
+			"is authored, because the march works in display space." )]
 		[Range( 0f, 8f )] public float sunIntensity = 2.2f;
 
-		[Tooltip( "How much of the sun's atmospheric extinction to take. This atmosphere is optically " +
-			"far thicker than Earth's - zenith transmittance 0.45 against 0.77 - so at 1 even a midday " +
-			"sun reaches a cloud top already dimmed to 45% and reddened, which reads as grey. Lerping " +
-			"toward white keeps the colour physical while letting the level be authored, the same way " +
-			"the ocean glint's transmittance weight does." )]
-		[Range( 0f, 1f )] public float sunTransmittanceWeight = 0.7f;
+		[Tooltip( "How much of the atmosphere's extinction the sunlight takes. This atmosphere is much " +
+			"thicker than Earth's, so at 1 the cloud tops look grey." )]
+		[FormerlySerializedAs( "sunTransmittanceWeight" )]
+		[Range( 0f, 1f )] public float lightTransmittanceWeight = 0.7f;
 
-		[Tooltip( "Scales skylight on the clouds, from the same sky-view LUT the ocean and land use. " +
-			"At low sun this does more of the work than the direct term - it is what puts the sunset " +
-			"on the undersides. In daylight it must stay well under the direct term: at parity the " +
-			"whole cloud sits at mid-grey with barely any top-to-base gradient, which is exactly how " +
-			"a flat, shaded look happens." )]
+		[Tooltip( "Scales the skylight on the clouds. In daylight, keep it well below the direct " +
+			"sunlight, or the clouds look flat." )]
 		[Range( 0f, 4f )] public float ambientIntensity = 0.4f;
 
-		[Tooltip( "How much of the skylight is taken from the sunlit horizon rather than the zenith. " +
-			"At sunset the zenith is deep blue and the horizon is orange, so a zenith-only lookup " +
-			"throws away the colour the clouds should be picking up." )]
+		[Tooltip( "How much skylight comes from the horizon below the sun instead of the zenith. This " +
+			"gives the clouds the colour of the sunset." )]
 		[Range( 0f, 1f )] public float ambientHorizon = 0.6f;
 
-		[Tooltip( "Stands in for skylight when there is no physically based atmosphere bound, so the " +
-			"clouds are still lit in the baseline and ablation profiles rather than going black." )]
+		[Tooltip( "Skylight to use when no physically based atmosphere is active." )]
 		public Color ambientFallback = new Color( 0.4f, 0.45f, 0.55f );
 
-		[Tooltip( "How much aerial perspective the clouds pick up - the haze of the air between them " +
-			"and the camera. Distant cloud loses contrast and takes the colour of the sky it is seen " +
-			"against, which is what stops it reading as crisp cut-outs over terrain that has already " +
-			"gone blue. 0 is identity, for pricing the feature." )]
+		[Tooltip( "How much haze the clouds take from the air between them and the camera. 0 turns it off." )]
 		[Range( 0f, 1f )] public float aerialStrength = 1f;
 
-		[Tooltip( "Starlight and airglow on the clouds. Without it they go pure black at night, " +
-			"because every source they have reaches zero together once the sun is down. Declared " +
-			"non-physical, like the ocean's and the land's night terms." )]
+		[Tooltip( "Starlight and airglow, so the clouds do not go black at night. Not physical." )]
 		public Color nightAmbient = new Color( 0.03f, 0.035f, 0.05f );
 
 		[Header( "Light march" )]
-		[Tooltip( "How far toward the sun the light march reaches, in world units. Around one shell " +
-			"thickness is usually right - beyond that it is sampling air." )]
+		[Tooltip( "How far the light march reaches toward the sun, in world units. About one shell " +
+			"thickness is usually correct." )]
 		[Range( 0.1f, 8f )] public float lightMarchLength = 1.6f;
 		[Range( 0.1f, 8f )] public float lightAbsorption = 2.5f;
-		[Tooltip( "How far the light march spreads into a cone. A straight line makes every cloud " +
-			"self-shadow like a slab; the cone is what lets light wrap around a billow." )]
+		[Tooltip( "How wide the light march cone is. A wider cone lets light wrap around a billow." )]
 		[Range( 0f, 1f )] public float coneSpread = 0.25f;
+		[Tooltip( "Distance of the sixth light sample, as a multiple of the light march length. It " +
+			"catches shadows from distant clouds, as in Schneider." )]
+		[Range( 1f, 8f )] public float lightFarDistance = 3f;
 
-		[Tooltip( "How finely the light march reads the cloud, in world units - separate from how far " +
-			"it steps. The step has to be long to cross a cloud in six samples, but choosing the mip " +
-			"from that length samples a volume blurred past the point where a lit face differs from " +
-			"a shadowed one, which erases self-shadowing entirely. Lower is sharper; raise it if the " +
-			"shadowing looks noisy." )]
+		[Tooltip( "How fine a detail the light march reads, in world units. Lower values give sharper " +
+			"self-shadowing. Raise it if the shadowing looks noisy." )]
 		[Range( 0.02f, 2f )] public float lightMarchDetail = 0.15f;
-		[Tooltip( "The dark edge that comes from light having to scatter into a thin volume before it " +
-			"can leave. Keep it low: the powder factor rises from zero with optical depth, so at high " +
-			"strength it darkens the cloud TOP most - the part with nothing between it and the sun - " +
-			"and inverts the top-to-base shading. Past about 0.45 the tops go darker than the bases. " +
-			"The reference project omits this term entirely." )]
+		[Tooltip( "Dark edge where light enters a thin part of the cloud. Above about 0.45, the cloud " +
+			"tops become darker than the bases." )]
 		[Range( 0f, 1f )] public float powderStrength = 0.25f;
 
 		[Header( "Phase" )]
-		[Tooltip( "Forward lobe. Softer than the reference project's 0.8, because that value 's " +
-			"peak is roughly twenty times its sideways value - which only became visible once the " +
-			"phase was scaled into the right units." )]
+		[Tooltip( "Forward lobe of the phase function. High values make the glow around the sun much " +
+			"brighter than the sides of the cloud." )]
 		[Range( 0f, 0.99f )] public float phaseForward = 0.45f;
 		[Range( 0f, 0.99f )] public float phaseBackward = 0.2f;
 		[Range( 0f, 1f )] public float phaseBlend = 0.5f;
 
-		[Tooltip( "Silver lining: how many times the isotropic value the phase reaches looking " +
-			"straight at the sun. A separate tight forward lobe combined with max(), not blended - " +
-			"two lobes alone cannot produce this, so it is an addition to the model rather than a " +
-			"tuning of it. 0 removes it." )]
+		[Tooltip( "Strength of the silver lining when looking at the sun, relative to isotropic " +
+			"scattering. 0 removes it." )]
 		[Range( 0f, 24f )] public float silverIntensity = 6f;
 
-		[Tooltip( "How wide the silver lining is. 0.05 gives a rim within about 4 degrees of the sun, " +
-			"0.25 about 13, 0.3 about 22." )]
+		[Tooltip( "How wide the silver lining is. 0.05 gives a rim of about 4 degrees around the sun, " +
+			"0.25 about 13, and 0.3 about 22." )]
 		[Range( 0.02f, 0.6f )] public float silverSpread = 0.25f;
 
 		[Header( "Moon" )]
-		[Tooltip( "Scales moonlight on the clouds. The moon's published colour is already scaled by " +
-			"its phase, so a new moon contributes nothing and costs nothing - the whole term sits " +
-			"behind a branch on it. 0 disables it outright." )]
+		[Tooltip( "Scales moonlight on the clouds. The moon's colour includes its phase, so a new moon " +
+			"adds nothing. 0 turns it off." )]
 		[Range( 0f, 8f )] public float moonIntensity = 2f;
 
-		[Tooltip( "Silver lining from the moon. Weaker than the sun's, since the moon is a far dimmer " +
-			"source, but the same tight forward lobe - it is what makes a cloud edge crossing the " +
-			"moon read as lit rather than as a silhouette." )]
+		[Tooltip( "Silver lining from the moon. It makes a cloud edge in front of the moon look lit." )]
 		[Range( 0f, 24f )] public float moonSilverIntensity = 2f;
 
 		[Header( "Sky under the deck" )]
-		[Tooltip( "What the cloud base looks like from below, and how much sky it hides, as an " +
-			"equirectangular field. Without it the ocean and the terrain darken their direct sun " +
-			"under cloud but still reflect and are lit by a CLEAR sky - which is why an overcast " +
-			"sunset still turned the sea orange." )]
+		[Tooltip( "Bakes how the cloud base looks from below and how much sky it hides. The ocean and " +
+			"the terrain use it for their skylight and reflections." )]
 		public ComputeShader skyCompute;
 
-		[Tooltip( "Lower than the shadow map, because this pass is the expensive one: every vertical " +
-			"step pays for a six-sample cone light march. A cloud base carries no high-frequency " +
-			"detail, so it can afford to be coarse." )]
+		[Tooltip( "Smaller than the shadow map, because each step of this pass does a full light " +
+			"march. The cloud base has little fine detail." )]
 		public Vector2Int skyMapSize = new Vector2Int( 256, 128 );
 
 		[Range( 2, 32 )] public int skySteps = 8;
 
-		[Tooltip( "Widens the footprint the density is read at, relative to what this map can " +
-			"represent. Same control and same reason as the shadow map's - reading finer detail " +
-			"than a fixed global grid can carry aliases, and the drift makes it crawl." )]
+		[Tooltip( "Widens the footprint of each density sample, relative to the map resolution. Lower " +
+			"values alias, and the wind makes the aliasing move." )]
 		[Range( 0.5f, 4f )] public float skyDetailScale = 1f;
 
-		[Tooltip( "How strongly cloud replaces the sky the surfaces see. 0 is identity, which is what " +
-			"prices the feature; it is also what happens when the clouds are off." )]
+		[Tooltip( "How much cloud replaces the sky that the surfaces see. 0 turns it off." )]
 		[Range( 0f, 1f )] public float skyStrength = 1f;
 
 		[Header( "Genus override" )]
-		[Tooltip( "Pins every weather field to one genus, globally. Authoring scaffolding rather than " +
-			"a rendering path - it feeds the same density model, so what it shows is genuinely what " +
-			"the renderer can produce. RQ1 needs one image of each of the ten, and hunting for a " +
-			"region where the noise happened to make Cirrocumulus is not a workflow." )]
+		[Tooltip( "Sets all weather fields to one genus, over the whole globe. It uses the same density " +
+			"model, so it shows what the renderer can produce." )]
 		public Genus genusOverride = Genus.Off;
 
 		[Header( "Cost" )]
-		[Tooltip( "Full marches every pixel - the honest upper bound and the cleanest image. Half " +
-			"marches a quarter of the pixels and upsamples with a depth-aware filter. Both are the " +
-			"same march at different resolutions, so the difference between them is a measurement " +
-			"of the technique rather than of two implementations." )]
+		[Tooltip( "Full marches every pixel. Half marches a quarter of the pixels and upsamples. " +
+			"Temporal marches a quarter of the pixels each frame and reprojects the rest." )]
 		public CostMode costMode = CostMode.Half;
 
-		[Tooltip( "How hard the upsample rejects a neighbour across a depth discontinuity. Higher " +
-			"keeps silhouettes crisp and lets more low-resolution stair-stepping through; lower " +
-			"smooths the stepping and bleeds cloud across edges." )]
+		[Tooltip( "How strongly the upsample ignores neighbours across a depth edge. Higher values keep " +
+			"edges sharp but show more stair-steps." )]
 		[Range( 0f, 64f )] public float depthRejection = 8f;
 
-		[Tooltip( "Temporal only. How much of a freshly marched pixel to take each frame. Lower is " +
-			"steadier but slower to respond, so a fast camera pan leaves more of a trail." )]
+		[Tooltip( "Temporal only. How much of the new frame to use. Lower values are steadier, but a " +
+			"fast camera move leaves a trail." )]
 		[Range( 0.05f, 1f )] public float historyBlend = 0.2f;
 
 		[Header( "Shadows on the ground" )]
 		public ComputeShader shadowCompute;
-		[Tooltip( "Equirectangular, so it needs no shadow frustum and does not change with the " +
-			"camera. Modest resolution is enough: a shadow cast from a kilometre up carries no " +
-			"high-frequency detail anyway." )]
+		[Tooltip( "Equirectangular, so it does not change with the camera. A low resolution is enough " +
+			"for shadows from high cloud." )]
 		public Vector2Int shadowMapSize = new Vector2Int( 512, 256 );
 		[Range( 2, 32 )] public int shadowSteps = 10;
 		[Range( 0.1f, 8f )] public float shadowAbsorption = 1.2f;
 
-		[Tooltip( "Widens the footprint each shadow sample is read at, relative to what the shadow " +
-			"map can actually represent. 1 matches the map exactly and is what stops the shadows " +
-			"flickering; lower reads finer detail than the map can carry, which aliases, and the " +
-			"aliasing moves with the wind. Higher softens the shadows further." )]
+		[Tooltip( "Widens the footprint of each shadow sample, relative to the map resolution. 1 stops " +
+			"the flicker. Higher values give softer shadows." )]
 		[Range( 0.5f, 4f )] public float shadowDetailScale = 1f;
-		[Tooltip( "0 disables cloud shadows entirely, which is also what happens when this effect is " +
-			"disabled - so a clouds-off benchmark profile gets an unshadowed ground for free." )]
+		[Tooltip( "Strength of the cloud shadows on the ground. 0 turns them off." )]
 		[Range( 0f, 1f )] public float shadowStrength = 0.85f;
 
-		[Tooltip( "Light shafts: how strongly the deck shadows the AIR, not just the ground. Reads the " +
-			"same shadow map, but the atmosphere's raymarch applies it per step, which is what turns " +
-			"in-scattered light into beams. Separate from the shadow strength above because the two " +
-			"cost wildly different amounts - one tap per pixel against one tap per march step - and " +
-			"RQ2 wants them priced apart. 0 is exactly identity." )]
+		[Tooltip( "How strongly the clouds shadow the air, which gives light shafts. It costs much more " +
+			"than the ground shadows, so it has its own control. 0 turns it off." )]
 		[Range( 0f, 1f )] public float shaftStrength = 1f;
+
+		const int TemporalPeriod = 4;
 
 		RenderTexture weatherMap;
 		RenderTexture weatherMapHigh;
 		RenderTexture shadowMap;
 		RenderTexture skyMap;
 
-		// Whether the shadow globals currently belong to THIS effect - see RenderMaps.
+		CachedKernel weatherKernel;
+		CachedKernel shadowKernel;
+		CachedKernel skyMapKernel;
+
+		// Exact signatures of each map's inputs, so a dispatch that would reproduce the texture is skipped
+		int lastWeatherSignature;
+		int lastShadowSignature;
+		int lastSkySignature;
+
 		bool publishedShadows;
 		bool publishedSky;
 
-		// Ping-ponged: this frame resolves into one while reading the other.
 		readonly RenderTexture[] history = new RenderTexture[ 2 ];
 		int historyIndex;
 		bool historyValid;
 		int temporalFrame;
 		Matrix4x4 previousViewProjection = Matrix4x4.identity;
 
-		// Elapsed time, accumulated rather than read from Time.time, so the benchmark's fixed
-		// captureDeltaTime advances the weather at the same rate a real frame would.
 		float elapsed;
+		int lastAdvanceFrame = -1;
 
-		// Resolved by tag, the same way AtmosphereEffect finds it - this is a ScriptableObject, so
-		// it cannot hold a scene reference.
 		Light sunLight;
+		bool sunTagMissing;
 
-		// Same reason, found once rather than every frame. The clouds drift on the scene's clock so
-		// that pausing time with P freezes them too - otherwise a parameter cannot be judged
-		// without the thing it is being judged on moving under it.
 		SolarSystem.SolarSystemManager solarSystem;
+
+		///////// Public API /////////////
+
+		public float InnerRadius => bodyRadius + cloudBottomAltitude;
+		public float OuterRadius => bodyRadius + Mathf.Max( cloudBottomAltitude + 0.01f, cloudTopAltitude );
+
+		public bool ApplyDensityValuesTo( ComputeShader compute, int kernel )
+		{
+			if ( !HasInputs )
+			{
+				return false;
+			}
+
+			RenderWeatherMap();
+			BindDensity( new ComputeSink( compute, kernel ) );
+			return true;
+		}
+
+		///////// Lifecycle /////////////
 
 		public override void OnEnable()
 		{
-			// Before base.OnEnable, which is what builds the material from `shader`.
-			//
-			// The same hole BaselineCloudEffect fills, and worse here: with the field empty the base
-			// class falls back to Unlit/Texture, which has ONE pass, and RenderEffectToTarget blits
-			// pass 2 of it. There is exactly one shader this effect can ever use, so leaving it to be
-			// assigned by hand buys nothing. An explicit assignment still wins.
-			if ( shader == null ) { shader = Shader.Find( "Hidden/Clouds" ); }
+			if ( shader == null )
+			{
+				shader = Shader.Find( "Hidden/Clouds" );
+			}
 
 			base.OnEnable();
-			// Both maps are generated at pre-cull, not in OnRenderImage, because the terrain and
-			// ocean sample the shadow map during forward opaque - which has already happened by the
-			// time a post-process runs. Generating it there would shadow the ground with last
-			// frame's clouds. AtmosphereEffect registers its LUT dispatches the same way.
+
 			Camera.onPreCull -= RenderMaps;
 			Camera.onPreCull += RenderMaps;
 		}
@@ -450,235 +396,30 @@ namespace Clouds
 		public override void OnDestroy()
 		{
 			Camera.onPreCull -= RenderMaps;
-			ReleaseWeatherMap();
-			ReleaseShadowMap();
-			ReleaseSkyMap();
+			Release( ref weatherMap );
+			Release( ref weatherMapHigh );
+			Release( ref shadowMap );
+			Release( ref skyMap );
 			ReleaseHistory();
 		}
 
-		void ReleaseHistory()
-		{
-			for ( int i = 0; i < history.Length; i++ )
-			{
-				if ( history[ i ] == null ) { continue; }
-				history[ i ].Release();
-				DestroyImmediate( history[ i ] );
-				history[ i ] = null;
-			}
-			historyValid = false;
-		}
+		///////// Global maps, at pre-cull /////////////
 
-		/// <summary>Full-resolution accumulation buffers, recreated when the frame size changes.</summary>
-		void EnsureHistory( int width, int height )
-		{
-			if ( history[ 0 ] != null && history[ 0 ].width == width && history[ 0 ].height == height ) { return; }
+		bool HasInputs => shapeNoise != null && detailNoise != null && weatherCompute != null;
 
-			ReleaseHistory();
-			for ( int i = 0; i < history.Length; i++ )
-			{
-				history[ i ] = new RenderTexture( width, height, 0, RenderTextureFormat.ARGBHalf )
-				{
-					filterMode = FilterMode.Bilinear,
-					wrapMode = TextureWrapMode.Clamp,
-					name = $"Cloud History {i}"
-				};
-				history[ i ].Create();
-			}
-		}
+		float MidShellRadius => ( InnerRadius + OuterRadius ) * 0.5f;
 
-		void ReleaseSkyMap()
+		void RenderMaps( Camera renderingCamera )
 		{
-			if ( skyMap != null )
+			if ( renderingCamera != cam )
 			{
-				skyMap.Release();
-				DestroyImmediate( skyMap );
-				skyMap = null;
-			}
-			skyMapValid = false;
-		}
-
-		/// <summary>
-		/// The deck's underside, into the globals the surface shaders read.
-		///
-		/// Same shape as RenderShadowMap, and it retracts only what it published for the same reason:
-		/// both cloud renderers keep a pre-cull callback registered whether or not they are enabled,
-		/// so an unconditional zero would let the disabled one wipe the enabled one's field.
-		/// </summary>
-		void RenderSkyMap()
-		{
-			if ( !enabled || skyCompute == null || skyStrength <= 0f )
-			{
-				if ( publishedSky )
-				{
-					publishedSky = false;
-					Shader.SetGlobalFloat( "cloudSkyStrength", 0f );
-				}
 				return;
 			}
 
-			int width = Mathf.Max( 8, skyMapSize.x );
-			int height = Mathf.Max( 8, skyMapSize.y );
-
-			if ( skyMap == null || !skyMap.IsCreated() ||
-				skyMap.width != width || skyMap.height != height )
+			if ( !enabled || !HasInputs )
 			{
-				ReleaseSkyMap();
-				// Half float, not RGBA8: a lit deck is not bounded by 1 and an 8-bit target would
-				// clip it flat - the same reason the cloud march's own target is ARGBHalf.
-				skyMap = new RenderTexture( width, height, 0, GraphicsFormat.R16G16B16A16_SFloat )
-				{
-					enableRandomWrite = true,
-					wrapModeU = TextureWrapMode.Repeat,   // longitude wraps
-					wrapModeV = TextureWrapMode.Clamp,    // latitude does not
-					filterMode = FilterMode.Bilinear,
-					name = "Cloud Sky Map"
-				};
-				skyMap.Create();
-				// A fresh target holds nothing - the guard below must not skip the first dispatch.
-				skyMapValid = false;
-			}
-
-			ResolveSun();
-			Vector3 sunDir = sunLight != null ? -sunLight.transform.forward : Vector3.up;
-
-			// The same exact-signature skip as the shadow map above, and it buys more here: every
-			// vertical step of this bake pays a six-sample cone light march. See SkySignature for
-			// why this one also hashes the camera position and the atmosphere's settings stamp.
-			// The publishes below stay unconditional for the arm-swap reason the shadow map states.
-			int signature = SkySignature( width, height, sunDir );
-			if ( !skyMapValid || signature != lastSkySignature )
-			{
-				lastSkySignature = signature;
-				skyMapValid = true;
-
-				int kernel = skyMapKernel.Of( skyCompute, "CSCloudSkyMap" );
-				BindDensity( skyCompute, kernel );
-				// This kernel reaches CloudShadowCommon.hlsl through SurfaceLighting.hlsl, so it
-				// compiles a declaration of CloudShadowMap. Nothing in it samples the map today,
-				// which is the only reason an unbound texture has not tripped the "Property ... is
-				// not set" failure CloudShadowGlobals documents - dead-stripping, not correctness.
-				// Bound like the atmosphere's three computes, so the first edit that makes a shared
-				// function touch the map does not start failing from inside a pre-cull callback.
-				CloudShadowGlobals.BindTo( skyCompute, kernel );
-				// Unlike CloudShadowMap above, this kernel DOES sample these two today - sampleSkyViewSafe
-				// and sampleLightColourAt, through SurfaceLighting.hlsl - so unlike that one, an unbound
-				// texture here is live, not latent.
-				BindAtmosphereLUTs( skyCompute, kernel );
-				skyCompute.SetTexture( kernel, "Result", skyMap );
-				skyCompute.SetVector( "cloudSkyMapSize", new Vector2( width, height ) );
-				skyCompute.SetVector( "cloudSkySunDir", sunDir );
-				skyCompute.SetInt( "cloudSkySteps", skySteps );
-				skyCompute.SetFloat( "cloudSkyDetailScale", skyDetailScale );
-
-				// The march's own lighting parameters, bound identically. These have to stay in step
-				// with SetProperties below, exactly as BindDensity does - a divergence would read as
-				// the sea reflecting a deck that does not match the one drawn above it.
-				BindDeckLighting( skyCompute );
-
-				skyCompute.Dispatch( kernel, Mathf.CeilToInt( width / 8f ), Mathf.CeilToInt( height / 8f ), 1 );
-			}
-
-			Shader.SetGlobalTexture( "CloudSkyMap", skyMap );
-			Shader.SetGlobalFloat( "cloudSkyStrength", skyStrength );
-			// Where the surfaces should intersect a reflected ray to find the deck. Mid-shell: the
-			// map describes the whole column, so any single radius is a choice, and the middle is the
-			// least wrong one for a grazing ray.
-			CloudShadowGlobals.PublishDeckRadius( ( InnerRadius + OuterRadius ) * 0.5f );
-			publishedSky = true;
-		}
-
-		/// <summary>
-		/// TransmittanceLUT and SkyViewLUT, for a compute kernel that reaches SurfaceLighting.hlsl.
-		///
-		/// AtmosphereEffect publishes both as shader globals (Shader.SetGlobalTexture), which a
-		/// fragment shader like Clouds.shader's own march picks up automatically. A compute kernel does
-		/// not - see CloudShadowGlobals' own doc comment - so this kernel needs the same explicit
-		/// re-bind CloudShadowGlobals.BindTo already does for the shadow map. Reads the globals back
-		/// with Shader.GetGlobalTexture rather than holding an AtmosphereEffect reference, which would
-		/// couple the cloud effect to a specific atmosphere renderer existing at all.
-		/// </summary>
-		void BindAtmosphereLUTs( ComputeShader compute, int kernel )
-		{
-			Texture transmittanceLUT = Shader.GetGlobalTexture( "TransmittanceLUT" );
-			if ( transmittanceLUT != null ) { compute.SetTexture( kernel, "TransmittanceLUT", transmittanceLUT ); }
-
-			Texture skyViewLUT = Shader.GetGlobalTexture( "SkyViewLUT" );
-			if ( skyViewLUT != null ) { compute.SetTexture( kernel, "SkyViewLUT", skyViewLUT ); }
-		}
-
-		/// <summary>
-		/// The lighting terms the deck bake shares with the view march.
-		///
-		/// Sets exactly the names SetProperties sets on the material, for the same reason BindDensity
-		/// exists: two consumers of one model have to be handed the same numbers, and the failure of
-		/// a divergence here is a plausible image rather than an obvious fault.
-		/// </summary>
-		void BindDeckLighting( ComputeShader compute )
-		{
-			float gate = Shader.GetGlobalFloat( "skyReflectionStrength" );
-			Color sunColour = sunLight != null ? sunLight.color : Color.white;
-			Color gradient = Color.Lerp( sunColour, Color.white, gate );
-
-			compute.SetVector( "cloudSunColour", new Vector4( gradient.r, gradient.g, gradient.b, 1 ) );
-			compute.SetFloat( "cloudSunIntensity", sunIntensity );
-			compute.SetFloat( "cloudSunTransmittanceWeight", sunTransmittanceWeight );
-			compute.SetFloat( "cloudAmbientIntensity", ambientIntensity );
-			compute.SetFloat( "cloudAmbientHorizon", ambientHorizon );
-			compute.SetVector( "cloudAmbientFallback", new Vector4( ambientFallback.r, ambientFallback.g, ambientFallback.b, 1 ) );
-			compute.SetVector( "cloudNightAmbient", new Vector4( nightAmbient.r, nightAmbient.g, nightAmbient.b, 1 ) );
-			compute.SetFloat( "cloudSilverIntensity", silverIntensity );
-			compute.SetFloat( "cloudExtinction", extinction );
-
-			// The optical model's own parameters, which CloudLightingCommon.hlsl owns.
-			compute.SetFloat( "cloudLightMarchLength", lightMarchLength );
-			compute.SetFloat( "cloudLightAbsorption", lightAbsorption );
-			compute.SetFloat( "cloudConeSpread", coneSpread );
-			compute.SetFloat( "cloudLightMarchDetail", lightMarchDetail );
-			compute.SetFloat( "cloudPowderStrength", powderStrength );
-			compute.SetFloat( "cloudPhaseForward", phaseForward );
-			compute.SetFloat( "cloudPhaseBackward", phaseBackward );
-			compute.SetFloat( "cloudPhaseBlend", phaseBlend );
-			compute.SetFloat( "cloudSilverSpread", silverSpread );
-		}
-
-		void ReleaseShadowMap()
-		{
-			if ( shadowMap != null )
-			{
-				shadowMap.Release();
-				DestroyImmediate( shadowMap );
-				shadowMap = null;
-			}
-			shadowMapValid = false;
-		}
-
-		/// <summary>Weather and shadow maps, before anything opaque draws.</summary>
-		void RenderMaps( Camera renderingCamera )
-		{
-			if ( renderingCamera != cam ) { return; }
-
-			if ( !enabled || shapeNoise == null || detailNoise == null || weatherCompute == null )
-			{
-				// Tell the surface shaders there is nothing overhead, so the ground is unshadowed
-				// whenever the clouds are off. This is what makes a clouds-off benchmark profile
-				// correct without the profile having to know anything about shadows.
-				//
-				// Only retract what THIS effect published, though. PostProcessingManager calls
-				// OnEnable on every effect in the chain regardless of its `enabled` flag, so the
-				// baseline cloud renderer also has a pre-cull callback registered at all times.
-				// Zeroing unconditionally would let whichever of the two is DISABLED wipe the
-				// strength the enabled one had just set, with callback order deciding the winner -
-				// ground shadows that flicker or never appear, and nothing wrong in either renderer.
-				if ( publishedShadows )
-				{
-					publishedShadows = false;
-					CloudShadowGlobals.Retract();
-				}
-				if ( publishedSky )
-				{
-					publishedSky = false;
-					Shader.SetGlobalFloat( "cloudSkyStrength", 0f );
-				}
+				RetractShadows();
+				RetractSky();
 				return;
 			}
 
@@ -687,71 +428,215 @@ namespace Clouds
 			RenderSkyMap();
 		}
 
-		void ReleaseWeatherMap()
+		void Advance()
 		{
-			if ( weatherMap != null )
+			if ( Time.frameCount == lastAdvanceFrame )
 			{
-				weatherMap.Release();
-				DestroyImmediate( weatherMap );
-				weatherMap = null;
+				return;
 			}
-			if ( weatherMapHigh != null )
+
+			lastAdvanceFrame = Time.frameCount;
+
+			if ( solarSystem == null )
 			{
-				weatherMapHigh.Release();
-				DestroyImmediate( weatherMapHigh );
-				weatherMapHigh = null;
+				solarSystem = FindFirstObjectByType<SolarSystem.SolarSystemManager>();
 			}
-			weatherMapValid = false;
+
+			float timeScale = solarSystem == null ? 1f : ( solarSystem.animate ? solarSystem.timeMultiplier : 0f );
+			elapsed += Time.deltaTime * timeScale;
 		}
 
-		/// <summary>One weather field's target. Both layers are the same size and format.</summary>
-		RenderTexture CreateWeatherTarget( int width, int height, string label )
+		void RenderWeatherMap()
 		{
-			var rt = new RenderTexture( width, height, 0, GraphicsFormat.R8G8B8A8_UNorm )
+			int width = Mathf.Max( 8, weatherMapSize.x );
+			int height = Mathf.Max( 8, weatherMapSize.y );
+
+			bool created = EnsureGlobeMap( ref weatherMap, width, height, GraphicsFormat.R8G8B8A8_UNorm, "Cloud Weather Map" );
+			created |= EnsureGlobeMap( ref weatherMapHigh, width, height, GraphicsFormat.R8G8B8A8_UNorm, "Cloud Weather Map High" );
+
+			Advance();
+			float weatherOffset = elapsed * weatherWindSpeed;
+
+			int signature = WeatherSignature( width, height, weatherOffset );
+			if ( !created && signature == lastWeatherSignature )
 			{
-				enableRandomWrite = true,
-				// Longitude wraps, latitude does not - the same split the city light field uses.
-				wrapModeU = TextureWrapMode.Repeat,
-				wrapModeV = TextureWrapMode.Clamp,
-				filterMode = FilterMode.Bilinear,
-				name = label
-			};
-			rt.Create();
-			return rt;
+				return;
+			}
+
+			lastWeatherSignature = signature;
+
+			int kernel = weatherKernel.Of( weatherCompute, "CSWeatherMap" );
+			weatherCompute.SetTexture( kernel, "Result", weatherMap );
+			weatherCompute.SetTexture( kernel, "ResultHigh", weatherMapHigh );
+			weatherCompute.SetInt( "octaves", weatherOctaves );
+			weatherCompute.SetFloat( "lacunarity", weatherLacunarity );
+			weatherCompute.SetFloat( "gain", weatherGain );
+			weatherCompute.SetFloat( "weatherRangeGain", weatherRangeGain );
+			weatherCompute.SetFloat( "weatherSeed", weatherSeed );
+			weatherCompute.SetVector( "windOffset", WeatherWindDirection * weatherOffset );
+
+			weatherCompute.SetFloat( "coverageScale", coverageScale );
+			weatherCompute.SetFloat( "coverageBias", coverageBias );
+			weatherCompute.SetFloat( "coverageContrast", coverageContrast );
+			weatherCompute.SetFloat( "typeScale", typeScale );
+			weatherCompute.SetFloat( "typeBias", typeBias );
+			weatherCompute.SetFloat( "typeContrast", typeContrast );
+			weatherCompute.SetFloat( "typeWindFactor", typeWindFactor );
+			weatherCompute.SetFloat( "precipitationScale", precipitationScale );
+			weatherCompute.SetFloat( "precipitationBias", precipitationBias );
+			weatherCompute.SetFloat( "precipitationWindFactor", precipitationWindFactor );
+			weatherCompute.SetFloat( "baseHeightScale", baseHeightScale );
+			weatherCompute.SetFloat( "baseHeightBias", baseHeightBias );
+			weatherCompute.SetFloat( "baseHeightWindFactor", baseHeightWindFactor );
+
+			weatherCompute.SetFloat( "highCoverageScale", highCoverageScale );
+			weatherCompute.SetFloat( "highCoverageBias", highCoverageBias );
+			weatherCompute.SetFloat( "highCoverageContrast", highCoverageContrast );
+			weatherCompute.SetFloat( "highCoverageWindFactor", highCoverageWindFactor );
+			weatherCompute.SetFloat( "highFormScale", highFormScale );
+			weatherCompute.SetFloat( "highFormBias", highFormBias );
+			weatherCompute.SetFloat( "highFormWindFactor", highFormWindFactor );
+
+			weatherKernel.Dispatch( width, height );
 		}
+
+		void RenderShadowMap()
+		{
+			if ( shadowCompute == null || shadowStrength <= 0f )
+			{
+				RetractShadows();
+				return;
+			}
+
+			int width = Mathf.Max( 8, shadowMapSize.x );
+			int height = Mathf.Max( 8, shadowMapSize.y );
+
+			bool created = EnsureGlobeMap( ref shadowMap, width, height, GraphicsFormat.R8G8B8A8_UNorm, "Cloud Shadow Map" );
+
+			Vector3 sunDir = SunDirection();
+
+			int signature = ShadowSignature( width, height, sunDir );
+			if ( created || signature != lastShadowSignature )
+			{
+				lastShadowSignature = signature;
+
+				int kernel = shadowKernel.Of( shadowCompute, "CSCloudShadow" );
+				BindDensity( new ComputeSink( shadowCompute, kernel ) );
+				shadowCompute.SetTexture( kernel, "Result", shadowMap );
+				shadowCompute.SetVector( "shadowSunDir", sunDir );
+				shadowCompute.SetFloat( "shadowGroundRadius", bodyRadius );
+				shadowCompute.SetInt( "shadowSteps", shadowSteps );
+				shadowCompute.SetFloat( "shadowAbsorption", shadowAbsorption );
+				shadowCompute.SetFloat( "shadowDetailScale", shadowDetailScale );
+
+				shadowKernel.Dispatch( width, height );
+			}
+
+			CloudShadowGlobals.Publish( shadowMap, shadowStrength, shaftStrength, MidShellRadius );
+			publishedShadows = true;
+		}
+
+		void RenderSkyMap()
+		{
+			if ( skyCompute == null || skyStrength <= 0f )
+			{
+				RetractSky();
+				return;
+			}
+
+			int width = Mathf.Max( 8, skyMapSize.x );
+			int height = Mathf.Max( 8, skyMapSize.y );
+
+			bool created = EnsureGlobeMap( ref skyMap, width, height, GraphicsFormat.R16G16B16A16_SFloat, "Cloud Sky Map" );
+
+			Vector3 sunDir = SunDirection();
+
+			int signature = SkySignature( width, height, sunDir );
+			if ( created || signature != lastSkySignature )
+			{
+				lastSkySignature = signature;
+
+				int kernel = skyMapKernel.Of( skyCompute, "CSCloudSkyMap" );
+				var sink = new ComputeSink( skyCompute, kernel );
+				BindDensity( sink );
+				BindLighting( sink, sunDir );
+
+				CloudShadowGlobals.BindTo( skyCompute, kernel );
+				BindAtmosphereLUTs( skyCompute, kernel );
+				skyCompute.SetVector( "moonPosition", Shader.GetGlobalVector( "moonPosition" ) );
+				skyCompute.SetVector( "moonLightColour", Shader.GetGlobalVector( "moonLightColour" ) );
+
+				skyCompute.SetTexture( kernel, "Result", skyMap );
+				skyCompute.SetInt( "cloudSkySteps", skySteps );
+				skyCompute.SetFloat( "cloudSkyDetailScale", skyDetailScale );
+
+				skyMapKernel.Dispatch( width, height );
+			}
+
+			Shader.SetGlobalTexture( "CloudSkyMap", skyMap );
+			Shader.SetGlobalFloat( "cloudSkyStrength", skyStrength );
+			CloudShadowGlobals.PublishDeckRadius( MidShellRadius );
+			publishedSky = true;
+		}
+
+		void RetractShadows()
+		{
+			if ( !publishedShadows )
+			{
+				return;
+			}
+			publishedShadows = false;
+			CloudShadowGlobals.Retract();
+		}
+
+		void RetractSky()
+		{
+			if ( !publishedSky )
+			{
+				return;
+			}
+			publishedSky = false;
+			Shader.SetGlobalFloat( "cloudSkyStrength", 0f );
+		}
+
+		static void BindAtmosphereLUTs( ComputeShader compute, int kernel )
+		{
+			Texture transmittanceLUT = Shader.GetGlobalTexture( "TransmittanceLUT" );
+			if ( transmittanceLUT != null )
+			{
+				compute.SetTexture( kernel, "TransmittanceLUT", transmittanceLUT );
+			}
+
+			Texture skyViewLUT = Shader.GetGlobalTexture( "SkyViewLUT" );
+			if ( skyViewLUT != null )
+			{
+				compute.SetTexture( kernel, "SkyViewLUT", skyViewLUT );
+			}
+		}
+
+		///////// The march, in the post-process chain /////////////
 
 		protected override void RenderEffectToTarget( RenderTexture source, RenderTexture target )
 		{
-			if ( shapeNoise == null || detailNoise == null || weatherCompute == null )
+			if ( !HasInputs || weatherMap == null )
 			{
-				// Nothing baked or nothing wired: pass the frame through untouched rather than
-				// drawing something misleading.
+				// Nothing baked, wired or generated yet: pass the frame through untouched
 				Graphics.Blit( source, target );
 				return;
 			}
 
-			SetProperties();
+			BindMarch();
 
-			// March into an offscreen target, optionally resolve it against the previous frame, then
-			// composite over the frame. Keeping all three cost modes on one march is what makes the
-			// difference between them attributable to the strategy rather than to three renderers.
-			//
-			//   Full      every pixel, every frame
-			//   Half      quarter of the pixels, upsampled with a depth-aware filter
-			//   Temporal  full resolution, but a quarter of the pixels marched per frame and the
-			//             rest reprojected from the previous result
 			int divisor = costMode == CostMode.Half ? 2 : 1;
 			int width = Mathf.Max( 1, source.width / divisor );
 			int height = Mathf.Max( 1, source.height / divisor );
+			var marchSize = new Vector4( width, height, 1f / width, 1f / height );
 
-			material.SetVector( "_CloudMarchSize", new Vector4( width, height, 1f / width, 1f / height ) );
-			material.SetInt( "cloudTemporalPeriod", costMode == CostMode.Temporal ? 4 : 1 );
-			material.SetInt( "cloudTemporalIndex", temporalFrame & 3 );
+			material.SetVector( "_CloudMarchSize", marchSize );
+			material.SetInt( "cloudTemporalPeriod", costMode == CostMode.Temporal ? TemporalPeriod : 1 );
+			material.SetInt( "cloudTemporalIndex", temporalFrame % TemporalPeriod );
 
-			// Half format: the cloud's accumulated luminance is not bounded by 1, so an 8-bit target
-			// would clip the lit tops flat.
-			RenderTexture cloudTex = RenderTexture.GetTemporary(
-				width, height, 0, RenderTextureFormat.ARGBHalf );
+			RenderTexture cloudTex = RenderTexture.GetTemporary( width, height, 0, RenderTextureFormat.ARGBHalf );
 			cloudTex.filterMode = FilterMode.Bilinear;
 
 			Graphics.Blit( source, cloudTex, material, 0 );
@@ -769,9 +654,7 @@ namespace Clouds
 				material.SetMatrix( "_CloudPrevViewProj", previousViewProjection );
 				material.SetFloat( "_CloudHistoryBlend", historyBlend );
 				material.SetFloat( "_CloudHistoryValid", historyValid ? 1f : 0f );
-				// Mid-shell, as the stand-in depth for reprojection - see the note in the resolve
-				// pass for why the scene depth cannot be used.
-				material.SetFloat( "_CloudReprojectRadius", ( InnerRadius + OuterRadius ) * 0.5f );
+				material.SetFloat( "_CloudReprojectRadius", MidShellRadius );
 
 				Graphics.Blit( source, history[ current ], material, 1 );
 
@@ -785,7 +668,7 @@ namespace Clouds
 			}
 
 			material.SetTexture( "_CloudTex", resolved );
-			material.SetVector( "_CloudTexSize", new Vector4( width, height, 1f / width, 1f / height ) );
+			material.SetVector( "_CloudTexSize", marchSize );
 			material.SetFloat( "_CloudUpsample", divisor );
 			material.SetFloat( "_CloudDepthRejection", depthRejection );
 
@@ -793,9 +676,6 @@ namespace Clouds
 
 			RenderTexture.ReleaseTemporary( cloudTex );
 
-			// Captured after drawing, for the next frame to reproject against. The plain projection
-			// matrix rather than the GPU one: this is used to derive texture coordinates, not to
-			// rasterise, so the platform's clip-space conventions are not wanted here.
 			if ( cam != null )
 			{
 				previousViewProjection = cam.projectionMatrix * cam.worldToCameraMatrix;
@@ -803,62 +683,207 @@ namespace Clouds
 			temporalFrame++;
 		}
 
-		/// <summary>
-		/// Advances the weather on the SCENE's clock, not the wall clock: paused means paused, and
-		/// scrubbing time forward at 64x carries the weather with it rather than leaving it crawling.
-		/// Falls back to real time if there is no solar system in the scene.
-		///
-		/// Once per frame however many callers ask, which BaselineCloudEffect.Advance has needed for
-		/// the same reason and this did not have. RenderWeatherMap is reachable both from the pre-cull
-		/// callback and from ApplyDensityValuesTo, which the baseline's capture bake calls - so the
-		/// weather could step twice in a frame, at double speed, depending on whether an editor tool
-		/// happened to be running.
-		/// </summary>
-		void Advance()
+		void BindMarch()
 		{
-			if ( Time.frameCount == lastAdvanceFrame ) { return; }
-			lastAdvanceFrame = Time.frameCount;
+			var sink = new MaterialSink( material );
+			BindDensity( sink );
+			BindLighting( sink, SunDirection() );
 
-			if ( solarSystem == null ) { solarSystem = FindFirstObjectByType<SolarSystem.SolarSystemManager>(); }
-			float timeScale = solarSystem == null ? 1f : ( solarSystem.animate ? solarSystem.timeMultiplier : 0f );
-			elapsed += Time.deltaTime * timeScale;
+			material.SetFloat( "cloudAerialStrength", aerialStrength );
+			material.SetFloat( "cloudStepSize", stepSize );
+			material.SetInt( "cloudMaxSteps", maxSteps );
+			material.SetFloat( "cloudJitterStrength", jitterStrength );
+
+			material.SetInt( "cloudDebugMode", debugMode == DebugMode.CameraRegion ? 0 : (int)debugMode );
+			float region = -1f;
+			if ( debugMode == DebugMode.CameraRegion && cam != null )
+			{
+				float camRadius = cam.transform.position.magnitude;
+				region = camRadius > OuterRadius ? 0f : ( camRadius > InnerRadius ? 1f : 2f );
+			}
+			material.SetFloat( "_CloudDebugRegion", region );
 		}
 
-		CachedKernel skyMapKernel;
-		CachedKernel weatherKernel;
-		CachedKernel shadowKernel;
+		void EnsureHistory( int width, int height )
+		{
+			if ( history[ 0 ] != null && history[ 0 ].width == width && history[ 0 ].height == height )
+			{
+				return;
+			}
 
-		int lastAdvanceFrame = -1;
-		int lastWeatherSignature;
-		bool weatherMapValid;
-		int lastShadowSignature;
-		bool shadowMapValid;
-		int lastSkySignature;
-		bool skyMapValid;
+			ReleaseHistory();
+			for ( int i = 0; i < history.Length; i++ )
+			{
+				history[ i ] = new RenderTexture( width, height, 0, RenderTextureFormat.ARGBHalf )
+				{
+					filterMode = FilterMode.Bilinear,
+					wrapMode = TextureWrapMode.Clamp,
+					name = $"Cloud History {i}"
+				};
+				history[ i ].Create();
+			}
+		}
 
-		/// <summary>
-		/// Everything the weather kernel reads, combined into one comparable value.
-		///
-		/// A signature rather than a hand-maintained set of "did this field change" tests, because
-		/// the fields are public and are written from the inspector, from benchmark profiles and from
-		/// the genus authoring table. A list of comparisons would be a second place that has to be
-		/// updated whenever a uniform is added, and the failure mode of forgetting is a map that
-		/// silently stops responding to one of its own dials.
-		///
-		/// Must include every value bound below. If a uniform is added there, add it here.
-		/// </summary>
+		void ReleaseHistory()
+		{
+			for ( int i = 0; i < history.Length; i++ )
+			{
+				Release( ref history[ i ] );
+			}
+			historyValid = false;
+		}
+
+		///////// Shared bindings /////////////
+
+		interface IUniformSink
+		{
+			void SetFloat( string name, float value );
+			void SetInt( string name, int value );
+			void SetVector( string name, Vector4 value );
+			void SetTexture( string name, Texture value );
+		}
+
+		readonly struct MaterialSink : IUniformSink
+		{
+			readonly Material material;
+			public MaterialSink( Material material ) { this.material = material; }
+			public void SetFloat( string name, float value ) => material.SetFloat( name, value );
+			public void SetInt( string name, int value ) => material.SetInt( name, value );
+			public void SetVector( string name, Vector4 value ) => material.SetVector( name, value );
+			public void SetTexture( string name, Texture value ) => material.SetTexture( name, value );
+		}
+
+		readonly struct ComputeSink : IUniformSink
+		{
+			readonly ComputeShader compute;
+			readonly int kernel;
+			public ComputeSink( ComputeShader compute, int kernel ) { this.compute = compute; this.kernel = kernel; }
+			public void SetFloat( string name, float value ) => compute.SetFloat( name, value );
+			public void SetInt( string name, int value ) => compute.SetInt( name, value );
+			public void SetVector( string name, Vector4 value ) => compute.SetVector( name, value );
+			public void SetTexture( string name, Texture value ) => compute.SetTexture( kernel, name, value );
+		}
+
+		void BindDensity<T>( T sink ) where T : struct, IUniformSink
+		{
+			sink.SetTexture( "CloudShapeNoise", shapeNoise );
+			sink.SetTexture( "CloudDetailNoise", detailNoise );
+			sink.SetTexture( "CloudWeatherMapTex", weatherMap );
+			sink.SetTexture( "CloudWeatherMapHighTex", weatherMapHigh );
+
+			sink.SetFloat( "cloudInnerRadius", InnerRadius );
+			sink.SetFloat( "cloudOuterRadius", OuterRadius );
+			sink.SetFloat( "cloudShapeScale", shapeScale );
+			sink.SetFloat( "cloudDetailScale", detailScale );
+			sink.SetFloat( "cloudDetailWeight", detailWeight );
+			sink.SetFloat( "cloudDensityMultiplier", densityMultiplier );
+			sink.SetFloat( "cloudCoverageMultiplier", coverageMultiplier );
+			sink.SetFloat( "cloudTypeBias", typeOffset );
+			sink.SetFloat( "cloudShapeResolution", shapeNoise != null ? shapeNoise.width : 128 );
+			sink.SetFloat( "cloudDetailResolution", detailNoise != null ? detailNoise.width : 32 );
+			sink.SetFloat( "cloudBaseVariation", baseVariation );
+			sink.SetFloat( "cloudBandThickness", bandThickness );
+			sink.SetFloat( "cloudEdgeSoftness", edgeSoftness );
+			sink.SetVector( "cloudStratusProfile", stratusProfile );
+			sink.SetVector( "cloudCumulusProfile", cumulusProfile );
+			sink.SetVector( "cloudCumulonimbusProfile", cumulonimbusProfile );
+			sink.SetFloat( "cloudPrecipDensity", precipDensity );
+			sink.SetFloat( "cloudPrecipTypePush", precipTypePush );
+			sink.SetFloat( "cloudPrecipBaseDrop", precipBaseDrop );
+			sink.SetVector( "cloudShapeWind", ShapeWind );
+			sink.SetVector( "cloudDetailWind", DetailWind );
+
+			sink.SetFloat( "cloudHighStrength", highStrength );
+			sink.SetFloat( "cloudHighBase", highBase );
+			sink.SetFloat( "cloudHighThickness", highThickness );
+			sink.SetVector( "cloudHighProfile", highProfile );
+			sink.SetFloat( "cloudHighScale", highScale );
+			sink.SetFloat( "cloudHighDensityMultiplier", highDensityMultiplier );
+			sink.SetFloat( "cloudHighCoverageMultiplier", highCoverageMultiplier );
+			sink.SetFloat( "cloudHighStretch", highStretch );
+			sink.SetFloat( "cloudHighGranularity", highGranularity );
+			sink.SetVector( "cloudHighWindDir", HighWindDir );
+			sink.SetVector( "cloudHighWind", HighWind );
+
+			GenusSettings( genusOverride, out Vector4 low, out Vector2 high, out float baseOffset );
+			sink.SetFloat( "cloudWeatherOverrideOn", genusOverride == Genus.Off ? 0f : 1f );
+			sink.SetVector( "cloudWeatherOverride", low );
+			sink.SetVector( "cloudHighWeatherOverride", high );
+			sink.SetFloat( "cloudGenusBaseOffset", baseOffset );
+		}
+
+		void BindLighting<T>( T sink, Vector3 sunDir ) where T : struct, IUniformSink
+		{
+			sink.SetVector( "cloudSunDir", sunDir );
+			sink.SetVector( "cloudSunColour", Opaque( SunGradient() ) );
+			sink.SetFloat( "cloudSunIntensity", sunIntensity );
+			sink.SetFloat( "cloudLightTransmittanceWeight", lightTransmittanceWeight );
+			sink.SetFloat( "cloudAmbientIntensity", ambientIntensity );
+			sink.SetFloat( "cloudAmbientHorizon", ambientHorizon );
+			sink.SetVector( "cloudAmbientFallback", Opaque( ambientFallback ) );
+			sink.SetVector( "cloudNightAmbient", Opaque( nightAmbient ) );
+			sink.SetFloat( "cloudExtinction", extinction );
+			sink.SetFloat( "cloudMoonIntensity", moonIntensity );
+			sink.SetFloat( "cloudMoonSilverIntensity", moonSilverIntensity );
+
+			sink.SetFloat( "cloudLightMarchLength", lightMarchLength );
+			sink.SetFloat( "cloudLightAbsorption", lightAbsorption );
+			sink.SetFloat( "cloudConeSpread", coneSpread );
+			sink.SetFloat( "cloudLightFarDistance", lightFarDistance );
+			sink.SetFloat( "cloudLightMarchDetail", lightMarchDetail );
+			sink.SetFloat( "cloudPowderStrength", powderStrength );
+
+			sink.SetFloat( "cloudPhaseForward", phaseForward );
+			sink.SetFloat( "cloudPhaseBackward", phaseBackward );
+			sink.SetFloat( "cloudPhaseBlend", phaseBlend );
+			sink.SetFloat( "cloudSilverIntensity", silverIntensity );
+			sink.SetFloat( "cloudSilverSpread", silverSpread );
+		}
+
+		static Vector4 Opaque( Color colour ) => new Vector4( colour.r, colour.g, colour.b, 1 );
+
+		///////// Signatures /////////////
+
+		static readonly Vector3 WeatherWindDirection = new Vector3( 1f, 0.3f, 0.7f );
+
 		int WeatherSignature( int width, int height, float weatherOffset )
 		{
 			var h = new System.HashCode();
 			h.Add( width ); h.Add( height ); h.Add( weatherOffset );
 			h.Add( weatherOctaves ); h.Add( weatherLacunarity ); h.Add( weatherGain );
+			h.Add( weatherRangeGain ); h.Add( weatherSeed );
 			h.Add( coverageScale ); h.Add( coverageBias ); h.Add( coverageContrast );
-			h.Add( weatherRangeGain ); h.Add( typeContrast );
-			h.Add( baseHeightScale ); h.Add( baseHeightBias );
-			h.Add( typeScale ); h.Add( typeBias );
-			h.Add( precipitationScale ); h.Add( precipitationBias );
-			h.Add( highCoverageScale ); h.Add( highCoverageBias ); h.Add( highCoverageContrast );
-			h.Add( highFormScale ); h.Add( highFormBias );
+			h.Add( typeScale ); h.Add( typeBias ); h.Add( typeContrast ); h.Add( typeWindFactor );
+			h.Add( precipitationScale ); h.Add( precipitationBias ); h.Add( precipitationWindFactor );
+			h.Add( baseHeightScale ); h.Add( baseHeightBias ); h.Add( baseHeightWindFactor );
+			h.Add( highCoverageScale ); h.Add( highCoverageBias ); h.Add( highCoverageContrast ); h.Add( highCoverageWindFactor );
+			h.Add( highFormScale ); h.Add( highFormBias ); h.Add( highFormWindFactor );
+			return h.ToHashCode();
+		}
+
+		int DensitySignature()
+		{
+			var h = new System.HashCode();
+			h.Add( lastWeatherSignature );
+			h.Add( shapeNoise != null ? shapeNoise.GetInstanceID() : 0 );
+			h.Add( shapeNoise != null ? shapeNoise.width : 0 );
+			h.Add( ContentsHash( shapeNoise ) );
+			h.Add( detailNoise != null ? detailNoise.GetInstanceID() : 0 );
+			h.Add( detailNoise != null ? detailNoise.width : 0 );
+			h.Add( ContentsHash( detailNoise ) );
+			h.Add( InnerRadius ); h.Add( OuterRadius );
+			h.Add( shapeScale ); h.Add( detailScale ); h.Add( detailWeight );
+			h.Add( densityMultiplier ); h.Add( coverageMultiplier ); h.Add( typeOffset );
+			h.Add( baseVariation ); h.Add( bandThickness ); h.Add( edgeSoftness );
+			h.Add( stratusProfile ); h.Add( cumulusProfile ); h.Add( cumulonimbusProfile );
+			h.Add( precipDensity ); h.Add( precipTypePush ); h.Add( precipBaseDrop );
+			h.Add( elapsed );
+			h.Add( shapeWindDirection ); h.Add( shapeWindSpeed ); h.Add( detailWindSpeed );
+			h.Add( highWindDirection ); h.Add( highWindSpeed );
+			h.Add( highStrength ); h.Add( highBase ); h.Add( highThickness ); h.Add( highProfile ); h.Add( highScale );
+			h.Add( highDensityMultiplier ); h.Add( highCoverageMultiplier );
+			h.Add( highStretch ); h.Add( highGranularity );
+			h.Add( genusOverride );
 			return h.ToHashCode();
 		}
 
@@ -871,65 +896,15 @@ namespace Clouds
 #endif
 		}
 
-		/// <summary>
-		/// Everything the DENSITY MODEL reads, as one comparable value - the weather map's signature
-		/// discipline extended to the two dispatches that march through it. The weather map's own
-		/// inputs are folded in through its signature, which stands in for the map's content: the
-		/// comparison there is exact, so equal signature means a bit-identical texture.
-		///
-		/// Must include every value BindDensity binds. If a uniform is added there, add it here.
-		/// </summary>
-		int DensitySignature()
-		{
-			var h = new System.HashCode();
-			h.Add( lastWeatherSignature );
-			// imageContentsHash, not just instance ID and width: CloudNoiseBaker overwrites a rebaked
-			// volume in place with EditorUtility.CopySerialized to keep its GUID, so a rebake changes
-			// neither of those and would otherwise read as "nothing changed" to this signature.
-			h.Add( shapeNoise != null ? shapeNoise.GetInstanceID() : 0 );
-			h.Add( shapeNoise != null ? shapeNoise.width : 0 );
-			h.Add( ContentsHash( shapeNoise ) );
-			h.Add( detailNoise != null ? detailNoise.GetInstanceID() : 0 );
-			h.Add( detailNoise != null ? detailNoise.width : 0 );
-			h.Add( ContentsHash( detailNoise ) );
-			h.Add( InnerRadius ); h.Add( OuterRadius );
-			h.Add( shapeScale ); h.Add( detailScale ); h.Add( detailWeight );
-			h.Add( densityMultiplier ); h.Add( coverageMultiplier ); h.Add( typeOffset );
-			h.Add( baseVariation ); h.Add( bandThickness ); h.Add( edgeSoftness );
-			h.Add( precipDensity ); h.Add( precipTypePush ); h.Add( precipBaseDrop );
-			// The three winds are direction * (elapsed * speed): hashing the inputs is equivalent
-			// to hashing the bound vectors, and elapsed is frozen exactly when time is paused.
-			h.Add( elapsed );
-			h.Add( shapeWindDirection ); h.Add( shapeWindSpeed ); h.Add( detailWindSpeed );
-			h.Add( highWindDirection ); h.Add( highWindSpeed );
-			h.Add( highStrength ); h.Add( highBase ); h.Add( highThickness ); h.Add( highScale );
-			h.Add( highDensityMultiplier ); h.Add( highCoverageMultiplier );
-			h.Add( highStretch ); h.Add( highGranularity );
-			h.Add( genusOverride );
-			return h.ToHashCode();
-		}
-
-		/// <summary>Everything the shadow kernel reads: the density model, plus its own uniforms.
-		/// Same rule as the density signature - a value bound in RenderShadowMap is added here.</summary>
 		int ShadowSignature( int width, int height, Vector3 sunDir )
 		{
 			var h = new System.HashCode();
 			h.Add( DensitySignature() );
-			h.Add( width ); h.Add( height ); h.Add( sunDir );
+			h.Add( width ); h.Add( height ); h.Add( sunDir ); h.Add( bodyRadius );
 			h.Add( shadowSteps ); h.Add( shadowAbsorption ); h.Add( shadowDetailScale );
 			return h.ToHashCode();
 		}
 
-		/// <summary>
-		/// Everything the sky-map kernel reads. Larger than the shadow's, because this kernel also
-		/// samples the ATMOSPHERE - sampleLightColourAt and sampleSkyViewSafe read the transmittance
-		/// and sky-view LUTs - so their inputs have to be here too or the deck's radiance would go
-		/// stale against a changing sky. Three values cover them: the camera position and sun
-		/// direction (the sky-view LUT is rebuilt each frame in a frame derived from exactly these),
-		/// and atmosphereSettingsVersion, which AtmosphereEffect bumps whenever the parameters any
-		/// baked LUT was built from change. skyReflectionStrength gates both samplers and feeds the
-		/// sun gradient, so it is here for two reasons at once.
-		/// </summary>
 		int SkySignature( int width, int height, Vector3 sunDir )
 		{
 			var h = new System.HashCode();
@@ -939,262 +914,85 @@ namespace Clouds
 			h.Add( cam != null ? cam.transform.position : Vector3.zero );
 			h.Add( Shader.GetGlobalFloat( "atmosphereSettingsVersion" ) );
 			h.Add( Shader.GetGlobalFloat( "skyReflectionStrength" ) );
-			// BindDeckLighting's own inputs.
+			h.Add( Shader.GetGlobalVector( "moonPosition" ) ); h.Add( Shader.GetGlobalVector( "moonLightColour" ) );
+			// BindLighting
 			h.Add( sunLight != null ? sunLight.color : Color.white );
-			h.Add( sunIntensity ); h.Add( sunTransmittanceWeight );
+			h.Add( sunIntensity ); h.Add( lightTransmittanceWeight );
 			h.Add( ambientIntensity ); h.Add( ambientHorizon );
-			h.Add( ambientFallback ); h.Add( nightAmbient );
-			h.Add( silverIntensity ); h.Add( extinction );
-			h.Add( lightMarchLength ); h.Add( lightAbsorption ); h.Add( coneSpread );
+			h.Add( ambientFallback ); h.Add( nightAmbient ); h.Add( extinction );
+			h.Add( moonIntensity ); h.Add( moonSilverIntensity );
+			h.Add( lightMarchLength ); h.Add( lightAbsorption ); h.Add( coneSpread ); h.Add( lightFarDistance );
 			h.Add( lightMarchDetail ); h.Add( powderStrength );
-			h.Add( phaseForward ); h.Add( phaseBackward ); h.Add( phaseBlend ); h.Add( silverSpread );
+			h.Add( phaseForward ); h.Add( phaseBackward ); h.Add( phaseBlend );
+			h.Add( silverIntensity ); h.Add( silverSpread );
 			return h.ToHashCode();
 		}
 
-		void RenderWeatherMap()
+		///////// Genus override /////////////
+
+		static void GenusSettings( Genus genus, out Vector4 low, out Vector2 high, out float baseOffset )
 		{
-			int width = Mathf.Max( 8, weatherMapSize.x );
-			int height = Mathf.Max( 8, weatherMapSize.y );
-
-			if ( weatherMap == null || !weatherMap.IsCreated() ||
-				weatherMap.width != width || weatherMap.height != height )
+			switch ( genus )
 			{
-				ReleaseWeatherMap();
-				weatherMap = CreateWeatherTarget( width, height, "Cloud Weather Map" );
-				weatherMapHigh = CreateWeatherTarget( width, height, "Cloud Weather Map High" );
-				// A fresh target holds nothing, so the guard below must not conclude the contents
-				// are still current just because the parameters have not moved.
-				weatherMapValid = false;
+				// --- low band, floor on the deck -----------------------------------------------
+				case Genus.Stratus:
+					low = new Vector4( 0.95f, 0f, 0.00f, 0 ); high = Vector2.zero; baseOffset = 0.00f; return;
+				case Genus.Stratocumulus:
+					low = new Vector4( 0.80f, 0f, 0.28f, 0 ); high = Vector2.zero; baseOffset = 0.02f; return;
+				case Genus.Cumulus:
+					low = new Vector4( 0.50f, 0f, 0.50f, 0 ); high = Vector2.zero; baseOffset = 0.03f; return;
+				case Genus.Cumulonimbus:
+					low = new Vector4( 0.80f, 0.90f, 1.00f, 0 ); high = Vector2.zero; baseOffset = 0.00f; return;
+
+				// --- mid band: the same forms, floor raised ------------------------------------
+				case Genus.Altostratus:
+					low = new Vector4( 0.95f, 0f, 0.00f, 0 ); high = Vector2.zero; baseOffset = 0.32f; return;
+				case Genus.Altocumulus:
+					low = new Vector4( 0.70f, 0f, 0.32f, 0 ); high = Vector2.zero; baseOffset = 0.30f; return;
+				case Genus.Nimbostratus:
+					low = new Vector4( 1.00f, 0.75f, 0.10f, 0 ); high = Vector2.zero; baseOffset = 0.22f; return;
+
+				// --- high band: the ice layer, low layer off ------------------------------------
+				case Genus.Cirrus:
+					low = Vector4.zero; high = new Vector2( 0.35f, 0.00f ); baseOffset = 0f; return;
+				case Genus.Cirrocumulus:
+					low = Vector4.zero; high = new Vector2( 0.55f, 0.50f ); baseOffset = 0f; return;
+				case Genus.Cirrostratus:
+					low = Vector4.zero; high = new Vector2( 0.70f, 1.00f ); baseOffset = 0f; return;
+
+				default:
+					low = Vector4.zero; high = Vector2.zero; baseOffset = 0f; return;
 			}
-
-			Advance();
-			float weatherOffset = elapsed * weatherWindSpeed;
-
-			// This map is expensive and mostly static, and it was rebuilt from scratch every frame.
-			//
-			// Six FBMs per texel, each up to five octaves of an eight-corner gradient noise, over
-			// 512x256 - on the order of thirty million hash evaluations per frame for a field whose
-			// only animated input is a wind offset.
-			//
-			// The comparison is exact rather than a tolerance, so this can only skip a dispatch that
-			// would have reproduced the existing texture bit for bit. That covers more than it
-			// sounds: `Advance` scales the clock by the solar system's own multiplier, which is zero
-			// whenever time is paused - so every held benchmark pose, and every frame spent looking
-			// at a still scene while tuning, was regenerating an identical texture.
-			//
-			// Skipping on "moved less than one texel" would skip far more, and is the obvious next
-			// step, but it is an approximation and belongs with the other approximations rather than
-			// smuggled in beside a set of changes that cannot alter an image.
-			int signature = WeatherSignature( width, height, weatherOffset );
-			if ( weatherMapValid && signature == lastWeatherSignature ) { return; }
-
-			lastWeatherSignature = signature;
-			weatherMapValid = true;
-
-			int kernel = weatherKernel.Of( weatherCompute, "CSWeatherMap" );
-			weatherCompute.SetTexture( kernel, "Result", weatherMap );
-			// One dispatch writes both layers, so they cannot drift out of step.
-			weatherCompute.SetTexture( kernel, "ResultHigh", weatherMapHigh );
-			weatherCompute.SetVector( "weatherMapSize", new Vector2( width, height ) );
-			weatherCompute.SetInt( "octaves", weatherOctaves );
-			weatherCompute.SetFloat( "lacunarity", weatherLacunarity );
-			weatherCompute.SetFloat( "gain", weatherGain );
-			weatherCompute.SetFloat( "coverageScale", coverageScale );
-			weatherCompute.SetFloat( "coverageBias", coverageBias );
-			weatherCompute.SetFloat( "coverageContrast", coverageContrast );
-			weatherCompute.SetFloat( "weatherRangeGain", weatherRangeGain );
-			weatherCompute.SetFloat( "typeContrast", typeContrast );
-			weatherCompute.SetFloat( "baseHeightScale", baseHeightScale );
-			weatherCompute.SetFloat( "baseHeightBias", baseHeightBias );
-			weatherCompute.SetFloat( "typeScale", typeScale );
-			weatherCompute.SetFloat( "typeBias", typeBias );
-			weatherCompute.SetFloat( "precipitationScale", precipitationScale );
-			weatherCompute.SetFloat( "precipitationBias", precipitationBias );
-			weatherCompute.SetFloat( "highCoverageScale", highCoverageScale );
-			weatherCompute.SetFloat( "highCoverageBias", highCoverageBias );
-			weatherCompute.SetFloat( "highCoverageContrast", highCoverageContrast );
-			weatherCompute.SetFloat( "highFormScale", highFormScale );
-			weatherCompute.SetFloat( "highFormBias", highFormBias );
-			weatherCompute.SetVector( "windOffset", new Vector4( weatherOffset, weatherOffset * 0.3f, weatherOffset * 0.7f, 0 ) );
-
-			weatherCompute.Dispatch( kernel, Mathf.CeilToInt( width / 8f ), Mathf.CeilToInt( height / 8f ), 1 );
 		}
 
-		/// <summary>Public so the baseline's capture bake can march the same shell.</summary>
-		public float InnerRadius => bodyRadius + cloudBottomAltitude;
-		public float OuterRadius => bodyRadius + Mathf.Max( cloudBottomAltitude + 0.01f, cloudTopAltitude );
+		///////// Helpers /////////////
 
-		/// <summary>Unit direction the ice layer's fibres run along.</summary>
-		Vector3 HighWindDir =>
-			highWindDirection.sqrMagnitude > 1e-6f ? highWindDirection.normalized : Vector3.right;
+		static Vector3 SafeDirection( Vector3 direction ) =>
+			direction.sqrMagnitude > 1e-6f ? direction.normalized : Vector3.right;
 
+		Vector3 ShapeWind => SafeDirection( shapeWindDirection ) * ( elapsed * shapeWindSpeed );
+		Vector3 DetailWind => SafeDirection( shapeWindDirection ) * ( elapsed * detailWindSpeed );
+		Vector3 HighWindDir => SafeDirection( highWindDirection );
 		Vector3 HighWind => HighWindDir * ( elapsed * highWindSpeed );
 
-		Vector3 ShapeWind
+		Vector3 SunDirection()
 		{
-			get
-			{
-				Vector3 dir = shapeWindDirection.sqrMagnitude > 1e-6f ? shapeWindDirection.normalized : Vector3.right;
-				return dir * ( elapsed * shapeWindSpeed );
-			}
-		}
-
-		Vector3 DetailWind
-		{
-			get
-			{
-				Vector3 dir = shapeWindDirection.sqrMagnitude > 1e-6f ? shapeWindDirection.normalized : Vector3.right;
-				return dir * ( elapsed * detailWindSpeed );
-			}
-		}
-
-		/// <summary>
-		/// The density model's parameters, bound to a compute. The material overload below sets the
-		/// same names - they have to stay in step, because the shadow pass and the march share one
-		/// density function and a divergence would read as clouds not matching their own shadows.
-		/// </summary>
-		/// <summary>
-		/// Makes the density model available to another compute - the baseline's capture bake.
-		///
-		/// Public for the same reason AtmosphereEffect.ApplyAtmosphereValuesTo is: the capture is
-		/// only meaningful because it shares this state with the runtime renderer rather than
-		/// restating it. It also generates the weather map, which the density model reads and which
-		/// otherwise only exists once the effect has rendered a frame.
-		///
-		/// Returns false if the volumes or the weather compute are unassigned, in which case there
-		/// is nothing to capture.
-		/// </summary>
-		public bool ApplyDensityValuesTo( ComputeShader compute, int kernel )
-		{
-			if ( shapeNoise == null || detailNoise == null || weatherCompute == null ) { return false; }
-
-			RenderWeatherMap();
-			BindDensity( compute, kernel );
-			return true;
-		}
-
-		void BindDensity( ComputeShader compute, int kernel )
-		{
-			compute.SetTexture( kernel, "CloudShapeNoise", shapeNoise );
-			compute.SetTexture( kernel, "CloudDetailNoise", detailNoise );
-			compute.SetTexture( kernel, "CloudWeatherMapTex", weatherMap );
-			compute.SetTexture( kernel, "CloudWeatherMapHighTex", weatherMapHigh );
-
-			compute.SetFloat( "cloudInnerRadius", InnerRadius );
-			compute.SetFloat( "cloudOuterRadius", OuterRadius );
-			compute.SetFloat( "cloudShapeScale", shapeScale );
-			compute.SetFloat( "cloudDetailScale", detailScale );
-			compute.SetFloat( "cloudDetailWeight", detailWeight );
-			compute.SetFloat( "cloudDensityMultiplier", densityMultiplier );
-			compute.SetFloat( "cloudCoverageMultiplier", coverageMultiplier );
-			compute.SetFloat( "cloudTypeBias", typeOffset );
-			compute.SetFloat( "cloudShapeResolution", shapeNoise != null ? shapeNoise.width : 128 );
-			compute.SetFloat( "cloudDetailResolution", detailNoise != null ? detailNoise.width : 32 );
-			compute.SetFloat( "cloudBaseVariation", baseVariation );
-			compute.SetFloat( "cloudBandThickness", bandThickness );
-			compute.SetFloat( "cloudEdgeSoftness", edgeSoftness );
-			compute.SetFloat( "cloudPrecipDensity", precipDensity );
-			compute.SetFloat( "cloudPrecipTypePush", precipTypePush );
-			compute.SetFloat( "cloudPrecipBaseDrop", precipBaseDrop );
-			compute.SetVector( "cloudShapeWind", ShapeWind );
-			compute.SetVector( "cloudDetailWind", DetailWind );
-
-			compute.SetFloat( "cloudHighStrength", highStrength );
-			compute.SetFloat( "cloudHighBase", highBase );
-			compute.SetFloat( "cloudHighThickness", highThickness );
-			compute.SetFloat( "cloudHighScale", highScale );
-			compute.SetFloat( "cloudHighDensityMultiplier", highDensityMultiplier );
-			compute.SetFloat( "cloudHighCoverageMultiplier", highCoverageMultiplier );
-			compute.SetFloat( "cloudHighStretch", highStretch );
-			compute.SetFloat( "cloudHighGranularity", highGranularity );
-			compute.SetVector( "cloudHighWindDir", HighWindDir );
-			compute.SetVector( "cloudHighWind", HighWind );
-			BindGenusOverride( compute );
-		}
-
-		void RenderShadowMap()
-		{
-			if ( shadowCompute == null || shadowStrength <= 0f )
-			{
-				if ( publishedShadows )
-				{
-					publishedShadows = false;
-					CloudShadowGlobals.Retract();
-				}
-				return;
-			}
-
-			int width = Mathf.Max( 8, shadowMapSize.x );
-			int height = Mathf.Max( 8, shadowMapSize.y );
-
-			if ( shadowMap == null || !shadowMap.IsCreated() ||
-				shadowMap.width != width || shadowMap.height != height )
-			{
-				ReleaseShadowMap();
-				// RGBA8 rather than R8: random write to a single-channel 8-bit target is not
-				// universally supported, and half a megabyte is not worth the compatibility risk.
-				shadowMap = new RenderTexture( width, height, 0, GraphicsFormat.R8G8B8A8_UNorm )
-				{
-					enableRandomWrite = true,
-					wrapModeU = TextureWrapMode.Repeat,   // longitude wraps
-					wrapModeV = TextureWrapMode.Clamp,    // latitude does not
-					filterMode = FilterMode.Bilinear,
-					name = "Cloud Shadow Map"
-				};
-				shadowMap.Create();
-				// A fresh target holds nothing - the guard below must not skip the first dispatch.
-				shadowMapValid = false;
-			}
-
 			ResolveSun();
-			Vector3 sunDir = sunLight != null ? -sunLight.transform.forward : Vector3.up;
-
-			// The weather map's exact-signature skip, extended to this dispatch. This marched
-			// 512x256 texels x shadowSteps density samples every frame to reproduce the existing
-			// texture bit for bit whenever the sun, the wind and every density dial were all still -
-			// which is every held benchmark pose and every frame spent tuning a paused scene.
-			//
-			// Only the DISPATCH is skipped. The publish below stays unconditional: it is four
-			// global sets, and it is what re-claims the globals after the other cloud arm held them -
-			// a skipped publish after an arm swap would leave the shafts reading a retracted zero.
-			int signature = ShadowSignature( width, height, sunDir );
-			if ( !shadowMapValid || signature != lastShadowSignature )
-			{
-				lastShadowSignature = signature;
-				shadowMapValid = true;
-
-				int kernel = shadowKernel.Of( shadowCompute, "CSCloudShadow" );
-				BindDensity( shadowCompute, kernel );
-				shadowCompute.SetTexture( kernel, "Result", shadowMap );
-				shadowCompute.SetVector( "shadowMapSize", new Vector2( width, height ) );
-				shadowCompute.SetVector( "shadowSunDir", sunDir );
-				shadowCompute.SetInt( "shadowSteps", shadowSteps );
-				shadowCompute.SetFloat( "shadowAbsorption", shadowAbsorption );
-				shadowCompute.SetFloat( "shadowDetailScale", shadowDetailScale );
-
-				shadowCompute.Dispatch( kernel, Mathf.CeilToInt( width / 8f ), Mathf.CeilToInt( height / 8f ), 1 );
-			}
-
-			// Through CloudShadowGlobals rather than Shader.SetGlobal directly, because the
-			// atmosphere's three COMPUTE consumers cannot read shader globals - a kernel's textures
-			// have to be bound per kernel. One writer, two representations, so they cannot drift.
-			//
-			// The deck radius is published beside the SHADOW map, not only beside the radiance map:
-			// the raymarch needs it to find where a sun ray crosses the deck, and shafts must work in
-			// profiles where the radiance map is off.
-			CloudShadowGlobals.Publish( shadowMap, shadowStrength, shaftStrength,
-				( InnerRadius + OuterRadius ) * 0.5f );
-			publishedShadows = true;
+			return sunLight != null ? -sunLight.transform.forward : Vector3.up;
 		}
 
-		/// <summary>
-		/// FindGameObjectWithTag throws rather than returning null when the tag does not exist, and
-		/// this is called three times a frame. One warning and then silence beats an exception per
-		/// call from inside a pre-cull callback. AtmosphereEffect.ResolveSun does the same.
-		/// </summary>
+		Color SunGradient()
+		{
+			Color sunColour = sunLight != null ? sunLight.color : Color.white;
+			return Color.Lerp( sunColour, Color.white, Shader.GetGlobalFloat( "skyReflectionStrength" ) );
+		}
+
 		void ResolveSun()
 		{
-			if ( sunLight != null || sunTagMissing ) { return; }
+			if ( sunLight != null || sunTagMissing )
+			{
+				return;
+			}
 
 			GameObject sunObject;
 			try
@@ -1212,188 +1010,36 @@ namespace Clouds
 			sunLight = sunObject != null ? sunObject.GetComponent<Light>() : null;
 		}
 
-		bool sunTagMissing;
-
-		/// <summary>
-		/// One genus, as weather-field values.
-		///
-		/// This table is a thesis artefact as much as a debug aid: RQ3 grades authoring flexibility on
-		/// "how predictably does a parameter map to a visible outcome", and the mapping from a genus
-		/// name to these six numbers is exactly that evidence.
-		///
-		/// baseOffset is a fraction of the shell. At 0.91 km per world unit and a shell running 0.91
-		/// to 9.1 km, the taxonomy's bands land at: low below 0.13, mid 0.13 to 0.62, high above
-		/// 0.62. The high genera turn the low layer off and vice versa - a genus image should show
-		/// one genus.
-		/// </summary>
-		void GenusSettings( Genus genus, out Vector4 low, out Vector2 high, out float baseOffset )
+		static bool EnsureGlobeMap( ref RenderTexture map, int width, int height, GraphicsFormat format, string name )
 		{
-			// low = coverage, precipitation, form, unused
-			switch ( genus )
+			if ( map != null && map.IsCreated() && map.width == width && map.height == height )
 			{
-				// --- low band, floor on the deck -----------------------------------------------
-				case Genus.Stratus:
-					low = new Vector4( 0.95f, 0f, 0.00f, 0 ); high = Vector2.zero; baseOffset = 0.00f; return;
-				case Genus.Stratocumulus:
-					low = new Vector4( 0.80f, 0f, 0.28f, 0 ); high = Vector2.zero; baseOffset = 0.02f; return;
-				case Genus.Cumulus:
-					low = new Vector4( 0.50f, 0f, 0.50f, 0 ); high = Vector2.zero; baseOffset = 0.03f; return;
-				case Genus.Cumulonimbus:
-					// Precipitation is what makes it tower and darken - the -nimbus affix, not a
-					// separate profile.
-					low = new Vector4( 0.80f, 0.90f, 1.00f, 0 ); high = Vector2.zero; baseOffset = 0.00f; return;
-
-				// --- mid band: the same forms, floor raised ------------------------------------
-				case Genus.Altostratus:
-					low = new Vector4( 0.95f, 0f, 0.00f, 0 ); high = Vector2.zero; baseOffset = 0.32f; return;
-				case Genus.Altocumulus:
-					low = new Vector4( 0.70f, 0f, 0.32f, 0 ); high = Vector2.zero; baseOffset = 0.30f; return;
-				case Genus.Nimbostratus:
-					// Thick, featureless and raining. Its floor starts mid and precipitation drags it
-					// down, which is why it reads as a low grey overcast despite being a mid genus.
-					low = new Vector4( 1.00f, 0.75f, 0.10f, 0 ); high = Vector2.zero; baseOffset = 0.22f; return;
-
-				// --- high band: the ice layer, low layer off ------------------------------------
-				case Genus.Cirrus:
-					low = Vector4.zero; high = new Vector2( 0.35f, 0.00f ); baseOffset = 0f; return;
-				case Genus.Cirrocumulus:
-					low = Vector4.zero; high = new Vector2( 0.55f, 0.50f ); baseOffset = 0f; return;
-				case Genus.Cirrostratus:
-					low = Vector4.zero; high = new Vector2( 0.70f, 1.00f ); baseOffset = 0f; return;
-
-				default:
-					low = Vector4.zero; high = Vector2.zero; baseOffset = 0f; return;
+				return false;
 			}
-		}
 
-		/// <summary>
-		/// The override as the four values a consumer binds, whichever consumer that is.
-		///
-		/// This used to be one method taking `setFloat`/`setVector` delegates, called as
-		/// BindGenusOverride(compute.SetFloat, compute.SetVector). A method group converted to a
-		/// System.Action allocates, and both of those do, on every call - and the call sites run
-		/// three times a frame between them. Six delegates a frame of pure garbage to avoid writing
-		/// four lines twice.
-		///
-		/// The values stay in one place, which is the part that actually mattered about sharing.
-		/// </summary>
-		void GenusOverrideValues( out float on, out Vector4 low, out Vector4 high, out float baseOffset )
-		{
-			GenusSettings( genusOverride, out low, out Vector2 highPair, out baseOffset );
-			on = genusOverride == Genus.Off ? 0f : 1f;
-			high = new Vector4( highPair.x, highPair.y, 0, 0 );
-		}
-
-		void BindGenusOverride( Material target )
-		{
-			GenusOverrideValues( out float on, out Vector4 low, out Vector4 high, out float baseOffset );
-			target.SetFloat( "cloudWeatherOverrideOn", on );
-			target.SetVector( "cloudWeatherOverride", low );
-			target.SetVector( "cloudHighWeatherOverride", high );
-			target.SetFloat( "cloudGenusBaseOffset", baseOffset );
-		}
-
-		void BindGenusOverride( ComputeShader target )
-		{
-			GenusOverrideValues( out float on, out Vector4 low, out Vector4 high, out float baseOffset );
-			target.SetFloat( "cloudWeatherOverrideOn", on );
-			target.SetVector( "cloudWeatherOverride", low );
-			target.SetVector( "cloudHighWeatherOverride", high );
-			target.SetFloat( "cloudGenusBaseOffset", baseOffset );
-		}
-
-		void SetProperties()
-		{
-			material.SetTexture( "CloudShapeNoise", shapeNoise );
-			material.SetTexture( "CloudDetailNoise", detailNoise );
-			material.SetTexture( "CloudWeatherMapTex", weatherMap );
-			material.SetTexture( "CloudWeatherMapHighTex", weatherMapHigh );
-
-			material.SetFloat( "cloudInnerRadius", InnerRadius );
-			material.SetFloat( "cloudOuterRadius", OuterRadius );
-
-			material.SetFloat( "cloudShapeScale", shapeScale );
-			material.SetFloat( "cloudDetailScale", detailScale );
-			material.SetFloat( "cloudDetailWeight", detailWeight );
-			material.SetFloat( "cloudDensityMultiplier", densityMultiplier );
-			material.SetFloat( "cloudCoverageMultiplier", coverageMultiplier );
-			material.SetFloat( "cloudTypeBias", typeOffset );
-			material.SetFloat( "cloudShapeResolution", shapeNoise != null ? shapeNoise.width : 128 );
-			material.SetFloat( "cloudDetailResolution", detailNoise != null ? detailNoise.width : 32 );
-			material.SetFloat( "cloudBaseVariation", baseVariation );
-			material.SetFloat( "cloudBandThickness", bandThickness );
-			material.SetFloat( "cloudEdgeSoftness", edgeSoftness );
-			material.SetFloat( "cloudPrecipDensity", precipDensity );
-			material.SetFloat( "cloudPrecipTypePush", precipTypePush );
-			material.SetFloat( "cloudPrecipBaseDrop", precipBaseDrop );
-
-			// The volumes drift faster than the weather field: the weather map is the slow-moving
-			// system, the noise is the air moving through it.
-			material.SetVector( "cloudShapeWind", ShapeWind );
-			material.SetVector( "cloudDetailWind", DetailWind );
-
-			material.SetFloat( "cloudHighStrength", highStrength );
-			material.SetFloat( "cloudHighBase", highBase );
-			material.SetFloat( "cloudHighThickness", highThickness );
-			material.SetFloat( "cloudHighScale", highScale );
-			material.SetFloat( "cloudHighDensityMultiplier", highDensityMultiplier );
-			material.SetFloat( "cloudHighCoverageMultiplier", highCoverageMultiplier );
-			material.SetFloat( "cloudHighStretch", highStretch );
-			material.SetFloat( "cloudHighGranularity", highGranularity );
-			material.SetVector( "cloudHighWindDir", HighWindDir );
-			material.SetVector( "cloudHighWind", HighWind );
-			BindGenusOverride( material );
-
-			material.SetFloat( "cloudStepSize", stepSize );
-			// CameraRegion leaves the clouds rendering and shows the region as a corner swatch, so
-			// the two can be watched together; the others replace the image.
-			material.SetInt( "cloudDebugMode", debugMode == DebugMode.CameraRegion ? 0 : (int)debugMode );
-
-			float region = -1f;
-			if ( debugMode == DebugMode.CameraRegion && cam != null )
+			Release( ref map );
+			map = new RenderTexture( width, height, 0, format )
 			{
-				float camRadius = cam.transform.position.magnitude;
-				region = camRadius > OuterRadius ? 0f : ( camRadius > InnerRadius ? 1f : 2f );
+				enableRandomWrite = true,
+				wrapModeU = TextureWrapMode.Repeat,
+				wrapModeV = TextureWrapMode.Clamp,
+				filterMode = FilterMode.Bilinear,
+				name = name
+			};
+			map.Create();
+			return true;
+		}
+
+		static void Release( ref RenderTexture texture )
+		{
+			if ( texture == null )
+			{
+				return;
 			}
-			material.SetFloat( "_CloudDebugRegion", region );
-			material.SetInt( "cloudMaxSteps", maxSteps );
-			material.SetFloat( "cloudJitterStrength", jitterStrength );
-			material.SetFloat( "cloudExtinction", extinction );
 
-			ResolveSun();
-			// -forward, matching how every other consumer in the project derives the sun direction.
-			Vector3 sunDir = sunLight != null ? -sunLight.transform.forward : Vector3.up;
-			Color sunColour = sunLight != null ? sunLight.color : Color.white;
-
-			material.SetVector( "cloudSunDir", sunDir );
-			// The gradient is Sun.cs's camera-keyed approximation, which the land and the ocean both
-			// stopped using once transmittance could answer the same question per pixel. Gated the
-			// same way, so it survives only as the baseline path where there is no LUT to ask.
-			float gate = Shader.GetGlobalFloat( "skyReflectionStrength" );
-			Color gradient = Color.Lerp( sunColour, Color.white, gate );
-			material.SetVector( "cloudSunColour", new Vector4( gradient.r, gradient.g, gradient.b, 1 ) );
-			material.SetFloat( "cloudSunIntensity", sunIntensity );
-			material.SetFloat( "cloudSunTransmittanceWeight", sunTransmittanceWeight );
-			material.SetFloat( "cloudAmbientIntensity", ambientIntensity );
-			material.SetFloat( "cloudAmbientHorizon", ambientHorizon );
-			material.SetVector( "cloudAmbientFallback", new Vector4( ambientFallback.r, ambientFallback.g, ambientFallback.b, 1 ) );
-			material.SetVector( "cloudNightAmbient", new Vector4( nightAmbient.r, nightAmbient.g, nightAmbient.b, 1 ) );
-
-			material.SetFloat( "cloudAerialStrength", aerialStrength );
-
-			material.SetFloat( "cloudLightMarchLength", lightMarchLength );
-			material.SetFloat( "cloudLightAbsorption", lightAbsorption );
-			material.SetFloat( "cloudConeSpread", coneSpread );
-			material.SetFloat( "cloudLightMarchDetail", lightMarchDetail );
-			material.SetFloat( "cloudPowderStrength", powderStrength );
-
-			material.SetFloat( "cloudPhaseForward", phaseForward );
-			material.SetFloat( "cloudPhaseBackward", phaseBackward );
-			material.SetFloat( "cloudPhaseBlend", phaseBlend );
-			material.SetFloat( "cloudSilverIntensity", silverIntensity );
-			material.SetFloat( "cloudSilverSpread", silverSpread );
-			material.SetFloat( "cloudMoonIntensity", moonIntensity );
-			material.SetFloat( "cloudMoonSilverIntensity", moonSilverIntensity );
+			texture.Release();
+			DestroyImmediate( texture );
+			texture = null;
 		}
 	}
 }

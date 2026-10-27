@@ -102,7 +102,7 @@ namespace Clouds
 		[Range( 0f, 32f )] public float captureNormalStrength = 14f;
 
 		[Header( "Output" )]
-		public string outputFolder = "Assets/Data/Baseline Clouds";
+		public string outputFolder = "Assets/Data/Baseline/Clouds";
 
 		public string AuthoredPath( bool upperLayer ) =>
 			$"{outputFolder}/Cloud Layer {( upperLayer ? "Upper" : "Lower" )} Authored.png";

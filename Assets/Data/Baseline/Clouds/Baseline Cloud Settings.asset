@@ -38,4 +38,4 @@ MonoBehaviour:
   captureAbsorption: 1.5
   captureThreshold: 0.02
   captureNormalStrength: 14
-  outputFolder: Assets/Data/Baseline Clouds
+  outputFolder: Assets/Data/Baseline/Clouds

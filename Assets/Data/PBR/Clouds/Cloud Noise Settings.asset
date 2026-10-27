@@ -69,6 +69,6 @@ MonoBehaviour:
   perlinOctaves: 6
   perlinPersistence: 0.5
   perlinGain: 2.2
-  outputFolder: Assets/Data/Clouds
+  outputFolder: Assets/Data/PBR/Clouds
   shapeAssetName: Cloud Shape Noise
   detailAssetName: Cloud Detail Noise

@@ -3,106 +3,108 @@
 #include "Assets/Scripts/Shader Common/GeoMath.hlsl"
 #include "Assets/Post Processing/Effects/PBR/Clouds/Shader Common/CloudNoiseCommon.hlsl"
 
-// Schneider's weather map, on a globe. Two layers, written by one dispatch so they cannot drift
-// apart:
-//   Result (low/mid layer, seven of ten genera): R coverage, G precipitation, B form
-//     (sheet -> cellular -> heaped -> towering), A base altitude as a fraction of the shell.
-//   ResultHigh (ice layer): R coverage, G form (fibrous -> granular -> veil), B/A spare.
-// Two layers because the genera table (THESIS.md 3.5) is altitude band crossed with form, and one
-// layer can only walk one row of it; the bands are separated in altitude, so a density sample is
-// inside at most one and the second layer costs a texture tap rather than a second noise evaluation.
-//
-// Sampled with pointToUV like the terrain, ocean and city light field, so it needs no container and
-// is scale-invariant. Noise is evaluated in 3D at the point on the sphere, not in 2D over the UV
-// rectangle, to avoid distortion toward the poles and a seam down the antimeridian.
-
+// Schneider's weather map, on a globe
 RWTexture2D<float4> Result;
 RWTexture2D<float4> ResultHigh;
-
-float2 weatherMapSize;
 
 int octaves;
 float lacunarity;
 float gain;
-
-/// Stretches each field to fill [-1, 1] before it is folded to [0, 1]. cloudFbm normalises by the
-/// sum of its octave amplitudes, which an FBM rarely reaches, so without this every field sits in
-/// the middle third of its range. Same correction as perlinGain in CloudNoiseGen.compute; the
-/// default depends on octave count, so re-check it if that changes.
 float weatherRangeGain;
+float3 windOffset;
+float weatherSeed;
 
 float coverageScale;
-float coverageBias;        // added before the contrast curve; the main "how cloudy is it" dial
+float coverageBias;
 float coverageContrast;
-
 float typeScale;
 float typeBias;
 float typeContrast;
-
+float typeWindFactor;
 float precipitationScale;
 float precipitationBias;
-
+float precipitationWindFactor;
 float baseHeightScale;
 float baseHeightBias;
+float baseHeightWindFactor;
 
-/// The ice layer's own scales, since high cloud arrives independently of the cumulus below it -
-/// tying the two would collapse the altitude-band axis the genera rubric scores.
 float highCoverageScale;
 float highCoverageBias;
 float highCoverageContrast;
+float highCoverageWindFactor;
 float highFormScale;
 float highFormBias;
+float highFormWindFactor;
 
-/// Advances the noise field so weather drifts, applied in the sphere's own space rather than as a
-/// UV scroll (which would distort near the poles).
-float3 windOffset;
+// Arbitrary/Authorable offsets
+static const float TYPE_SEED = 31.7;
+static const float PRECIPITATION_SEED = -17.3;
+static const float BASE_HEIGHT_SEED = 73.1;
+static const float HIGH_COVERAGE_SEED = 53.9;
+static const float HIGH_FORM_SEED = -91.4;
+
+static const int MIN_OCTAVES = 2;
+static const int TYPE_OCTAVE_DROP = 2;
+static const int PRECIPITATION_OCTAVE_DROP = 1;
+static const int BASE_HEIGHT_OCTAVE_DROP = 2;
+static const int HIGH_COVERAGE_OCTAVE_DROP = 2;
+static const int HIGH_FORM_OCTAVE_DROP = 3;
+
+///////// Internal helpers /////////////
+
+float weatherNoise(float3 p, float scale, float3 offset, int octaveCount, float bias)
+{
+	float noise = cloudFbm(p * scale + offset + weatherSeed, octaveCount, lacunarity, gain);
+	return noise * weatherRangeGain * 0.5 + 0.5 + bias;
+}
+
+float weatherContrast(float value, float contrast)
+{
+	float halfWidth = 0.5 / max(0.01, contrast);
+	return saturate(cloudRemap(value, 0.5 - halfWidth, 0.5 + halfWidth, 0, 1));
+}
+
+int weatherOctaves(int drop)
+{
+	return max(MIN_OCTAVES, octaves - drop);
+}
+
+///////// External entry points /////////////////
 
 [numthreads(8, 8, 1)]
 void CSWeatherMap(uint3 id : SV_DispatchThreadID)
 {
-	uint2 size = (uint2)weatherMapSize;
-	if (id.x >= size.x || id.y >= size.y) { return; }
+	uint width, height;
+	Result.GetDimensions(width, height);
+	if (id.x >= width || id.y >= height)
+	{
+		return;
+	}
 
-	float2 uv = (id.xy + 0.5) / weatherMapSize;
+	float2 uv = (id.xy + 0.5) / float2(width, height);
 	float3 p = uvToPointOnSphere(uv);
 
-	// Coverage: biased first, then put through a contrast curve, so bias reads as "more or less
-	// cloud" and contrast as "broken versus overcast" - two independent dials.
-	float coverageNoise = cloudFbm(p * coverageScale + windOffset, octaves, lacunarity, gain);
-	float coverage = saturate(coverageNoise * weatherRangeGain * 0.5 + 0.5 + coverageBias);
-	coverage = saturate(cloudRemap(coverage, 0.5 - 0.5 / max(0.01, coverageContrast),
-									0.5 + 0.5 / max(0.01, coverageContrast), 0, 1));
+	float coverage = saturate(weatherNoise(p, coverageScale, windOffset, octaves, coverageBias));
+	coverage = weatherContrast(coverage, coverageContrast);
 
-	// Cloud type: its own scale and offset, independent of coverage (a region can be flat stratus or
-	// dotted cumulus regardless of how covered it is). Contrast as well as bias, so stratus and
-	// cumulonimbus stay reachable at the extremes.
-	float typeNoise = cloudFbm(p * typeScale + windOffset * 0.35 + 31.7, max(2, octaves - 2), lacunarity, gain);
-	float type = saturate(typeNoise * weatherRangeGain * 0.5 + 0.5 + typeBias);
-	type = saturate(cloudRemap(type, 0.5 - 0.5 / max(0.01, typeContrast),
-								0.5 + 0.5 / max(0.01, typeContrast), 0, 1));
+	float precipitation = saturate(weatherNoise(p, precipitationScale, windOffset * precipitationWindFactor + PRECIPITATION_SEED,
+		weatherOctaves(PRECIPITATION_OCTAVE_DROP), precipitationBias) * coverage);
 
-	// Precipitation: correlated with coverage but not identical, so rain sits in the thicker parts of a system.
-	float precipNoise = cloudFbm(p * precipitationScale + windOffset * 0.6 - 17.3, max(2, octaves - 1), lacunarity, gain);
-	float precipitation = saturate((precipNoise * weatherRangeGain * 0.5 + 0.5 + precipitationBias) * coverage);
+	float type = saturate(weatherNoise(p, typeScale, windOffset * typeWindFactor + TYPE_SEED,
+		weatherOctaves(TYPE_OCTAVE_DROP), typeBias));
+	type = weatherContrast(type, typeContrast);
 
-	// How far up the shell the cloud starts, as a fraction of it so it stays scale-invariant. Its own
-	// field: cloud type moves the top of the layer, but without this the base is identical everywhere.
-	float baseNoise = cloudFbm(p * baseHeightScale + windOffset * 0.5 + 73.1, max(2, octaves - 2), lacunarity, gain);
-	float baseHeight = saturate(baseNoise * weatherRangeGain * 0.5 + 0.5 + baseHeightBias);
+	float baseHeight = saturate(weatherNoise(p, baseHeightScale, windOffset * baseHeightWindFactor + BASE_HEIGHT_SEED,
+		weatherOctaves(BASE_HEIGHT_OCTAVE_DROP), baseHeightBias));
 
 	Result[id.xy] = float4(coverage, precipitation, type, baseHeight);
 
-	// The ice layer, on its own offsets so it is not a copy of the low layer shifted upward, and
-	// range-corrected like every other field here.
-	float highNoise = cloudFbm(p * highCoverageScale + windOffset * 1.4 + 53.9,
-								max(2, octaves - 2), lacunarity, gain);
-	float highCoverage = saturate(highNoise * weatherRangeGain * 0.5 + 0.5 + highCoverageBias);
-	highCoverage = saturate(cloudRemap(highCoverage, 0.5 - 0.5 / max(0.01, highCoverageContrast),
-										0.5 + 0.5 / max(0.01, highCoverageContrast), 0, 1));
+	float highCoverage = saturate(weatherNoise(p, highCoverageScale, windOffset * highCoverageWindFactor + HIGH_COVERAGE_SEED,
+		weatherOctaves(HIGH_COVERAGE_OCTAVE_DROP), highCoverageBias));
+	highCoverage = weatherContrast(highCoverage, highCoverageContrast);
 
-	float highFormNoise = cloudFbm(p * highFormScale + windOffset * 1.1 - 91.4,
-									max(2, octaves - 3), lacunarity, gain);
-	float highForm = saturate(highFormNoise * weatherRangeGain * 0.5 + 0.5 + highFormBias);
+	float highForm = saturate(weatherNoise(p, highFormScale, windOffset * highFormWindFactor + HIGH_FORM_SEED,
+		weatherOctaves(HIGH_FORM_OCTAVE_DROP), highFormBias));
 
 	ResultHigh[id.xy] = float4(highCoverage, highForm, 0, 0);
 }

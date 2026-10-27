@@ -1,105 +1,73 @@
 #pragma kernel CSNoise
 #pragma kernel CSNormalize
 
-// For the tileable Perlin and cloudRemap, shared with the weather map so there is one hash rather
-// than two drifting copies.
 #include "Assets/Post Processing/Effects/PBR/Clouds/Shader Common/CloudNoiseCommon.hlsl"
 
-// Generates the two 3D noise volumes the cloud density model samples.
-//
-// Schneider (Guerrilla, "The Real-Time Volumetric Cloudscapes of Horizon Zero Dawn"):
-//
+// Generates the two 3D noise volumes the cloud density model samples, one channel per dispatch.
 //   Shape  128^3 RGBA   R = Perlin-Worley, G/B/A = Worley FBM at increasing frequency
 //   Detail  32^3 RGB    Worley FBM at increasing frequency
-//
-// The Worley half is ported from Sebastian Lague's clouds project
-// (C:\dev\thesis\clouds, Assets/Scripts/Clouds/Noise/Compute/NoiseGenCompute.compute), including
-// its seamless-tiling scheme. The Perlin half is not: that project is pure Worley and has no
-// Perlin-Worley remap at all, so channel R would otherwise be missing the low-frequency billowy
-// base that gives clouds their overall form rather than just their lumpiness.
-//
-// Everything here must TILE. The volumes are sampled at world positions across an entire globe, so
-// a discontinuity at the wrap does not show up as a subtle seam - it shows up as a straight line of
-// cloud running the height of the sky.
+// Layout from Schneider (SIGGRAPH 2015). Everything must tile, since the volumes repeat across the globe.
+// Adapted from NoiseGenCompute.compute in Sebastian Lague's Clouds (github.com/SebLague/Clouds, MIT).
 
-static const int numThreads = 8;
-static const int minMaxAccuracy = 10000000;
+static const int THREAD_GROUP_SIZE = 8;
+// int, because there is no atomic min/max for float. From Lague's Clouds.
+static const int MIN_MAX_SCALE = 10000000;
 
+// Output
 uint resolution;
 RWTexture3D<float4> Result;
+float4 channelMask;
 RWStructuredBuffer<int> minMax;
 
+// Worley
 StructuredBuffer<float3> pointsA;
 StructuredBuffer<float3> pointsB;
 StructuredBuffer<float3> pointsC;
-
 int numCellsA;
 int numCellsB;
 int numCellsC;
-
-float4 channelMask;
-float persistence;
-bool invertNoise;
+float worleyPersistence;
+bool invertWorley;
 int tile;
 
-// Perlin-Worley controls. Only channel R of the shape volume sets usePerlinWorley.
+// Perlin, for the shape volume's R channel only
 bool usePerlinWorley;
-int perlinPeriod;          // lattice cells per axis at the first octave
+int perlinPeriod;
 int perlinOctaves;
 float perlinPersistence;
-
-// Stretches the FBM to fill [-1, 1] before it is folded to [0, 1].
-//
-// An FBM normalised by the sum of its amplitudes does not reach that sum: the octaves rarely peak
-// together. Measured over the defaults (6 octaves, gain 0.5) the raw output spans only about
-// +/-0.45, which folds to [0.28, 0.72] - so the Perlin could never pull the remap down to the
-// Worley floor and the "billowy base" degenerated into a near-constant lift. The default here is
-// that measured range. Check the slice viewer if octaves or persistence are changed: flat white or
-// flat black patches mean this is now too high.
+// Stretches the FBM to fill [-1, 1] before it is folded to [0, 1]; see CloudNoiseSettings.perlinGain
 float perlinGain;
 
-static const int3 offsets[] =
+static const int NEIGHBOUR_COUNT = 27;
+
+///////// Internal helpers /////////////
+
+int3 neighbourOffset(int index)
 {
-	// centre
-	int3(0,0,0),
-	// front face
-	int3(0,0,1), int3(-1,1,1), int3(-1,0,1), int3(-1,-1,1),
-	int3(0,1,1), int3(0,-1,1), int3(1,1,1), int3(1,0,1), int3(1,-1,1),
-	// back face
-	int3(0,0,-1), int3(-1,1,-1), int3(-1,0,-1), int3(-1,-1,-1),
-	int3(0,1,-1), int3(0,-1,-1), int3(1,1,-1), int3(1,0,-1), int3(1,-1,-1),
-	// ring around centre
-	int3(-1,1,0), int3(-1,0,0), int3(-1,-1,0), int3(0,1,0),
-	int3(0,-1,0), int3(1,1,0), int3(1,0,0), int3(1,-1,0)
-};
+	return int3(index % 3, (index / 3) % 3, index / 9) - 1;
+}
 
-float maxComponent(float3 vec) { return max(vec.x, max(vec.y, vec.z)); }
-float minComponent(float3 vec) { return min(vec.x, min(vec.y, vec.z)); }
-
-/// Distance to the nearest feature point, on a jittered grid of `numCells` cells per axis.
-///
-/// Ported unchanged from the reference. The wrap branch is what makes it tile: a neighbour cell
-/// outside the grid is wrapped modulo numCells, and the wrapped point is then tested against all
-/// 27 unit offsets, so the point is found at whichever periodic image is actually nearest.
+// Cellular noise after Worley, "A Cellular Texture Basis Function" (SIGGRAPH 1996), with one jittered point per cell instead of a Poisson count.
+// Tiling from Lague's Clouds
 float worley(StructuredBuffer<float3> points, int numCells, float3 samplePos)
 {
 	samplePos = (samplePos * tile) % 1;
 	int3 cellID = floor(samplePos * numCells);
 	float minSqrDst = 1;
 
-	for (int cellOffsetIndex = 0; cellOffsetIndex < 27; cellOffsetIndex++)
+	for (int cellOffsetIndex = 0; cellOffsetIndex < NEIGHBOUR_COUNT; cellOffsetIndex++)
 	{
-		int3 adjID = cellID + offsets[cellOffsetIndex];
+		int3 adjID = cellID + neighbourOffset(cellOffsetIndex);
 
-		if (minComponent(adjID) == -1 || maxComponent(adjID) == numCells)
+		if (any(adjID < 0) || any(adjID >= numCells))
 		{
 			int3 wrappedID = (adjID + numCells) % (uint3)numCells;
 			int adjCellIndex = wrappedID.x + numCells * (wrappedID.y + wrappedID.z * numCells);
 			float3 wrappedPoint = points[adjCellIndex];
 
-			for (int wrapOffsetIndex = 0; wrapOffsetIndex < 27; wrapOffsetIndex++)
+			for (int wrapOffsetIndex = 0; wrapOffsetIndex < NEIGHBOUR_COUNT; wrapOffsetIndex++)
 			{
-				float3 sampleOffset = samplePos - (wrappedPoint + offsets[wrapOffsetIndex]);
+				float3 sampleOffset = samplePos - (wrappedPoint + neighbourOffset(wrapOffsetIndex));
 				minSqrDst = min(minSqrDst, dot(sampleOffset, sampleOffset));
 			}
 		}
@@ -114,55 +82,71 @@ float worley(StructuredBuffer<float3> points, int numCells, float3 samplePos)
 	return sqrt(minSqrDst);
 }
 
+// Three octaves weighted by persistence, from Lague's Clouds
+float worleyFbm(float3 pos)
+{
+	float octaveA = worley(pointsA, numCellsA, pos);
+	float octaveB = worley(pointsB, numCellsB, pos);
+	float octaveC = worley(pointsC, numCellsC, pos);
 
+	float amplitudeB = worleyPersistence;
+	float amplitudeC = worleyPersistence * worleyPersistence;
+	float fbm = (octaveA + octaveB * amplitudeB + octaveC * amplitudeC) / (1 + amplitudeB + amplitudeC);
 
-[numthreads(numThreads, numThreads, numThreads)]
+	// Inverted for tightly packed billows, after Schneider (SIGGRAPH 2015)
+	return invertWorley ? 1 - fbm : fbm;
+}
+
+// Perlin-Worley after Schneider as in Hillaire's TileableVolumeNoise (github.com/sebh/TileableVolumeNoise)
+float perlinWorley(float3 pos, float worley)
+{
+	float perlin = cloudPerlinFbmTileable(pos, perlinPeriod, perlinOctaves, perlinPersistence);
+	perlin = saturate(perlin * perlinGain * 0.5 + 0.5);
+	return cloudRemap(perlin, 0.0, 1.0, worley, 1.0);
+}
+
+// Channel mask from Lague's Clouds
+void writeChannel(uint3 id, float4 value)
+{
+	Result[id] = lerp(Result[id], value, channelMask);
+}
+
+///////// External entry points /////////////////
+
+[numthreads(THREAD_GROUP_SIZE, THREAD_GROUP_SIZE, THREAD_GROUP_SIZE)]
 void CSNoise(uint3 id : SV_DispatchThreadID)
 {
-	if (id.x >= resolution || id.y >= resolution || id.z >= resolution) { return; }
+	if (any(id >= resolution))
+	{
+		return;
+	}
 
 	float3 pos = id / (float)resolution;
 
-	float layerA = worley(pointsA, numCellsA, pos);
-	float layerB = worley(pointsB, numCellsB, pos);
-	float layerC = worley(pointsC, numCellsC, pos);
-
-	float maxVal = 1 + persistence + persistence * persistence;
-	float worleyFbm = (layerA + layerB * persistence + layerC * persistence * persistence) / maxVal;
-
-	// Inverted so that high values mean "inside a lump" rather than "far from a feature point".
-	// Every settings asset in the reference project has invert set, for the same reason.
-	if (invertNoise) { worleyFbm = 1 - worleyFbm; }
-
-	float noiseSum = worleyFbm;
-
+	float noise = worleyFbm(pos);
 	if (usePerlinWorley)
 	{
-		// Perlin-Worley: take the Perlin's *floor* up to the Worley FBM rather than blending the
-		// two. The result keeps Perlin's connected, billowy low frequencies while inheriting
-		// Worley's rounded lumps wherever the Perlin is dark - which is what makes a cumulus read
-		// as a cauliflower rather than as smoke.
-		float perlin = cloudPerlinFbmTileable(pos, perlinPeriod, perlinOctaves, perlinPersistence);
-		perlin = saturate(perlin * perlinGain * 0.5 + 0.5);
-		noiseSum = cloudRemap(perlin, 0.0, 1.0, worleyFbm, 1.0);
+		noise = perlinWorley(pos, noise);
 	}
 
-	// int, because there is no atomic min/max for float.
-	int val = (int)(saturate(noiseSum) * minMaxAccuracy);
-	InterlockedMin(minMax[0], val);
-	InterlockedMax(minMax[1], val);
+	int scaled = (int)(saturate(noise) * MIN_MAX_SCALE);
+	InterlockedMin(minMax[0], scaled);
+	InterlockedMax(minMax[1], scaled);
 
-	Result[id] = Result[id] * (1 - channelMask) + noiseSum * channelMask;
+	writeChannel(id, noise);
 }
 
-[numthreads(numThreads, numThreads, numThreads)]
+// Min/max normalize pass from Lague's Clouds.
+[numthreads(THREAD_GROUP_SIZE, THREAD_GROUP_SIZE, THREAD_GROUP_SIZE)]
 void CSNormalize(uint3 id : SV_DispatchThreadID)
 {
-	if (id.x >= resolution || id.y >= resolution || id.z >= resolution) { return; }
+	if (any(id >= resolution))
+	{
+		return;
+	}
 
-	float minVal = (float)minMax[0] / minMaxAccuracy;
-	float maxVal = (float)minMax[1] / minMaxAccuracy;
-	float4 normalizedVal = (Result[id] - minVal) / max(1e-5, maxVal - minVal);
+	float minValue = (float)minMax[0] / MIN_MAX_SCALE;
+	float maxValue = (float)minMax[1] / MIN_MAX_SCALE;
 
-	Result[id] = Result[id] * (1 - channelMask) + normalizedVal * channelMask;
+	writeChannel(id, (Result[id] - minValue) / max(1e-5, maxValue - minValue));
 }

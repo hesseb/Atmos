@@ -1,22 +1,11 @@
 // Noise primitives shared by the offline volume bake and the per-frame weather map.
-//
-// One definition of the hash, because two would drift: the volumes and the weather map have to keep
-// agreeing about where cloud is, and a divergence there is not a visible bug so much as a slow loss
-// of whatever the parameters were tuned against.
 
 #ifndef CLOUD_NOISE_COMMON_INCLUDED
 #define CLOUD_NOISE_COMMON_INCLUDED
 
-/// Schneider's remap, used throughout the density model as well as here.
-float cloudRemap(float v, float oldMin, float oldMax, float newMin, float newMax)
-{
-	return newMin + (v - oldMin) / max(1e-5, oldMax - oldMin) * (newMax - newMin);
-}
+///////// Internal helpers /////////////
 
-/// A unit gradient for a lattice corner.
-///
-/// rsqrt with a floor rather than normalize: a hash landing on the zero vector would make normalize
-/// return NaN, and a single NaN texel propagates through everything downstream of it.
+/// Hash from Quilez, "Noise - gradient - 3D" (shadertoy.com/view/Xsl3Dl, MIT).
 float3 cloudHashGradient(float3 cell)
 {
 	float3 h = float3(
@@ -27,12 +16,7 @@ float3 cloudHashGradient(float3 cell)
 	return g * rsqrt(max(1e-6, dot(g, g)));
 }
 
-/// Gradient noise on an unbounded domain. Bounded by +-sqrt(3)/2 = +-0.866 - the corner dot
-/// products peak at |d| = sqrt(3)/2 with unit gradients - and in practice one octave's spread is
-/// about +-0.19 std, which is what the weatherRangeGain calibration is measured against.
-///
-/// Used for the weather map, which is evaluated at points ON THE SPHERE and therefore has no wrap
-/// to worry about - the domain is closed by the geometry rather than by the lattice.
+/// Quintic fade from Perlin, "Improving Noise" (SIGGRAPH 2002).
 float cloudGradientNoise(float3 p)
 {
 	float3 i0 = floor(p);
@@ -61,28 +45,6 @@ float cloudGradientNoise(float3 p)
 	return n;
 }
 
-float cloudFbm(float3 p, int octaves, float lacunarity, float gain)
-{
-	float sum = 0;
-	float amplitude = 1;
-	float norm = 0;
-
-	for (int i = 0; i < octaves; i++)
-	{
-		sum += cloudGradientNoise(p) * amplitude;
-		norm += amplitude;
-		p *= lacunarity;
-		amplitude *= gain;
-	}
-
-	return sum / max(1e-5, norm);
-}
-
-/// The same gradient, but with the lattice wrapped to `period` so the noise repeats exactly.
-///
-/// This wrap is the entire tiling mechanism for the baked volumes, which - unlike the weather map -
-/// are sampled on an unbounded world-space domain and must wrap seamlessly. A break there does not
-/// read as a subtle seam but as a straight line of cloud running the height of the sky.
 float3 cloudLatticeGradient(int3 cell, int period)
 {
 	int3 c = ((cell % period) + period) % period;
@@ -118,6 +80,32 @@ float cloudPerlinTileable(float3 pos, int period)
 	return n;
 }
 
+///////// External entry points /////////////////
+
+/// Schneider's remap (SIGGRAPH 2015, GPU Pro 7 II-4).
+float cloudRemap(float v, float oldMin, float oldMax, float newMin, float newMax)
+{
+	return newMin + (v - oldMin) / max(1e-5, oldMax - oldMin) * (newMax - newMin);
+}
+
+float cloudFbm(float3 p, int octaves, float lacunarity, float gain)
+{
+	float sum = 0;
+	float amplitude = 1;
+	float norm = 0;
+
+	for (int i = 0; i < octaves; i++)
+	{
+		sum += cloudGradientNoise(p) * amplitude;
+		norm += amplitude;
+		p *= lacunarity;
+		amplitude *= gain;
+	}
+
+	return sum / max(1e-5, norm);
+}
+
+/// Period-wrapped Perlin FBM, as in Hillaire's TileableVolumeNoise (github.com/sebh/TileableVolumeNoise).
 float cloudPerlinFbmTileable(float3 pos, int period, int octaves, float gain)
 {
 	float sum = 0;
